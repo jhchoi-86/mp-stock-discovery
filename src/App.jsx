@@ -18,8 +18,8 @@ const App = () => {
   const fetchData = async () => {
     try {
       const [stocksRes, signalsRes] = await Promise.all([
-        fetch('http://localhost:3001/api/stocks'),
-        fetch('http://localhost:3001/api/signals')
+        fetch(`http://${window.location.hostname}:3001/api/stocks`),
+        fetch(`http://${window.location.hostname}:3001/api/signals`)
       ]);
       const stocksData = await stocksRes.json();
       const signalsData = await signalsRes.json();
@@ -41,7 +41,7 @@ const App = () => {
       const csvData = e.target.result;
 
       try {
-        const response = await fetch('http://localhost:3001/api/import-csv', {
+        const response = await fetch(`http://${window.location.hostname}:3001/api/import-csv`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -71,7 +71,7 @@ const App = () => {
     
     setIsSyncing(true);
     try {
-      const response = await fetch('http://localhost:3001/api/auto-sync', {
+      const response = await fetch(`http://${window.location.hostname}:3001/api/auto-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ timeframe: uploadTimeframe }),
@@ -96,7 +96,7 @@ const App = () => {
     fetchData(); // Initial data load
 
     // Setup Server-Sent Events (SSE) for instant real-time updates
-    const eventSource = new EventSource('http://localhost:3001/api/stream');
+    const eventSource = new EventSource(`http://${window.location.hostname}:3001/api/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
@@ -379,7 +379,7 @@ const App = () => {
         ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 
         : tgContent;
 
-      const response = await fetch('http://localhost:3001/api/send-report', {
+      const response = await fetch(`http://${window.location.hostname}:3001/api/send-report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reportText: safeContent }),
