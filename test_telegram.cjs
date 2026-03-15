@@ -1,9 +1,11 @@
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '8629426971:AAGAOUyd362GUqp6tnYl77teow3jnWfQgjs';
-const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '6741237663,-1003821536889').split(',').map(id => id.trim()).filter(id => id);
+require('dotenv').config();
 
-// 만약 환경 변수나 위 값이 모두 "여기에_~" 상태라면 에러 처리
-if (TELEGRAM_BOT_TOKEN.includes('여기에') || TELEGRAM_CHAT_IDS.length === 0) {
-    console.error("❌ 오류: test_telegram.cjs 파일 내부의 토큰과 챗 아이디 값(1~2번째 줄)을 실제 발급받은 값으로 변경 후 저장해주세요!");
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
+
+// 만약 환경 변수가 제대로 설정되지 않았다면 에러 처리
+if (!TELEGRAM_BOT_TOKEN || TELEGRAM_CHAT_IDS.length === 0) {
+    console.error("❌ 오류: .env 파일 내부에 TELEGRAM_BOT_TOKEN과 TELEGRAM_CHAT_ID 값이 설정되어 있지 않습니다!");
     process.exit(1);
 }
 
