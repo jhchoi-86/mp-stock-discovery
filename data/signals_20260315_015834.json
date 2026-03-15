@@ -1,0 +1,98 @@
+[
+  {
+    "id": "9984e2f0-326d-4efd-9c5c-335c49614456",
+    "code": "005930",
+    "timestamp": 1773507264427,
+    "result_2": 22,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1H"
+  },
+  {
+    "id": "36d23228-661b-4dd1-b670-a0d397601a87",
+    "code": "000660",
+    "timestamp": 1773507264427,
+    "result_2": 15,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1H"
+  },
+  {
+    "id": "28c0b3a4-bd2e-4cfa-b488-422fdca5ceec",
+    "code": "005930",
+    "timestamp": 1773507264473,
+    "result_2": 22,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "4H"
+  },
+  {
+    "id": "7ac50ef6-795a-4ca9-9b65-fae238da676b",
+    "code": "000660",
+    "timestamp": 1773507264473,
+    "result_2": 15,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "4H"
+  },
+  {
+    "id": "6d9f802f-866b-45be-abbc-0a7709ce76c2",
+    "code": "005930",
+    "timestamp": 1773507264484,
+    "result_2": 22,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1D"
+  },
+  {
+    "id": "d4ec809a-3e31-4f1e-9bcf-e737925b22d0",
+    "code": "000660",
+    "timestamp": 1773507264484,
+    "result_2": 15,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1D"
+  },
+  {
+    "id": "29026b94-0992-4a07-859a-7a1087f1d618",
+    "code": "005930",
+    "timestamp": 1773507264506,
+    "result_2": 22,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1W"
+  },
+  {
+    "id": "8b73f049-a570-4358-9cd3-20943d47264c",
+    "code": "000660",
+    "timestamp": 1773507264506,
+    "result_2": 15,
+    "result_3": 50,
+    "cond_up7": true,
+    "DHH2": true,
+    "progress": 1,
+    "signal_HH": true,
+    "timeframe": "1W"
+  }
+]
