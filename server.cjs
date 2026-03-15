@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
@@ -39,11 +40,7 @@ async function sendTelegramAlert(signal, stockName) {
     for (const chatId of TELEGRAM_CHAT_IDS) {
         try {
             const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-            await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ chat_id: chatId, text: text })
-            });
+            await axios.post(url, { chat_id: chatId, text: text });
         } catch (e) {
             console.error(`[Telegram] Failed to send alert to ${chatId}:`, e.message);
         }
@@ -116,19 +113,14 @@ app.post('/api/send-report', async (req, res) => {
     for (const chatId of TELEGRAM_CHAT_IDS) {
         try {
             const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-            const response = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    chat_id: chatId, 
-                    text: reportText
-                })
+            const response = await axios.post(url, { 
+                chat_id: chatId, 
+                text: reportText
             });
-            if (response.ok) {
+            if (response.status === 200) {
                 successCount++;
             } else {
-                const errText = await response.text();
-                console.error(`[Telegram] HTTP Error ${response.status}:`, errText);
+                console.error(`[Telegram] HTTP Error ${response.status}:`, response.data);
             }
         } catch (e) {
             console.error(`[Telegram] Failed to send report to ${chatId}:`, e.message);
