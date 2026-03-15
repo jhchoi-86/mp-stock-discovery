@@ -4,6 +4,9 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
+dns.setDefaultResultOrder('ipv4first');
+
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 const { calculateSignals } = require('./analyzer.cjs');
