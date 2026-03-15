@@ -15,7 +15,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 // Telegram Alert Setup
-const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 // 콤마(,)로 구분하여 여러 명의 챗 아이디 입력 가능. 단체방/채널은 음수(-) 아이디를 사용해야 합니다.
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
 const alertCache = new Map();
@@ -45,7 +45,7 @@ async function sendTelegramAlert(signal, stockName) {
             const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
             await axios.post(url, { chat_id: chatId, text: text });
         } catch (e) {
-            console.error(`[Telegram] Failed to send alert to ${chatId}:`, e.message);
+            console.error(`[Telegram] Failed to send alert to ${chatId}:`, e.message || String(e), e.response?.data || '');
         }
     }
     console.log(`[Telegram] Alert broadcasted for ${stockName} (${signal.code}) to ${TELEGRAM_CHAT_IDS.length} chats`);
@@ -126,7 +126,7 @@ app.post('/api/send-report', async (req, res) => {
                 console.error(`[Telegram] HTTP Error ${response.status}:`, response.data);
             }
         } catch (e) {
-            console.error(`[Telegram] Failed to send report to ${chatId}:`, e.message);
+            console.error(`[Telegram] Failed to send report to ${chatId}:`, e.message || String(e), e.response?.data || '');
         }
     }
 
