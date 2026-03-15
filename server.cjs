@@ -4,6 +4,7 @@ const cors = require('cors');
 const bodyParser = require('body-parser');
 const fs = require('fs');
 const path = require('path');
+const https = require('https');
 const dns = require('dns');
 dns.setDefaultResultOrder('ipv4first');
 
@@ -43,7 +44,9 @@ async function sendTelegramAlert(signal, stockName) {
     for (const chatId of TELEGRAM_CHAT_IDS) {
         try {
             const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-            await axios.post(url, { chat_id: chatId, text: text });
+            await axios.post(url, { chat_id: chatId, text: text }, {
+                httpsAgent: new https.Agent({ family: 4 })
+            });
         } catch (e) {
             console.error(`[Telegram] Failed to send alert to ${chatId}:`, e.message || String(e), e.response?.data || '');
         }
@@ -119,6 +122,8 @@ app.post('/api/send-report', async (req, res) => {
             const response = await axios.post(url, { 
                 chat_id: chatId, 
                 text: reportText
+            }, {
+                httpsAgent: new https.Agent({ family: 4 })
             });
             if (response.status === 200) {
                 successCount++;
