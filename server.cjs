@@ -54,6 +54,42 @@ async function sendTelegramAlert(signal, stockName) {
     console.log(`[Telegram] Alert broadcasted for ${stockName} (${signal.code}) to ${TELEGRAM_CHAT_IDS.length} chats`);
 }
 
+// KIS API Setup
+const KIS_APP_KEY = (process.env.KIS_APP_KEY || '').trim();
+const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
+let kisAccessToken = null;
+let kisTokenExpiry = 0;
+
+async function getKisAccessToken() {
+    if (!KIS_APP_KEY || !KIS_APP_SECRET) {
+        throw new Error("KIS API Keys are missing in .env");
+    }
+
+    // Reuse token if valid (buffer of 1 hour)
+    if (kisAccessToken && kisTokenExpiry > Date.now() + 3600000) {
+        return kisAccessToken;
+    }
+
+    console.log("[KIS API] Requesting new Access Token...");
+    try {
+        const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
+            grant_type: 'client_credentials',
+            appkey: KIS_APP_KEY,
+            appsecret: KIS_APP_SECRET
+        });
+
+        kisAccessToken = response.data.access_token;
+        // Token expires in 86400 seconds (24 hours). Store expiry as timestamp.
+        kisTokenExpiry = Date.now() + (response.data.expires_in * 1000);
+        console.log(`[KIS API] Token successfully issued. Expires in ${response.data.expires_in}s`);
+        
+        return kisAccessToken;
+    } catch (e) {
+        console.error("[KIS API] Token Request Failed:", e.response?.data || e.message);
+        throw new Error("Failed to get KIS Access Token");
+    }
+}
+
 app.use(cors());
 app.use(bodyParser.json());
 
@@ -357,15 +393,25 @@ app.post('/api/auto-sync', async (req, res) => {
 
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-    // Helper to fetch Yahoo Finance Data
-    const fetchYahooHistory = async (symbol) => {
+    let kisTokenGlobal = null;
+    try {
+        kisTokenGlobal = await getKisAccessToken();
+    } catch(e) {
+        console.error("[Auto-Sync] KIS Token failed, falling back to pure Yahoo.");
+    }
+
+    // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
+    const fetchHybridHistory = async (stock) => {
         let days = 60;
         if (tf === '1D') days = 365;
-        if (tf === '1W') days = 1000; // ~3 years for weekly
+        if (tf === '1W') days = 1000;
+
+        const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
+        const symbolKS = stock.code + suffix;
 
         const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
         const period2 = Math.floor(Date.now() / 1000);
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=${interval}`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbolKS}?period1=${period1}&period2=${period2}&interval=${interval}`;
         
         const response = await fetch(url, {
             headers: {
@@ -374,19 +420,63 @@ app.post('/api/auto-sync', async (req, res) => {
         });
         if (!response.ok) throw new Error(`Yahoo Fetch Failed: ${response.status}`);
         const data = await response.json();
-        
         const result = data.chart.result[0];
         const quotes = result.indicators.quote[0];
         const timestamps = result.timestamp;
         
-        return {
-            open: quotes.open,
-            high: quotes.high,
-            low: quotes.low,
-            close: quotes.close,
-            volume: quotes.volume,
-            time: timestamps
+        let validIndices = [];
+        for (let i = 0; i < quotes.close.length; i++) {
+            if (quotes.close[i] !== null && timestamps[i] !== null) {
+                validIndices.push(i);
+            }
+        }
+
+        let chartData = {
+            open: validIndices.map(i => quotes.open[i]),
+            high: validIndices.map(i => quotes.high[i]),
+            low: validIndices.map(i => quotes.low[i]),
+            close: validIndices.map(i => quotes.close[i]),
+            volume: validIndices.map(i => quotes.volume[i]),
+            time: validIndices.map(i => timestamps[i])
         };
+
+        // KIS Real-Time Overlay
+        if (kisTokenGlobal) {
+            try {
+                const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
+                const kisRes = await axios.get(kisUrl, {
+                    headers: {
+                        'authorization': 'Bearer ' + kisTokenGlobal,
+                        'appkey': KIS_APP_KEY,
+                        'appsecret': KIS_APP_SECRET,
+                        'tr_id': 'FHKST01010100'
+                    },
+                    params: {
+                        "FID_COND_MRKT_DIV_CODE": "J",
+                        "FID_INPUT_ISCD": stock.code
+                    }
+                });
+                const kisData = kisRes.data.output;
+                const currentPrice = parseInt(kisData.stck_prpr);
+                const currentHigh = parseInt(kisData.stck_hgpr);
+                const currentLow = parseInt(kisData.stck_lwpr);
+                const currentOpen = parseInt(kisData.stck_oprc);
+                const currentVolume = parseInt(kisData.acml_vol);
+
+                const lastIdx = chartData.close.length - 1;
+                if (lastIdx >= 0 && currentPrice) {
+                    chartData.open[lastIdx] = currentOpen;
+                    chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
+                    chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
+                    chartData.close[lastIdx] = currentPrice;
+                    chartData.volume[lastIdx] = currentVolume;
+                }
+            } catch(e) {
+                // If it fails, silent fallback to yahoo's tail
+            }
+        }
+
+        return chartData;
     };
 
     // Process in batches to avoid rate limits
@@ -395,10 +485,7 @@ app.post('/api/auto-sync', async (req, res) => {
         const batch = stocks.slice(i, i + BATCH_SIZE);
         const tasks = batch.map(async (stock) => {
             try {
-                const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
-                const symbol = stock.code + suffix;
-                
-                const history = await fetchYahooHistory(symbol);
+                const history = await fetchHybridHistory(stock);
                 const signal = calculateSignals(history);
                 
                 if (signal) {
