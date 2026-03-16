@@ -19,7 +19,7 @@ const PORT = process.env.PORT || 3001;
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 // 콤마(,)로 구분하여 여러 명의 챗 아이디 입력 가능. 단체방/채널은 음수(-) 아이디를 사용해야 합니다.
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
-const alertCache = new Map();
+const alertCache = new Map(); // Prevent telegram spam
 
 async function sendTelegramAlert(signal, stockName) {
     if (!TELEGRAM_BOT_TOKEN || TELEGRAM_CHAT_IDS.length === 0) return;
@@ -489,10 +489,14 @@ app.post('/api/auto-sync', async (req, res) => {
         const tasks = batch.map(async (stock) => {
             try {
                 const history = await fetchHybridHistory(stock);
-                const signal = calculateSignals(history);
-                
-                if (signal) {
-                    return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
+                if (history && history.close && history.close.length > 50) {
+                    const signal = calculateSignals(history, tf);
+                    if (signal) {
+                        if (signal.signal_HH) {
+                            sendTelegramAlert(signal, stock.name);
+                        }
+                        return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
+                    }
                 }
             } catch (e) {
                 console.error(`[Auto-Sync] Error for ${stock.code} (${stock.name}):`, e.message);

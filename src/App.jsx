@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
+import axios from 'axios';
 // Report Logic v1.2 - Forced MD Extension
-import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw } from 'lucide-react';
+import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw, RefreshCw, Trash2, Power } from 'lucide-react';
+import SignalIndicator from './SignalIndicator';
 
 const App = () => {
   const [stocks, setStocks] = useState([]);
   const [signals, setSignals] = useState([]);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
+  const [lastUpdate, setLastUpdate] = new Date();
   const [searchQuery, setSearchQuery] = useState("");
   const [marketFilter, setMarketFilter] = useState("ALL");
   const [showAll, setShowAll] = useState(false);
@@ -691,7 +693,8 @@ const App = () => {
                   };
 
                   return (
-                  <tr key={stock.code} className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s` }}>
+                  <React.Fragment key={stock.code}>
+                  <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent', borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -905,6 +908,14 @@ const App = () => {
                       </a>
                     </td>
                   </tr>
+                  {stock.latestSignal && (
+                    <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
+                      <td colSpan="12" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
+                        <SignalIndicator signal={stock.latestSignal} />
+                      </td>
+                    </tr>
+                  )}
+                  </React.Fragment>
                   );
                 })
               )}

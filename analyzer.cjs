@@ -170,7 +170,7 @@ function valuewhen(condition, source, occurrence = 0) {
 
 // --- Pine Indicator Implementation ---
 
-function calculateSignals(ohlcHistory) {
+function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     // Filter out potential nulls from Yahoo Finance
     const timestamps = ohlcHistory.time || [];
     const rawClose = ohlcHistory.close || [];
@@ -200,6 +200,7 @@ function calculateSignals(ohlcHistory) {
     const low = cleanData.map(d => d.low);
     const high = cleanData.map(d => d.high);
     const volume = cleanData.map(d => d.volume);
+    const timeArr = cleanData.map(d => d.time); // Unix timestamp in seconds
     const len = close.length;
 
     // RSI Pivot 1 (RSI 2)
@@ -325,6 +326,27 @@ function calculateSignals(ohlcHistory) {
         }
     }
 
+    // --- Progress & Final Signal Logic ---
+    const timeframeMsMap = {
+        '5M': 5 * 60 * 1000,
+        '15M': 15 * 60 * 1000,
+        '30M': 30 * 60 * 1000,
+        '1H': 60 * 60 * 1000,
+        '4H': 4 * 60 * 60 * 1000,
+        '1D': 24 * 60 * 60 * 1000,
+        '1W': 7 * 24 * 60 * 60 * 1000
+    };
+    const tfMs = timeframeMsMap[timeframeStr] || timeframeMsMap['1D'];
+    
+    // timeArr[last_idx] is usually seconds (unix) or potentially ms. Handle intelligently.
+    const candleStartRaw = timeArr[last_idx];
+    const candleStart = candleStartRaw > 1e11 ? candleStartRaw : candleStartRaw * 1000;
+    const timenow = Date.now();
+    let progress = Math.max(0, Math.min(1.0, (timenow - candleStart) / tfMs));
+    
+    // Signal_HH is strongly defined as DHH2 AND progress > 0.3
+    const signal_HH = isSignalActive && progress > 0.3;
+
     const adxArray = calculateADX(high, low, close, 14);
     const currentADX = adxArray[last_idx] !== null ? adxArray[last_idx] : 0;
     const isTrending = currentADX >= 25;
@@ -399,8 +421,8 @@ function calculateSignals(ohlcHistory) {
         result_3: result_3_series[last_idx],
         cond_up7,
         DHH2: isSignalActive,
-        progress: isSignalActive ? 1.0 : 0.5,
-        signal_HH: isSignalActive,
+        progress: Number(progress.toFixed(3)),
+        signal_HH: signal_HH,
         adx: currentADX,
         isTrending: isTrending,
         trigger_rsi,
