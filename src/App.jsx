@@ -426,9 +426,12 @@ const App = () => {
   return (
     <div className="container">
       <header className="fade-in">
-        <div className="logo-section">
-          <h1>MP KOSPI 200, KOSDAQ 150 우량주 매수 추천 종목 리서치 <span style={{ color: 'red', fontSize: '0.9rem', backgroundColor: '#fff', padding: '2px 5px', borderRadius: '4px' }}>VERSION 4.2</span></h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>정리 시스템 (전체 350개 종목)</p>
+        <div className="logo-section" style={{ minWidth: '300px' }}>
+          <h1 style={{ lineHeight: '1.4', fontSize: '1.3rem', fontWeight: '800' }}>
+            MP KOSPI 200, KOSDAQ 150 우량주<br/>
+            <span style={{ color: 'var(--accent)' }}>매수 추천 종목 리서치</span>
+          </h1>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>정리 시스템 (전체 350개 종목)</p>
         </div>
         <div className="stats-bar">
           <div className="stat-item">
@@ -627,8 +630,7 @@ const App = () => {
                 <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>지지저항대</th>
                 <th style={{ minWidth: '70px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>매수신호<br/>발생</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추세</th>
-                <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>진행률</th>
-                <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>트리거</th>
+
                 <th style={{ minWidth: '95px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추천매매<br/><span style={{fontSize:'0.65rem'}}>(분할매수전략)</span></th>
                 <th style={{ minWidth: '40px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>작업</th>
               </tr>
@@ -766,9 +768,9 @@ const App = () => {
                                   justifyContent: 'center',
                                   fontSize: '0.55rem',
                                   fontWeight: 'bold',
-                                  background: isHH ? 'var(--accent)' : (hasSignal ? 'var(--success)' : 'rgba(255,255,255,0.05)'),
-                                  border: hasSignal ? `1px solid ${isHH ? 'var(--accent)' : 'var(--success)'}` : '1px solid transparent',
-                                  color: hasSignal ? '#fff' : 'rgba(255,255,255,0.2)'
+                                  background: isHH ? '#FF1744' : (hasSignal ? '#00E676' : 'rgba(255,255,255,0.1)'),
+                                  border: hasSignal ? `1px solid ${isHH ? '#FF1744' : '#00E676'}` : '1px solid rgba(255,255,255,0.15)',
+                                  color: hasSignal ? (hasSignal && !isHH ? '#000' : '#fff') : 'rgba(255,255,255,0.5)'
                                 }}
                                 title={sig ? `${tf} 신호 - 진행률: ${(sig.progress * 100).toFixed(1)}%` : `${tf} 데이터 없음`}
                               >
@@ -794,9 +796,9 @@ const App = () => {
                                   justifyContent: 'center',
                                   fontSize: '0.55rem',
                                   fontWeight: 'bold',
-                                  background: isHH ? 'var(--accent)' : (hasSignal ? 'var(--success)' : 'rgba(255,255,255,0.05)'),
-                                  border: hasSignal ? `1px solid ${isHH ? 'var(--accent)' : 'var(--success)'}` : '1px solid transparent',
-                                  color: hasSignal ? '#fff' : 'rgba(255,255,255,0.2)'
+                                  background: isHH ? '#FF1744' : (hasSignal ? '#00E676' : 'rgba(255,255,255,0.1)'),
+                                  border: hasSignal ? `1px solid ${isHH ? '#FF1744' : '#00E676'}` : '1px solid rgba(255,255,255,0.15)',
+                                  color: hasSignal ? (hasSignal && !isHH ? '#000' : '#fff') : 'rgba(255,255,255,0.5)'
                                 }}
                                 title={sig ? `${tf} 신호 - 진행률: ${(sig.progress * 100).toFixed(1)}%` : `${tf} 데이터 없음`}
                               >
@@ -809,46 +811,13 @@ const App = () => {
                     </td>
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap', padding: '0.4rem 0.2rem' }}>
                       {stock.latestSignal?.cond_up7 ? (
-                        <div style={{ background: 'var(--primary)', color: '#fff', padding: '3px 6px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.7rem', display: 'inline-block' }}>상승</div>
+                        <div style={{ background: '#2563EB', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.75rem', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>상승</div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>-</span>
                       )}
                     </td>
-                    <td style={{ padding: '0.4rem 0.2rem' }}>
-                      {stock.latestSignal ? (
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', justifyContent: 'center' }}>
-                          <div className="progress-container" style={{ width: '35px' }}>
-                            <div 
-                              className="progress-bar" 
-                              style={{ 
-                                width: `${Math.min(stock.latestSignal.progress * 100, 100)}%`,
-                                background: stock.latestSignal.signal_HH ? 'var(--accent)' : 'linear-gradient(to right, var(--primary), var(--secondary))'
-                              }}
-                            ></div>
-                          </div>
-                          <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>{(stock.latestSignal.progress * 100).toFixed(0)}%</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>-</span>
-                      )}
-                    </td>
-                    <td style={{ textAlign: 'center' }}>
-                      {stock.latestSignal ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }} title="RSI < 40 반등, 평균비 거래량 1.2배 및 양봉 마감 시 승인">
-                          {stock.latestSignal.entry_approved ? (
-                            <div className="badge pulse" style={{ background: 'var(--accent)', color: '#fff', fontSize: '0.65rem', padding: '2px 4px', fontWeight: 'bold' }}>매수승인</div>
-                          ) : (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '0.65rem' }}>대기</span>
-                          )}
-                          <div style={{ display: 'flex', gap: '0.3rem' }}>
-                            <span style={{ fontSize: '0.5rem', fontWeight: 'bold', color: stock.latestSignal.trigger_rsi ? 'var(--success)' : 'rgba(255,255,255,0.2)' }}>RSI</span>
-                            <span style={{ fontSize: '0.5rem', fontWeight: 'bold', color: stock.latestSignal.trigger_vol ? 'var(--success)' : 'rgba(255,255,255,0.2)' }}>거래량</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>-</span>
-                      )}
-                    </td>
+
+
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
@@ -910,7 +879,7 @@ const App = () => {
                   </tr>
                   {stock.latestSignal && (
                     <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <td colSpan="12" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
+                      <td colSpan="8" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
                         <SignalIndicator signal={stock.latestSignal} />
                       </td>
                     </tr>

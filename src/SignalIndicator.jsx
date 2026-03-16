@@ -82,8 +82,8 @@ const SignalIndicator = ({ signal }) => {
 
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#aaa', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '0.5rem' }}>
         <div>
-          <span style={{ marginRight: '8px' }}>진행률(Prog): <strong style={{color: progress > 0.3 ? '#fff' : 'inherit'}}>{(progress * 100).toFixed(1)}%</strong></span>
-          <span>ADX: <strong style={{color: adx >= 25 ? 'var(--accent)' : 'inherit'}}>{adx > 0 ? adx.toFixed(1) : '-'}</strong></span>
+          <span style={{ marginRight: '8px' }}><strong style={{color: progress > 0.3 ? '#fff' : 'inherit'}}>{(progress * 100).toFixed(1)}%</strong></span>
+          <span><strong style={{color: adx >= 25 ? 'var(--accent)' : 'inherit'}}>{adx > 0 ? adx.toFixed(1) : '-'}</strong></span>
         </div>
         <div>
           <span>카테고리: <strong>{category}</strong></span>

@@ -492,9 +492,6 @@ app.post('/api/auto-sync', async (req, res) => {
                 if (history && history.close && history.close.length > 50) {
                     const signal = calculateSignals(history, tf);
                     if (signal) {
-                        if (signal.signal_HH) {
-                            sendTelegramAlert(signal, stock.name);
-                        }
                         return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
                     }
                 }
