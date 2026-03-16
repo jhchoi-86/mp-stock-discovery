@@ -669,6 +669,24 @@ const App = () => {
                     }
                   }
 
+                  const s = stock.latestSignal;
+                  const t1H = stock.timeframeStatus['1H'];
+                  const t1D = stock.timeframeStatus['1D'];
+                  
+                  const curPrice = s?.current_price || s?.entry_price || 0;
+                  const refPrice = s?.open_price || s?.prev_close || 0; // Use open_price for daily change as requested, fallback to prev_close
+                  
+                  // Helper to format percentage with triangle
+                  const renderChange = (current, base) => {
+                    if (!current || !base) return null;
+                    const pct = ((current - base) / base) * 100;
+                    if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
+                    const isUp = pct > 0;
+                    const color = isUp ? '#ff4d4d' : '#4d94ff';
+                    const arrow = isUp ? '▲' : '▼';
+                    return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
+                  };
+
                   return (
                   <tr key={stock.code} className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s` }}>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
@@ -710,8 +728,14 @@ const App = () => {
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       {stock.latestSignal ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="RSI(2) 기반 단기 지지선">단기지지: {stock.latestSignal.result_2 ? `${Math.round(stock.latestSignal.result_2).toLocaleString()}원` : '-'}</span>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="RSI(8) 기반 중기 지지선">중기지지: {stock.latestSignal.result_3 ? `${Math.round(stock.latestSignal.result_3).toLocaleString()}원` : '-'}</span>
+                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="RSI(2) 기반 1차 지지선">
+                            1차지지: {stock.latestSignal.result_2 ? `${Math.round(stock.latestSignal.result_2).toLocaleString()}원` : '-'}
+                            {curPrice > 0 ? renderChange(stock.latestSignal.result_2, curPrice) : null}
+                          </span>
+                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="RSI(8) 기반 2차 지지선">
+                            2차지지: {stock.latestSignal.result_3 ? `${Math.round(stock.latestSignal.result_3).toLocaleString()}원` : '-'}
+                            {curPrice > 0 ? renderChange(stock.latestSignal.result_3, curPrice) : null}
+                          </span>
                         </div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>데이터 대기중</span>
@@ -822,24 +846,8 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const s = stock.latestSignal;
-                          const t1H = stock.timeframeStatus['1H'];
-                          const t1D = stock.timeframeStatus['1D'];
+                          const targetPrice = t1D && t1D.bb_upper > 0 ? t1D.bb_upper : 0;
                           
-                          const curPrice = s?.current_price || s?.entry_price || 0;
-                          const refPrice = s?.prev_close || s?.open_price || 0; // Use prev_close for daily change, fallback to open
-                          
-                          // Helper to format percentage with triangle
-                          const renderChange = (current, base) => {
-                            if (!current || !base) return null;
-                            const pct = ((current - base) / base) * 100;
-                            if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
-                            const isUp = pct > 0;
-                            const color = isUp ? '#ff4d4d' : '#4d94ff';
-                            const arrow = isUp ? '▲' : '▼';
-                            return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
-                          };
-
                           if (t1H && t1H.ema10 > 0) {
                             return (
                               <>
@@ -849,19 +857,19 @@ const App = () => {
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
                                   급등1차: {Math.round(t1H.ema10).toLocaleString()}원
-                                  {renderChange(t1H.ema10, curPrice)}
+                                  {targetPrice > 0 ? renderChange(targetPrice, t1H.ema10) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
                                   눌림1차: {Math.round(t1H.ema20).toLocaleString()}원
-                                  {renderChange(t1H.ema20, curPrice)}
+                                  {targetPrice > 0 ? renderChange(targetPrice, t1H.ema20) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
                                   눌림2차: {Math.round(t1H.ema60).toLocaleString()}원
-                                  {renderChange(t1H.ema60, curPrice)}
+                                  {targetPrice > 0 ? renderChange(targetPrice, t1H.ema60) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
-                                  1차목표가: {t1D && t1D.bb_upper > 0 ? Math.round(t1D.bb_upper).toLocaleString() : '-'}원
-                                  {t1D && t1D.bb_upper ? renderChange(t1D.bb_upper, refPrice) : null}
+                                  1차목표가: {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
+                                  {targetPrice > 0 ? renderChange(targetPrice, refPrice) : null}
                                 </span>
                               </>
                             );
