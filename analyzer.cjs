@@ -251,7 +251,8 @@ function calculateSignals(ohlcHistory) {
         }
     }
 
-    // Trend Filter (EMA MACD)
+    // --- Trend Filter (EMA MACD) ---
+    // [1] Primary Timeframe MACD (8, 26, 9, 0.2)
     const m_rapida = ema(close, 8);
     const m_lenta = ema(close, 26);
     const BBMacd = m_rapida.map((r, i) => r - m_lenta[i]);
@@ -260,22 +261,65 @@ function calculateSignals(ohlcHistory) {
     const stdv = 0.2;
     const banda_supe = Avg.map((a, i) => a + stdv * SDev[i]);
 
+    // [2] Multi-Timeframe (MTF) MACD
+    const multiplier = 2;
+    // Aggregate close array (compress)
+    let mtfCloses = [];
+    for (let i = 0; i < len; i += multiplier) {
+        let endIdx = Math.min(i + multiplier - 1, len - 1);
+        mtfCloses.push(close[endIdx]);
+    }
+    
+    // Calculate indicators on compressed array
+    const rapida_mtf = 12;
+    const lenta_mtf = 39;
+    const stdv_mtf = 0.4;
+    
+    const m_rapida_c = ema(mtfCloses, rapida_mtf);
+    const m_lenta_c = ema(mtfCloses, lenta_mtf);
+    const BBMacd_c = m_rapida_c.map((r, i) => r - m_lenta_c[i]);
+    const Avg_c = ema(BBMacd_c, 9);
+    const SDev_c = stdev(BBMacd_c, 9);
+    const banda_supe_c = Avg_c.map((a, i) => a + stdv_mtf * SDev_c[i]);
+
+    // Project MTF indicators back to base timeframe length
+    let BBMacd_mtf = Array(len).fill(0);
+    let Avg_mtf = Array(len).fill(0);
+    let banda_supe_mtf = Array(len).fill(0);
+
+    for (let i = 0; i < len; i++) {
+        let mtfIdx = Math.floor(i / multiplier);
+        BBMacd_mtf[i] = BBMacd_c[mtfIdx] !== undefined ? BBMacd_c[mtfIdx] : 0;
+        Avg_mtf[i] = Avg_c[mtfIdx] !== undefined ? Avg_c[mtfIdx] : 0;
+        banda_supe_mtf[i] = banda_supe_c[mtfIdx] !== undefined ? banda_supe_c[mtfIdx] : 0;
+    }
+
+    // --- Signal Evaluation ---
     const last_idx = len - 1;
-    const cond_up7 = (BBMacd[last_idx] > banda_supe[last_idx]) && (BBMacd[last_idx] > 0);
+    
+    // Pine: cond_up7 = (BBMacd > banda_supe) and (BBMacd_mtf > banda_supe_mtf) and ( BBMacd > Avg_mtf) and BBMacd_mtf> 0
+    const cond_up7_series = Array(len).fill(false);
+    for (let i = 0; i < len; i++) {
+        cond_up7_series[i] = (BBMacd[i] > banda_supe[i]) && 
+                             (BBMacd_mtf[i] > banda_supe_mtf[i]) && 
+                             (BBMacd[i] > Avg_mtf[i]) && 
+                             (BBMacd_mtf[i] > 0);
+    }
+    const cond_up7 = cond_up7_series[last_idx];
 
     // Pine: DHH2 = (result_2 > result_3) and (result_2[1]!=result_2) and (open >result_2) and cond_up7
-    // To make it better for a dashboard, we check if it triggered in the last 3 candles
-    const checkSignalAt = (i) => {
+    const checkDHH2At = (i) => {
         if (i < 1) return false;
         return (result_2_series[i] > result_3_series[i]) && 
                (result_2_series[i-1] !== result_2_series[i]) && 
                (open[i] > result_2_series[i]) && 
-               cond_up7;
+               cond_up7_series[i];
     }
 
     let isSignalActive = false;
+    // To accommodate dashboard visibility, check if DHH2 fired in the recent 3 candles
     for (let i = last_idx; i > Math.max(0, last_idx - 3); i--) {
-        if (checkSignalAt(i)) {
+        if (checkDHH2At(i)) {
             isSignalActive = true;
             break;
         }
