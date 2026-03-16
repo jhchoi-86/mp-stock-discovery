@@ -391,6 +391,27 @@ const App = () => {
     URL.revokeObjectURL(url);
   };
 
+  const handleDownloadTVList = () => {
+    // Filter stocks with total_score >= 50 and map to TRADINGVIEW format: KRX:CODE
+    const tvStocks = candidates
+      .filter(s => s.total_score >= 50)
+      .map(s => `KRX:${s.code}`)
+      .join(', ');
+
+    if (!tvStocks) {
+      alert("50점 이상 종목이 없습니다.");
+      return;
+    }
+    
+    const blob = new Blob([tvStocks], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `TV_WATCHLIST_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const [isSendingTg, setIsSendingTg] = useState(false);
   const handleSendToTelegram = async () => {
     const tgContent = generateTelegramContent();
@@ -608,6 +629,14 @@ const App = () => {
           style={{ padding: '0.75rem 1.5rem', background: 'linear-gradient(to right, var(--primary), var(--secondary))', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
         >
           <Share2 size={18} /> 리포트 다운로드
+        </button>
+        <button 
+          onClick={handleDownloadTVList}
+          className="card" 
+          style={{ padding: '0.75rem 1.5rem', background: '#2962FF', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          title="트레이딩뷰 Watchlist Import용 TXT 파일 다운로드 (50점 이상)"
+        >
+          <ExternalLink size={18} /> TV 관심종목(50점+)
         </button>
         <button 
           onClick={handleSendToTelegram}
