@@ -358,7 +358,8 @@ function calculateSignals(ohlcHistory) {
         ema10: ema10_val ? Math.round(ema10_val) : 0,
         ema20: ema20_val ? Math.round(ema20_val) : 0,
         ema60: ema60_val ? Math.round(ema60_val) : 0,
-        bb_upper: bb_upper ? Math.round(bb_upper) : 0
+        bb_upper: bb_upper ? Math.round(bb_upper) : 0,
+        current_price: close[last_idx] ? Math.round(close[last_idx]) : 0
     };
 }
 

@@ -252,8 +252,8 @@ const App = () => {
         const sig1H = tfSigs['1H'];
         const sig1D = tfSigs['1D'];
         
-        const priceText = (sig1H && sig1H.ema10 > 0) ? `급등1차: ${Math.round(sig1H.ema10).toLocaleString()}원, 눌림1차: ${Math.round(sig1H.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig1H.ema60).toLocaleString()}원, 1차목표가: ${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` : `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
-        header += `- **${s.name}** (${s.code}): ${s.latestSignal.category} / 💡 추천매매(분할매수매도전략): **${priceText}**\n`;
+        const priceText = (sig1H && sig1H.ema10 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig1H.ema10).toLocaleString()}원, 눌림1차: ${Math.round(sig1H.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig1H.ema60).toLocaleString()}원, 1차목표가: ${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+        header += `- **${s.name}** (${s.code}): ${s.latestSignal.category} / 💡 추천매매(분할매수전략): **${priceText}**\n`;
       });
       header += `\n---\n\n`;
     }
@@ -279,8 +279,8 @@ const App = () => {
       const sig1D = tfSigs['1D'];
 
       const entryPrice = (sig1H && sig1H.ema10 > 0) 
-        ? `급등1차:${Math.round(sig1H.ema10).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1H.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1H.ema60).toLocaleString()}원 <br/>1차목표가:${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` 
-        : "-";
+        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig1H.ema10).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1H.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1H.ema60).toLocaleString()}원 <br/>1차목표가:${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` 
+        : `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원`;
 
       return `| ${stock.name} | ${stock.code} | ${category} | **${entryPrice}** | ${getStatus('1D')} | ${getStatus('1W')} | ${trend} | ${prog} |`;
     }).join('\n');
@@ -822,6 +822,7 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       {stock.timeframeStatus['1H'] && stock.timeframeStatus['1H'].ema10 > 0 ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
+                          <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>현재가: {stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원</span>
                           <span style={{ color: '#FFD700', fontWeight: 'bold' }}>급등1차: {Math.round(stock.timeframeStatus['1H'].ema10).toLocaleString()}원</span>
                           <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림1차: {Math.round(stock.timeframeStatus['1H'].ema20).toLocaleString()}원</span>
                           <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림2차: {Math.round(stock.timeframeStatus['1H'].ema60).toLocaleString()}원</span>
