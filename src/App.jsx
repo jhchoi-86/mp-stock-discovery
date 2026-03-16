@@ -640,12 +640,12 @@ const App = () => {
                 <tr>
                   <td colSpan="8" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
                     <div style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#fff' }}>
-                      {searchQuery ? "검색 결과가 없습니다." : (showAll ? "유니버스에 종목이 없습니다." : "'수' 신호가 발생하고, ADX가 30 이상이며, 1D 기준 상승 추세인 종목이 없습니다.")}
+                      {searchQuery ? "검색 결과가 없습니다." : "사용 방법: 1. 가져올 시간대를 선택 👉 2. 전종목 자동 동기화 실행"}
                     </div>
                     {!searchQuery && (
                       <div style={{ fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
-                        시스템이 <strong>TradingView의 Webhook 신호</strong>를 실시간으로 대기하고 있습니다.<br/>
-                        모든 모니터링 대상 종목({stocks.length}개)을 확인하려면 상단의 <strong>'전체 종목 보기'</strong>를 체크하세요.
+                        시스템이 <strong>TradingView의 Webhook 신호</strong>를 실시간으로 대기 중이거나 실시간 분석을 진행합니다.<br/>
+                        (현재 모니터링 대상 KOSPI/KOSDAQ 우량주: 총 <strong>350개</strong> 종목)
                       </div>
                     )}
                   </td>
