@@ -182,8 +182,9 @@ const App = () => {
     const hasSuSignal = Object.values(timeframeSignals).some(s => s && (s.signal_HH || s.DHH2));
     const hasHighAdx = latest && latest.adx >= 30;
     const isUpwardTrend = timeframeSignals['1D'] && timeframeSignals['1D'].cond_up7;
+    const isDownwardCategory = latest && latest.category === "하락 추세";
     
-    let matchesView = showAll ? true : (hasSuSignal && hasHighAdx && isUpwardTrend);
+    let matchesView = showAll ? true : (hasSuSignal && hasHighAdx && isUpwardTrend && !isDownwardCategory);
 
     if (showOnlyApproved && (!latest || !latest.entry_approved)) {
       matchesView = false;
@@ -229,7 +230,8 @@ const App = () => {
       const hasSuSignal = Object.values(timeframeSignals).some(s => s && (s.signal_HH || s.DHH2));
       const hasHighAdx = stock.latestSignal && stock.latestSignal.adx >= 30;
       const isUpwardTrend = timeframeSignals['1D'] && timeframeSignals['1D'].cond_up7;
-      return (hasSuSignal && hasHighAdx && isUpwardTrend) || stock.latestSignal?.entry_approved;
+      const isDownwardCategory = stock.latestSignal && stock.latestSignal.category === "하락 추세";
+      return (hasSuSignal && hasHighAdx && isUpwardTrend && !isDownwardCategory) || stock.latestSignal?.entry_approved;
     });
 
     if (reportStocks.length === 0) {
