@@ -820,17 +820,19 @@ const App = () => {
                       )}
                     </td>
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
-                      {stock.timeframeStatus['1H'] && stock.timeframeStatus['1H'].ema10 > 0 ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
-                          <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>현재가: {stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원</span>
-                          <span style={{ color: '#FFD700', fontWeight: 'bold' }}>급등1차: {Math.round(stock.timeframeStatus['1H'].ema10).toLocaleString()}원</span>
-                          <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림1차: {Math.round(stock.timeframeStatus['1H'].ema20).toLocaleString()}원</span>
-                          <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림2차: {Math.round(stock.timeframeStatus['1H'].ema60).toLocaleString()}원</span>
-                          <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>1차목표가: {stock.timeframeStatus['1D'] ? Math.round(stock.timeframeStatus['1D'].bb_upper).toLocaleString() : '-'}원</span>
-                        </div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>-</span>
-                      )}
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
+                        <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>현재가: {stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원</span>
+                        {stock.timeframeStatus['1H'] && stock.timeframeStatus['1H'].ema10 > 0 ? (
+                          <>
+                            <span style={{ color: '#FFD700', fontWeight: 'bold' }}>급등1차: {Math.round(stock.timeframeStatus['1H'].ema10).toLocaleString()}원</span>
+                            <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림1차: {Math.round(stock.timeframeStatus['1H'].ema20).toLocaleString()}원</span>
+                            <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림2차: {Math.round(stock.timeframeStatus['1H'].ema60).toLocaleString()}원</span>
+                            <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>1차목표가: {stock.timeframeStatus['1D'] ? Math.round(stock.timeframeStatus['1D'].bb_upper).toLocaleString() : '-'}원</span>
+                          </>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>타점: {stock.latestSignal ? Math.round(stock.latestSignal.entry_price || stock.latestSignal.result_2).toLocaleString() : '-'}원</span>
+                        )}
+                      </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <a 
