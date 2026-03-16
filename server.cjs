@@ -327,6 +327,18 @@ app.post('/api/import-csv', (req, res) => {
     }
 });
 
+// Reset all tracking data
+app.post('/api/reset', (req, res) => {
+    try {
+        fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
+        alertCache.clear();
+        res.json({ message: '모든 분석 데이터가 초기화되었습니다.' });
+    } catch (error) {
+        console.error("Reset Error:", error);
+        res.status(500).json({ error: '초기화 중 오류가 발생했습니다.' });
+    }
+});
+
 // Auto-Sync with Yahoo Finance
 app.post('/api/auto-sync', async (req, res) => {
     const { timeframe } = req.body;

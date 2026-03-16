@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 // Report Logic v1.2 - Forced MD Extension
-import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload } from 'lucide-react';
+import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw } from 'lucide-react';
 
 const App = () => {
   const [stocks, setStocks] = useState([]);
@@ -64,6 +64,26 @@ const App = () => {
       }
     };
     reader.readAsText(file);
+  };
+
+  const handleReset = async () => {
+    if (!confirm('정말 모든 분석 데이터를 초기화하시겠습니까? (복구할 수 없습니다)')) return;
+    
+    try {
+      const response = await fetch(`http://${window.location.hostname}:3001/api/reset`, {
+        method: 'POST'
+      });
+      if (response.ok) {
+        const result = await response.json();
+        alert(result.message);
+        fetchData();
+      } else {
+        alert("초기화 중 오류가 발생했습니다.");
+      }
+    } catch (error) {
+      console.error("Reset error:", error);
+      alert("서버 연결에 실패했습니다.");
+    }
   };
 
   const handleAutoSync = async () => {
@@ -523,6 +543,23 @@ const App = () => {
           style={{ display: 'none' }} 
           onChange={handleCsvUpload}
         />
+        <button 
+          onClick={handleReset}
+          className="card" 
+          style={{ 
+            padding: '0.75rem 1.5rem', 
+            background: 'rgba(239, 68, 68, 0.2)', 
+            border: '1px solid rgba(239, 68, 68, 0.5)', 
+            color: '#f87171', 
+            cursor: 'pointer', 
+            fontWeight: 600, 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+          }}
+        >
+          <RotateCcw size={18} /> 초기화 리셋
+        </button>
         <button 
           onClick={() => fileInputRef.current?.click()}
           className="card" 
