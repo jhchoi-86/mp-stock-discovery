@@ -326,35 +326,6 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         }
     }
 
-    // --- Progress & Final Signal Logic ---
-    const timeframeMsMap = {
-        '5M': 5 * 60 * 1000,
-        '15M': 15 * 60 * 1000,
-        '30M': 30 * 60 * 1000,
-        '1H': 60 * 60 * 1000,
-        '4H': 4 * 60 * 60 * 1000,
-        '1D': 24 * 60 * 60 * 1000,
-        '1W': 7 * 24 * 60 * 60 * 1000
-    };
-    const tfMs = timeframeMsMap[timeframeStr] || timeframeMsMap['1D'];
-    
-    // timeArr[last_idx] is usually seconds (unix) or potentially ms. Handle intelligently.
-    const candleStartRaw = timeArr[last_idx];
-    const candleStart = candleStartRaw > 1e11 ? candleStartRaw : candleStartRaw * 1000;
-    const timenow = Date.now();
-    let progress = Math.max(0, Math.min(1.0, (timenow - candleStart) / tfMs));
-    
-    // Signal_HH is strongly defined as DHH2 AND progress > 0.3
-    const signal_HH = isSignalActive && progress > 0.3;
-
-    const adxArray = calculateADX(high, low, close, 14);
-    const currentADX = adxArray[last_idx] !== null ? adxArray[last_idx] : 0;
-    const isTrending = currentADX >= 25;
-
-    // Trigger Logic (Phase 3.1) - Realistic Adjustment
-    const rsi2_prev = rsi2[last_idx - 1] !== null ? rsi2[last_idx - 1] : 50;
-    const rsi2_curr = rsi2[last_idx] !== null ? rsi2[last_idx] : 50;
-    
     // 1. RSI Trigger: Hooking up from pullback region (< 40)
     const trigger_rsi = rsi2_prev < 40 && rsi2_curr > rsi2_prev;
 
@@ -376,6 +347,31 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
 
     // Entry Approved: RSI hook, volume participation, and bullish closing
     const entry_approved = trigger_rsi && trigger_vol && bullish_candle;
+
+    // --- Progress & Final Signal Logic ---
+    const timeframeMsMap = {
+        '5M': 5 * 60 * 1000,
+        '15M': 15 * 60 * 1000,
+        '30M': 30 * 60 * 1000,
+        '1H': 60 * 60 * 1000,
+        '4H': 4 * 60 * 60 * 1000,
+        '1D': 24 * 60 * 60 * 1000,
+        '1W': 7 * 24 * 60 * 60 * 1000
+    };
+    const tfMs = timeframeMsMap[timeframeStr] || timeframeMsMap['1D'];
+    
+    // timeArr[last_idx] is usually seconds (unix) or potentially ms. Handle intelligently.
+    const candleStartRaw = timeArr[last_idx];
+    const candleStart = candleStartRaw > 1e11 ? candleStartRaw : candleStartRaw * 1000;
+    const timenow = Date.now();
+    let progress = Math.max(0, Math.min(1.0, (timenow - candleStart) / tfMs));
+    
+    // Signal_HH is strongly defined as DHH2 AND progress > 0.3 AND entry_approved
+    const signal_HH = isSignalActive && progress > 0.3 && entry_approved;
+
+    const adxArray = calculateADX(high, low, close, 14);
+    const currentADX = adxArray[last_idx] !== null ? adxArray[last_idx] : 0;
+    const isTrending = currentADX >= 25;
 
     // --- Phase 4: Optimal Entry Price & Categorization & Multi-targets ---
     const ema5 = ema(close, 5);
