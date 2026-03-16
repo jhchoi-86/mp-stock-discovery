@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 // Report Logic v1.2 - Forced MD Extension
 import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw, RefreshCw, Trash2, Power } from 'lucide-react';
@@ -7,7 +7,7 @@ import SignalIndicator from './SignalIndicator';
 const App = () => {
   const [stocks, setStocks] = useState([]);
   const [signals, setSignals] = useState([]);
-  const [lastUpdate, setLastUpdate] = new Date();
+  const [lastUpdate, setLastUpdate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [marketFilter, setMarketFilter] = useState("ALL");
   const [showAll, setShowAll] = useState(false);
