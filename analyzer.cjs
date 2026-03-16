@@ -220,6 +220,11 @@ function calculateSignals(ohlcHistory) {
         } else {
             result_2_series[i] = result_2_series[i-1];
         }
+        
+        // Trailing support: If the price breaks the support, the new low is the current support.
+        if (result_2_series[i] > 0 && low[i] < result_2_series[i]) {
+            result_2_series[i] = low[i];
+        }
     }
 
     // RSI Pivot 2 (RSI 8)
@@ -238,6 +243,11 @@ function calculateSignals(ohlcHistory) {
             result_3_series[i] = Q_3 > QQ_3 ? Q_3 : QQ_3;
         } else {
             result_3_series[i] = result_3_series[i-1];
+        }
+
+        // Trailing support: If the price breaks the support, the new low is the current support.
+        if (result_3_series[i] > 0 && low[i] < result_3_series[i]) {
+            result_3_series[i] = low[i];
         }
     }
 
