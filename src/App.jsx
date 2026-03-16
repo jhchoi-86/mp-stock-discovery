@@ -425,7 +425,7 @@ const App = () => {
     <div className="container">
       <header className="fade-in">
         <div className="logo-section">
-          <h1>MP KOSPI 200, KOSDAQ 150 우량주 매수 추천 종목 리서치</h1>
+          <h1>MP KOSPI 200, KOSDAQ 150 우량주 매수 추천 종목 리서치 <span style={{ color: 'red', fontSize: '0.9rem', backgroundColor: '#fff', padding: '2px 5px', borderRadius: '4px' }}>VERSION 4.2</span></h1>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem' }}>정리 시스템 (전체 350개 종목)</p>
         </div>
         <div className="stats-bar">

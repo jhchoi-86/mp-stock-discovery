@@ -106,7 +106,7 @@
   },
   {
     "code": "011200",
-    "name": "KOSPI_011200",
+    "name": "HMM",
     "market": "KOSPI 200"
   },
   {
@@ -116,7 +116,7 @@
   },
   {
     "code": "175330",
-    "name": "KOSPI_175330",
+    "name": "JB湲덉쑖吏�二�",
     "market": "KOSPI 200"
   },
   {
@@ -146,7 +146,7 @@
   },
   {
     "code": "034220",
-    "name": "KOSPI_034220",
+    "name": "LG�뵒�뒪�뵆�젅�씠",
     "market": "KOSPI 200"
   },
   {
@@ -156,7 +156,7 @@
   },
   {
     "code": "064400",
-    "name": "KOSPI_064400",
+    "name": "LG�뵪�뿏�뿉�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -166,7 +166,7 @@
   },
   {
     "code": "032640",
-    "name": "KOSPI_032640",
+    "name": "LG�쑀�뵆�윭�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -176,7 +176,7 @@
   },
   {
     "code": "066570",
-    "name": "KOSPI_066570",
+    "name": "LG�쟾�옄",
     "market": "KOSPI 200"
   },
   {
@@ -186,7 +186,7 @@
   },
   {
     "code": "079550",
-    "name": "KOSPI_079550",
+    "name": "LIG�꽖�뒪�썝",
     "market": "KOSPI 200"
   },
   {
@@ -276,7 +276,7 @@
   },
   {
     "code": "069260",
-    "name": "KOSPI_069260",
+    "name": "TKG�쑕耳먯뒪",
     "market": "KOSPI 200"
   },
   {
@@ -286,7 +286,7 @@
   },
   {
     "code": "035250",
-    "name": "KOSPI_035250",
+    "name": "媛뺤썝�옖�뱶",
     "market": "KOSPI 200"
   },
   {
@@ -326,7 +326,7 @@
   },
   {
     "code": "005250",
-    "name": "KOSPI_005250",
+    "name": "�끃�떗�옄����뵫�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -336,7 +336,7 @@
   },
   {
     "code": "001680",
-    "name": "KOSPI_001680",
+    "name": "����긽",
     "market": "KOSPI 200"
   },
   {
@@ -346,7 +346,7 @@
   },
   {
     "code": "003090",
-    "name": "KOSPI_003090",
+    "name": "����썒",
     "market": "KOSPI 200"
   },
   {
@@ -356,7 +356,7 @@
   },
   {
     "code": "006650",
-    "name": "KOSPI_006650",
+    "name": "����븳�쑀�솕",
     "market": "KOSPI 200"
   },
   {
@@ -366,7 +366,7 @@
   },
   {
     "code": "003490",
-    "name": "KOSPI_003490",
+    "name": "����븳�빆怨�",
     "market": "KOSPI 200"
   },
   {
@@ -376,7 +376,7 @@
   },
   {
     "code": "026960",
-    "name": "KOSPI_026960",
+    "name": "�룞�꽌",
     "market": "KOSPI 200"
   },
   {
@@ -386,7 +386,7 @@
   },
   {
     "code": "014820",
-    "name": "KOSPI_014820",
+    "name": "�룞�썝�떆�뒪�뀥利�",
     "market": "KOSPI 200"
   },
   {
@@ -416,7 +416,7 @@
   },
   {
     "code": "280360",
-    "name": "KOSPI_280360",
+    "name": "濡��뜲�쎇�뫖�뱶",
     "market": "KOSPI 200"
   },
   {
@@ -426,7 +426,7 @@
   },
   {
     "code": "004990",
-    "name": "KOSPI_004990",
+    "name": "濡��뜲吏�二�",
     "market": "KOSPI 200"
   },
   {
@@ -456,7 +456,7 @@
   },
   {
     "code": "002840",
-    "name": "KOSPI_002840",
+    "name": "誘몄썝�긽�궗",
     "market": "KOSPI 200"
   },
   {
@@ -466,7 +466,7 @@
   },
   {
     "code": "062040",
-    "name": "KOSPI_062040",
+    "name": "�궛�씪�쟾湲�",
     "market": "KOSPI 200"
   },
   {
@@ -521,7 +521,7 @@
   },
   {
     "code": "029780",
-    "name": "KOSPI_029780",
+    "name": "�궪�꽦移대뱶",
     "market": "KOSPI 200"
   },
   {
@@ -531,22 +531,22 @@
   },
   {
     "code": "003230",
-    "name": "KOSPI_003230",
+    "name": "�궪�뼇�떇�뭹",
     "market": "KOSPI 200"
   },
   {
     "code": "004490",
-    "name": "KOSPI_004490",
+    "name": "�꽭諛⑹쟾吏�",
     "market": "KOSPI 200"
   },
   {
     "code": "001430",
-    "name": "KOSPI_001430",
+    "name": "�꽭�븘踰좎뒪�떥吏�二�",
     "market": "KOSPI 200"
   },
   {
     "code": "003030",
-    "name": "KOSPI_003030",
+    "name": "�꽭�븘�젣媛뺤��二�",
     "market": "KOSPI 200"
   },
   {
@@ -576,12 +576,12 @@
   },
   {
     "code": "002790",
-    "name": "KOSPI_002790",
+    "name": "�븘紐⑤젅�띁�떆�뵿����뵫�뒪",
     "market": "KOSPI 200"
   },
   {
     "code": "002030",
-    "name": "KOSPI_002030",
+    "name": "�븘�꽭�븘",
     "market": "KOSPI 200"
   },
   {
@@ -591,7 +591,7 @@
   },
   {
     "code": "005850",
-    "name": "KOSPI_005850",
+    "name": "�뿉�뒪�뿕",
     "market": "KOSPI 200"
   },
   {
@@ -601,12 +601,12 @@
   },
   {
     "code": "278470",
-    "name": "KOSPI_278470",
+    "name": "�뿉�씠�뵾�븣",
     "market": "KOSPI 200"
   },
   {
     "code": "450080",
-    "name": "KOSPI_450080",
+    "name": "�뿉肄뷀봽濡쒕㉧�떚",
     "market": "KOSPI 200"
   },
   {
@@ -621,12 +621,12 @@
   },
   {
     "code": "111770",
-    "name": "KOSPI_111770",
+    "name": "�쁺�썝臾댁뿭",
     "market": "KOSPI 200"
   },
   {
     "code": "009970",
-    "name": "KOSPI_009970",
+    "name": "�쁺�썝臾댁뿭����뵫�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -636,7 +636,7 @@
   },
   {
     "code": "007310",
-    "name": "KOSPI_007310",
+    "name": "�삤�슌湲�",
     "market": "KOSPI 200"
   },
   {
@@ -646,7 +646,7 @@
   },
   {
     "code": "001800",
-    "name": "KOSPI_001800",
+    "name": "�삤由ъ삩����뵫�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -661,22 +661,22 @@
   },
   {
     "code": "008730",
-    "name": "KOSPI_008730",
+    "name": "�쑉珥뚰솕�븰",
     "market": "KOSPI 200"
   },
   {
     "code": "139480",
-    "name": "KOSPI_139480",
+    "name": "�씠留덊듃",
     "market": "KOSPI 200"
   },
   {
     "code": "457190",
-    "name": "KOSPI_457190",
+    "name": "�씠�닔�뒪�럹�뀥�떚耳�誘몄뺄",
     "market": "KOSPI 200"
   },
   {
     "code": "007660",
-    "name": "KOSPI_007660",
+    "name": "�씠�닔�럹����떆�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -686,12 +686,12 @@
   },
   {
     "code": "185750",
-    "name": "KOSPI_185750",
+    "name": "醫낃렐�떦",
     "market": "KOSPI 200"
   },
   {
     "code": "071320",
-    "name": "KOSPI_071320",
+    "name": "吏��뿭�궃諛⑷났�궗",
     "market": "KOSPI 200"
   },
   {
@@ -706,17 +706,17 @@
   },
   {
     "code": "377300",
-    "name": "KOSPI_377300",
+    "name": "移댁뭅�삤�럹�씠",
     "market": "KOSPI 200"
   },
   {
     "code": "192820",
-    "name": "KOSPI_192820",
+    "name": "肄붿뒪留μ뒪",
     "market": "KOSPI 200"
   },
   {
     "code": "005420",
-    "name": "KOSPI_005420",
+    "name": "肄붿뒪紐⑦솕�븰",
     "market": "KOSPI 200"
   },
   {
@@ -731,72 +731,72 @@
   },
   {
     "code": "259960",
-    "name": "KOSPI_259960",
+    "name": "�겕�옒�봽�넠",
     "market": "KOSPI 200"
   },
   {
     "code": "039490",
-    "name": "KOSPI_039490",
+    "name": "�궎���利앷텒",
     "market": "KOSPI 200"
   },
   {
     "code": "003240",
-    "name": "KOSPI_003240",
+    "name": "�깭愿묒궛�뾽",
     "market": "KOSPI 200"
   },
   {
     "code": "034230",
-    "name": "KOSPI_034230",
+    "name": "�뙆�씪�떎�씠�뒪",
     "market": "KOSPI 200"
   },
   {
     "code": "028670",
-    "name": "KOSPI_028670",
+    "name": "�뙩�삤�뀡",
     "market": "KOSPI 200"
   },
   {
     "code": "022100",
-    "name": "KOSPI_022100",
+    "name": "�룷�뒪肄봁X",
     "market": "KOSPI 200"
   },
   {
     "code": "047050",
-    "name": "KOSPI_047050",
+    "name": "�룷�뒪肄붿씤�꽣�궡�뀛�꼸",
     "market": "KOSPI 200"
   },
   {
     "code": "003670",
-    "name": "KOSPI_003670",
+    "name": "�룷�뒪肄뷀벂泥섏뿞",
     "market": "KOSPI 200"
   },
   {
     "code": "103140",
-    "name": "KOSPI_103140",
+    "name": "�뭾�궛",
     "market": "KOSPI 200"
   },
   {
     "code": "086790",
-    "name": "KOSPI_086790",
+    "name": "�븯�굹湲덉쑖吏�二�",
     "market": "KOSPI 200"
   },
   {
     "code": "352820",
-    "name": "KOSPI_352820",
+    "name": "�븯�씠釉�",
     "market": "KOSPI 200"
   },
   {
     "code": "000080",
-    "name": "KOSPI_000080",
+    "name": "�븯�씠�듃吏꾨줈",
     "market": "KOSPI 200"
   },
   {
     "code": "036460",
-    "name": "KOSPI_036460",
+    "name": "�븳援�媛��뒪怨듭궗",
     "market": "KOSPI 200"
   },
   {
     "code": "071050",
-    "name": "KOSPI_071050",
+    "name": "�븳援�湲덉쑖吏�二�",
     "market": "KOSPI 200"
   },
   {
@@ -811,12 +811,12 @@
   },
   {
     "code": "017960",
-    "name": "KOSPI_017960",
+    "name": "�븳援�移대낯",
     "market": "KOSPI 200"
   },
   {
     "code": "161890",
-    "name": "KOSPI_161890",
+    "name": "�븳援�肄쒕쭏",
     "market": "KOSPI 200"
   },
   {
@@ -826,17 +826,17 @@
   },
   {
     "code": "047810",
-    "name": "KOSPI_047810",
+    "name": "�븳援��빆怨듭슦二�",
     "market": "KOSPI 200"
   },
   {
     "code": "042700",
-    "name": "KOSPI_042700",
+    "name": "�븳誘몃컲�룄泥�",
     "market": "KOSPI 200"
   },
   {
     "code": "008930",
-    "name": "KOSPI_008930",
+    "name": "�븳誘몄궗�씠�뼵�뒪",
     "market": "KOSPI 200"
   },
   {
@@ -846,7 +846,7 @@
   },
   {
     "code": "009240",
-    "name": "KOSPI_009240",
+    "name": "�븳�깦",
     "market": "KOSPI 200"
   },
   {
@@ -856,12 +856,12 @@
   },
   {
     "code": "018880",
-    "name": "KOSPI_018880",
+    "name": "�븳�삩�떆�뒪�뀥",
     "market": "KOSPI 200"
   },
   {
     "code": "009420",
-    "name": "KOSPI_009420",
+    "name": "�븳�삱諛붿씠�삤�뙆留�",
     "market": "KOSPI 200"
   },
   {
@@ -876,7 +876,7 @@
   },
   {
     "code": "052690",
-    "name": "KOSPI_052690",
+    "name": "�븳�쟾湲곗닠",
     "market": "KOSPI 200"
   },
   {
@@ -886,12 +886,12 @@
   },
   {
     "code": "000880",
-    "name": "KOSPI_000880",
+    "name": "�븳�솕",
     "market": "KOSPI 200"
   },
   {
     "code": "088350",
-    "name": "KOSPI_088350",
+    "name": "�븳�솕�깮紐�",
     "market": "KOSPI 200"
   },
   {
@@ -901,7 +901,7 @@
   },
   {
     "code": "272210",
-    "name": "KOSPI_272210",
+    "name": "�븳�솕�떆�뒪�뀥",
     "market": "KOSPI 200"
   },
   {
@@ -911,12 +911,12 @@
   },
   {
     "code": "082740",
-    "name": "KOSPI_082740",
+    "name": "�븳�솕�뿏吏�",
     "market": "KOSPI 200"
   },
   {
     "code": "042660",
-    "name": "KOSPI_042660",
+    "name": "�븳�솕�삤�뀡",
     "market": "KOSPI 200"
   },
   {
@@ -941,17 +941,17 @@
   },
   {
     "code": "069960",
-    "name": "KOSPI_069960",
+    "name": "�쁽���諛깊솕�젏",
     "market": "KOSPI 200"
   },
   {
     "code": "017800",
-    "name": "KOSPI_017800",
+    "name": "�쁽����뿕由щ쿋�씠�꽣",
     "market": "KOSPI 200"
   },
   {
     "code": "307950",
-    "name": "KOSPI_307950",
+    "name": "�쁽����삤�넗�뿉踰�",
     "market": "KOSPI 200"
   },
   {
@@ -971,7 +971,7 @@
   },
   {
     "code": "001450",
-    "name": "KOSPI_001450",
+    "name": "�쁽����빐�긽",
     "market": "KOSPI 200"
   },
   {
@@ -991,7 +991,7 @@
   },
   {
     "code": "093370",
-    "name": "KOSPI_093370",
+    "name": "�썑�꽦",
     "market": "KOSPI 200"
   },
   {
@@ -1001,7 +1001,7 @@
   },
   {
     "code": "195940",
-    "name": "KOSDAQ_195940",
+    "name": "HK�씠�끂�뿏",
     "market": "KOSDAQ 150"
   },
   {
@@ -1011,7 +1011,7 @@
   },
   {
     "code": "403870",
-    "name": "KOSDAQ_403870",
+    "name": "HPSP",
     "market": "KOSDAQ 150"
   },
   {
@@ -1021,7 +1021,7 @@
   },
   {
     "code": "035900",
-    "name": "KOSDAQ_035900",
+    "name": "JYP Ent.",
     "market": "KOSDAQ 150"
   },
   {
@@ -1031,7 +1031,7 @@
   },
   {
     "code": "417200",
-    "name": "KOSDAQ_417200",
+    "name": "LS癒명듃由ъ뼹利�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1041,7 +1041,7 @@
   },
   {
     "code": "218410",
-    "name": "KOSDAQ_218410",
+    "name": "RFHIC",
     "market": "KOSDAQ 150"
   },
   {
@@ -1051,7 +1051,7 @@
   },
   {
     "code": "067160",
-    "name": "KOSDAQ_067160",
+    "name": "SOOP",
     "market": "KOSDAQ 150"
   },
   {
@@ -1061,7 +1061,7 @@
   },
   {
     "code": "036620",
-    "name": "KOSDAQ_036620",
+    "name": "媛먯꽦肄뷀띁�젅�씠�뀡",
     "market": "KOSDAQ 150"
   },
   {
@@ -1081,7 +1081,7 @@
   },
   {
     "code": "253590",
-    "name": "KOSDAQ_253590",
+    "name": "�꽕�삤�뀍",
     "market": "KOSDAQ 150"
   },
   {
@@ -1091,7 +1091,7 @@
   },
   {
     "code": "007390",
-    "name": "KOSDAQ_007390",
+    "name": "�꽕�씠泥섏��",
     "market": "KOSDAQ 150"
   },
   {
@@ -1101,17 +1101,17 @@
   },
   {
     "code": "225570",
-    "name": "KOSDAQ_225570",
+    "name": "�꽖�뒯寃뚯엫利�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "032190",
-    "name": "KOSDAQ_032190",
+    "name": "�떎�슦�뜲�씠���",
     "market": "KOSDAQ 150"
   },
   {
     "code": "078600",
-    "name": "KOSDAQ_078600",
+    "name": "���二쇱쟾�옄�옱猷�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1131,7 +1131,7 @@
   },
   {
     "code": "033500",
-    "name": "KOSDAQ_033500",
+    "name": "�룞�꽦�솕�씤�뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1141,7 +1141,7 @@
   },
   {
     "code": "025900",
-    "name": "KOSDAQ_025900",
+    "name": "�룞�솕湲곗뾽",
     "market": "KOSDAQ 150"
   },
   {
@@ -1151,7 +1151,7 @@
   },
   {
     "code": "347850",
-    "name": "KOSDAQ_347850",
+    "name": "�뵒�븻�뵒�뙆留덊뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1161,7 +1161,7 @@
   },
   {
     "code": "281740",
-    "name": "KOSDAQ_281740",
+    "name": "�젅�씠�겕癒명떚由ъ뼹利�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1171,7 +1171,7 @@
   },
   {
     "code": "108490",
-    "name": "KOSDAQ_108490",
+    "name": "濡쒕낫�떚利�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1181,7 +1181,7 @@
   },
   {
     "code": "141080",
-    "name": "KOSDAQ_141080",
+    "name": "由ш��耳먮컮�씠�삤",
     "market": "KOSDAQ 150"
   },
   {
@@ -1191,7 +1191,7 @@
   },
   {
     "code": "215200",
-    "name": "KOSDAQ_215200",
+    "name": "硫붽���뒪�꽣�뵒援먯쑁",
     "market": "KOSDAQ 150"
   },
   {
@@ -1201,7 +1201,7 @@
   },
   {
     "code": "140410",
-    "name": "KOSDAQ_140410",
+    "name": "硫붿���삩",
     "market": "KOSDAQ 150"
   },
   {
@@ -1211,7 +1211,7 @@
   },
   {
     "code": "053030",
-    "name": "KOSDAQ_053030",
+    "name": "諛붿씠�꽖�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1221,7 +1221,7 @@
   },
   {
     "code": "018290",
-    "name": "KOSDAQ_018290",
+    "name": "釉뚯씠�떚",
     "market": "KOSDAQ 150"
   },
   {
@@ -1231,7 +1231,7 @@
   },
   {
     "code": "000250",
-    "name": "KOSDAQ_000250",
+    "name": "�궪泥쒕떦�젣�빟",
     "market": "KOSDAQ 150"
   },
   {
@@ -1251,7 +1251,7 @@
   },
   {
     "code": "171090",
-    "name": "KOSDAQ_171090",
+    "name": "�꽑�씡�떆�뒪�뀥",
     "market": "KOSDAQ 150"
   },
   {
@@ -1261,7 +1261,7 @@
   },
   {
     "code": "015750",
-    "name": "KOSDAQ_015750",
+    "name": "�꽦�슦�븯�씠�뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1271,7 +1271,7 @@
   },
   {
     "code": "068760",
-    "name": "KOSDAQ_068760",
+    "name": "����듃由ъ삩�젣�빟",
     "market": "KOSDAQ 150"
   },
   {
@@ -1281,7 +1281,7 @@
   },
   {
     "code": "036830",
-    "name": "KOSDAQ_036830",
+    "name": "�넄釉뚮젅�씤����뵫�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1291,7 +1291,7 @@
   },
   {
     "code": "253450",
-    "name": "KOSDAQ_253450",
+    "name": "�뒪�뒠�뵒�삤�뱶�옒怨�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1301,7 +1301,7 @@
   },
   {
     "code": "065350",
-    "name": "KOSDAQ_065350",
+    "name": "�떊�꽦�뜽����뀒�겕",
     "market": "KOSDAQ 150"
   },
   {
@@ -1311,7 +1311,7 @@
   },
   {
     "code": "222800",
-    "name": "KOSDAQ_222800",
+    "name": "�떖�뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1321,7 +1321,7 @@
   },
   {
     "code": "222080",
-    "name": "KOSDAQ_222080",
+    "name": "�뵪�븘�씠�뿉�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1331,7 +1331,7 @@
   },
   {
     "code": "096530",
-    "name": "KOSDAQ_096530",
+    "name": "�뵪�젨",
     "market": "KOSDAQ 150"
   },
   {
@@ -1341,7 +1341,7 @@
   },
   {
     "code": "214430",
-    "name": "KOSDAQ_214430",
+    "name": "�븘�씠�벐由ъ떆�뒪�뀥",
     "market": "KOSDAQ 150"
   },
   {
@@ -1351,7 +1351,7 @@
   },
   {
     "code": "196170",
-    "name": "KOSDAQ_196170",
+    "name": "�븣�뀒�삤�젨",
     "market": "KOSDAQ 150"
   },
   {
@@ -1361,7 +1361,7 @@
   },
   {
     "code": "056190",
-    "name": "KOSDAQ_056190",
+    "name": "�뿉�뒪�뿉�봽�뿉�씠",
     "market": "KOSDAQ 150"
   },
   {
@@ -1371,7 +1371,7 @@
   },
   {
     "code": "237690",
-    "name": "KOSDAQ_237690",
+    "name": "�뿉�뒪�떚�뙗",
     "market": "KOSDAQ 150"
   },
   {
@@ -1381,12 +1381,12 @@
   },
   {
     "code": "298380",
-    "name": "KOSDAQ_298380",
+    "name": "�뿉�씠鍮꾩뿕諛붿씠�삤",
     "market": "KOSDAQ 150"
   },
   {
     "code": "101360",
-    "name": "KOSDAQ_101360",
+    "name": "�뿉肄붿븻�뱶由�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1396,7 +1396,7 @@
   },
   {
     "code": "247540",
-    "name": "KOSDAQ_247540",
+    "name": "�뿉肄뷀봽濡쒕퉬�뿞",
     "market": "KOSDAQ 150"
   },
   {
@@ -1406,7 +1406,7 @@
   },
   {
     "code": "036810",
-    "name": "KOSDAQ_036810",
+    "name": "�뿉�봽�뿉�뒪�떚",
     "market": "KOSDAQ 150"
   },
   {
@@ -1416,7 +1416,7 @@
   },
   {
     "code": "290650",
-    "name": "KOSDAQ_290650",
+    "name": "�뿕�븻�뵪諛붿씠�삤",
     "market": "KOSDAQ 150"
   },
   {
@@ -1426,7 +1426,7 @@
   },
   {
     "code": "039200",
-    "name": "KOSDAQ_039200",
+    "name": "�삤�뒪肄뷀뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1436,7 +1436,7 @@
   },
   {
     "code": "232140",
-    "name": "KOSDAQ_232140",
+    "name": "����씠�뵪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1446,7 +1446,7 @@
   },
   {
     "code": "032820",
-    "name": "KOSDAQ_032820",
+    "name": "�슦由ш린�닠",
     "market": "KOSDAQ 150"
   },
   {
@@ -1456,7 +1456,7 @@
   },
   {
     "code": "240810",
-    "name": "KOSDAQ_240810",
+    "name": "�썝�씡IPS",
     "market": "KOSDAQ 150"
   },
   {
@@ -1476,7 +1476,7 @@
   },
   {
     "code": "112040",
-    "name": "KOSDAQ_112040",
+    "name": "�쐞硫붿씠�뱶",
     "market": "KOSDAQ 150"
   },
   {
@@ -1486,7 +1486,7 @@
   },
   {
     "code": "388720",
-    "name": "KOSDAQ_388720",
+    "name": "�쑀�씪濡쒕낫�떛�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1496,57 +1496,57 @@
   },
   {
     "code": "084370",
-    "name": "KOSDAQ_084370",
+    "name": "�쑀吏꾪뀒�겕",
     "market": "KOSDAQ 150"
   },
   {
     "code": "179900",
-    "name": "KOSDAQ_179900",
+    "name": "�쑀�떚�븘�씠",
     "market": "KOSDAQ 150"
   },
   {
     "code": "272290",
-    "name": "KOSDAQ_272290",
+    "name": "�씠�끃�뒪泥⑤떒�냼�옱",
     "market": "KOSDAQ 150"
   },
   {
     "code": "039030",
-    "name": "KOSDAQ_039030",
+    "name": "�씠�삤�뀒�겕�땳�뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "211050",
-    "name": "KOSDAQ_211050",
+    "name": "�씤移닿툑�쑖�꽌鍮꾩뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "189300",
-    "name": "KOSDAQ_189300",
+    "name": "�씤�뀛由ъ븞�뀒�겕",
     "market": "KOSDAQ 150"
   },
   {
     "code": "033100",
-    "name": "KOSDAQ_033100",
+    "name": "�젣猷≪쟾湲�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "079370",
-    "name": "KOSDAQ_079370",
+    "name": "�젣�슦�뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "204270",
-    "name": "KOSDAQ_204270",
+    "name": "�젣�씠�븻�떚�뵪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "080220",
-    "name": "KOSDAQ_080220",
+    "name": "�젣二쇰컲�룄泥�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "082270",
-    "name": "KOSDAQ_082270",
+    "name": "�젹諛깆뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1556,12 +1556,12 @@
   },
   {
     "code": "358570",
-    "name": "KOSDAQ_358570",
+    "name": "吏��븘�씠�씠�끂踰좎씠�뀡",
     "market": "KOSDAQ 150"
   },
   {
     "code": "085660",
-    "name": "KOSDAQ_085660",
+    "name": "李⑤컮�씠�삤�뀓",
     "market": "KOSDAQ 150"
   },
   {
@@ -1571,22 +1571,22 @@
   },
   {
     "code": "293490",
-    "name": "KOSDAQ_293490",
+    "name": "移댁뭅�삤寃뚯엫利�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "042000",
-    "name": "KOSDAQ_042000",
+    "name": "移댄럹24",
     "market": "KOSDAQ 150"
   },
   {
     "code": "078340",
-    "name": "KOSDAQ_078340",
+    "name": "而댄닾�뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "214370",
-    "name": "KOSDAQ_214370",
+    "name": "耳��뼱�젨",
     "market": "KOSDAQ 150"
   },
   {
@@ -1596,17 +1596,17 @@
   },
   {
     "code": "052400",
-    "name": "KOSDAQ_052400",
+    "name": "肄붾굹�븘�씠",
     "market": "KOSDAQ 150"
   },
   {
     "code": "183300",
-    "name": "KOSDAQ_183300",
+    "name": "肄붾�몄퐫",
     "market": "KOSDAQ 150"
   },
   {
     "code": "241710",
-    "name": "KOSDAQ_241710",
+    "name": "肄붿뒪硫붿뭅肄붾━�븘",
     "market": "KOSDAQ 150"
   },
   {
@@ -1616,7 +1616,7 @@
   },
   {
     "code": "060280",
-    "name": "KOSDAQ_060280",
+    "name": "�걧�젆�냼",
     "market": "KOSDAQ 150"
   },
   {
@@ -1626,42 +1626,42 @@
   },
   {
     "code": "466100",
-    "name": "KOSDAQ_466100",
+    "name": "�겢濡쒕큸",
     "market": "KOSDAQ 150"
   },
   {
     "code": "323280",
-    "name": "KOSDAQ_323280",
+    "name": "�깭�꽦",
     "market": "KOSDAQ 150"
   },
   {
     "code": "095610",
-    "name": "KOSDAQ_095610",
+    "name": "�뀒�뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "089030",
-    "name": "KOSDAQ_089030",
+    "name": "�뀒�겕�쐷",
     "market": "KOSDAQ 150"
   },
   {
     "code": "064760",
-    "name": "KOSDAQ_064760",
+    "name": "�떚�뵪耳��씠",
     "market": "KOSDAQ 150"
   },
   {
     "code": "131290",
-    "name": "KOSDAQ_131290",
+    "name": "�떚�뿉�뒪�씠",
     "market": "KOSDAQ 150"
   },
   {
     "code": "214450",
-    "name": "KOSDAQ_214450",
+    "name": "�뙆留덈━�꽌移�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "140860",
-    "name": "KOSDAQ_140860",
+    "name": "�뙆�겕�떆�뒪�뀥�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1671,27 +1671,27 @@
   },
   {
     "code": "251970",
-    "name": "KOSDAQ_251970",
+    "name": "�럩�뀓肄붾━�븘",
     "market": "KOSDAQ 150"
   },
   {
     "code": "087010",
-    "name": "KOSDAQ_087010",
+    "name": "�렔�듃濡�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "009520",
-    "name": "KOSDAQ_009520",
+    "name": "�룷�뒪肄붿뿞�뀓",
     "market": "KOSDAQ 150"
   },
   {
     "code": "319660",
-    "name": "KOSDAQ_319660",
+    "name": "�뵾�뿉�뒪耳��씠",
     "market": "KOSDAQ 150"
   },
   {
     "code": "031980",
-    "name": "KOSDAQ_031980",
+    "name": "�뵾�뿉�뒪耳��씠����뵫�뒪",
     "market": "KOSDAQ 150"
   },
   {
@@ -1701,17 +1701,17 @@
   },
   {
     "code": "161580",
-    "name": "KOSDAQ_161580",
+    "name": "�븘�샃�떛�뒪",
     "market": "KOSDAQ 150"
   },
   {
     "code": "067310",
-    "name": "KOSDAQ_067310",
+    "name": "�븯�굹留덉씠�겕濡�",
     "market": "KOSDAQ 150"
   },
   {
     "code": "166090",
-    "name": "KOSDAQ_166090",
+    "name": "�븯�굹癒명떚由ъ뼹利�",
     "market": "KOSDAQ 150"
   },
   {
@@ -1721,17 +1721,17 @@
   },
   {
     "code": "160190",
-    "name": "KOSDAQ_160190",
+    "name": "�븯�씠�젨�븣�븻�뿞",
     "market": "KOSDAQ 150"
   },
   {
     "code": "030520",
-    "name": "KOSDAQ_030520",
+    "name": "�븳湲�怨쇱뺨�벂�꽣",
     "market": "KOSDAQ 150"
   },
   {
     "code": "048410",
-    "name": "KOSDAQ_048410",
+    "name": "�쁽���諛붿씠�삤",
     "market": "KOSDAQ 150"
   },
   {

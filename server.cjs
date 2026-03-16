@@ -490,7 +490,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 const signal = calculateSignals(history);
                 
                 if (signal) {
-                    return { ...signal, code: stock.code, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
+                    return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
                 }
             } catch (e) {
                 console.error(`[Auto-Sync] Error for ${stock.code} (${stock.name}):`, e.message);
