@@ -821,20 +821,65 @@ const App = () => {
                     </td>
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
-                        {stock.timeframeStatus['1H'] && stock.timeframeStatus['1H'].ema10 > 0 ? (
-                          <>
-                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>현재가: {stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : (stock.latestSignal?.entry_price ? Math.round(stock.latestSignal.entry_price).toLocaleString() : '-')}원</span>
-                            <span style={{ color: '#FFD700', fontWeight: 'bold' }}>급등1차: {Math.round(stock.timeframeStatus['1H'].ema10).toLocaleString()}원</span>
-                            <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림1차: {Math.round(stock.timeframeStatus['1H'].ema20).toLocaleString()}원</span>
-                            <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>눌림2차: {Math.round(stock.timeframeStatus['1H'].ema60).toLocaleString()}원</span>
-                            <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>1차목표가: {stock.timeframeStatus['1D'] ? Math.round(stock.timeframeStatus['1D'].bb_upper).toLocaleString() : '-'}원</span>
-                          </>
-                        ) : (
-                          <>
-                            <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>현재가: {stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : (stock.latestSignal?.entry_price ? Math.round(stock.latestSignal.entry_price).toLocaleString() : '-')}원</span>
-                            <span style={{ color: 'var(--text-muted)' }}>타점: {stock.latestSignal ? Math.round(stock.latestSignal.entry_price || stock.latestSignal.result_2).toLocaleString() : '-'}원</span>
-                          </>
-                        )}
+                        {(() => {
+                          const s = stock.latestSignal;
+                          const t1H = stock.timeframeStatus['1H'];
+                          const t1D = stock.timeframeStatus['1D'];
+                          
+                          const curPrice = s?.current_price || s?.entry_price || 0;
+                          const refPrice = s?.prev_close || s?.open_price || 0; // Use prev_close for daily change, fallback to open
+                          
+                          // Helper to format percentage with triangle
+                          const renderChange = (current, base) => {
+                            if (!current || !base) return null;
+                            const pct = ((current - base) / base) * 100;
+                            if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
+                            const isUp = pct > 0;
+                            const color = isUp ? '#ff4d4d' : '#4d94ff';
+                            const arrow = isUp ? '▲' : '▼';
+                            return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
+                          };
+
+                          if (t1H && t1H.ema10 > 0) {
+                            return (
+                              <>
+                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                  현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
+                                  {renderChange(curPrice, refPrice)}
+                                </span>
+                                <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
+                                  급등1차: {Math.round(t1H.ema10).toLocaleString()}원
+                                  {renderChange(t1H.ema10, curPrice)}
+                                </span>
+                                <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
+                                  눌림1차: {Math.round(t1H.ema20).toLocaleString()}원
+                                  {renderChange(t1H.ema20, curPrice)}
+                                </span>
+                                <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
+                                  눌림2차: {Math.round(t1H.ema60).toLocaleString()}원
+                                  {renderChange(t1H.ema60, curPrice)}
+                                </span>
+                                <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
+                                  1차목표가: {t1D && t1D.bb_upper > 0 ? Math.round(t1D.bb_upper).toLocaleString() : '-'}원
+                                  {t1D && t1D.bb_upper ? renderChange(t1D.bb_upper, refPrice) : null}
+                                </span>
+                              </>
+                            );
+                          } else {
+                            return (
+                              <>
+                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                  현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
+                                  {renderChange(curPrice, refPrice)}
+                                </span>
+                                <span style={{ color: 'var(--text-muted)' }}>
+                                  타점: {s ? Math.round(s.entry_price || s.result_2).toLocaleString() : '-'}원
+                                  {s && curPrice > 0 ? renderChange(s.entry_price || s.result_2, curPrice) : null}
+                                </span>
+                              </>
+                            );
+                          }
+                        })()}
                       </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>

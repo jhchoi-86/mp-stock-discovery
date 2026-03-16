@@ -237,6 +237,8 @@ app.post('/api/webhook', (req, res) => {
         ema20: req.body.ema20 || 0,
         bb_upper: req.body.bb_upper || 0,
         current_price: req.body.current_price || 0,
+        open_price: req.body.open_price || 0,
+        prev_close: req.body.prev_close || 0,
         timeframe: req.body.timeframe || '1D' // Default to 1D
     };
 
