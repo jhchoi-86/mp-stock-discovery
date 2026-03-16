@@ -326,6 +326,9 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         }
     }
 
+    const rsi2_prev = rsi2[last_idx - 1] !== null ? rsi2[last_idx - 1] : 50;
+    const rsi2_curr = rsi2[last_idx] !== null ? rsi2[last_idx] : 50;
+    
     // 1. RSI Trigger: Hooking up from pullback region (< 40)
     const trigger_rsi = rsi2_prev < 40 && rsi2_curr > rsi2_prev;
 
