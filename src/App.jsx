@@ -202,7 +202,8 @@ const App = () => {
       matchesView = false;
     }
     
-    const matchesCategory = categoryFilter === 'ALL' || (latest && latest.category === categoryFilter);
+    const matchesCategory = categoryFilter === 'ALL' || 
+                            (categoryFilter === '추천종목' ? selectedStocks.has(stock.code) : (latest && latest.category === categoryFilter));
 
     return matchesSearch && matchesMarket && matchesCategory && matchesView;
   });
@@ -534,6 +535,7 @@ const App = () => {
           onChange={(e) => setCategoryFilter(e.target.value)}
         >
           <option value="ALL">모든 카테고리</option>
+          <option value="추천종목">⭐ 추천종목 (선택됨)</option>
           <option value="추세 지속형">추세 지속형</option>
           <option value="박스권 횡보">박스권 횡보</option>
           <option value="바닥권 반등">바닥권 반등</option>
