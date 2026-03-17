@@ -537,14 +537,18 @@ app.post('/api/auto-sync', async (req, res) => {
                 }
             } catch(e) {
                 // If it fails, silent fallback to yahoo's tail
+                if (e.response && e.response.status === 429) {
+                    console.error(`[KIS API Rate Limit] ${stock.code} fell back to Yahoo`);
+                }
             }
         }
 
         return chartData;
     };
 
-    // Process in batches to avoid rate limits
-    const BATCH_SIZE = 5;
+    // Process in batches to avoid rate limits (KIS API strict limit: 20 req/sec)
+    // 2 per 200ms = 10 req/s, extremely safe margin to prevent silent data loss
+    const BATCH_SIZE = 2;
     for (let i = 0; i < stocks.length; i += BATCH_SIZE) {
         const batch = stocks.slice(i, i + BATCH_SIZE);
         const tasks = batch.map(async (stock) => {
@@ -570,7 +574,7 @@ app.post('/api/auto-sync', async (req, res) => {
         if (i > 0 && i % 50 === 0) {
             console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
         }
-        await sleep(100); // Small delay to prevent rate limits
+        await sleep(200); // Increased delay to prevent KIS API 429 Too Many Requests
     }
 
     if (syncResults.length > 0) {
