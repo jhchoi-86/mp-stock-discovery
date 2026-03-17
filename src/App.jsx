@@ -722,7 +722,6 @@ const App = () => {
 
                   const s = stock.latestSignal;
                   const t1H = stock.timeframeStatus['1H'];
-                  const t1H = stock.timeframeStatus['1H'];
                   const t2H = stock.timeframeStatus['2H'];
                   const t1D = stock.timeframeStatus['1D'];
                   
