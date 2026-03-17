@@ -16,6 +16,7 @@ const App = () => {
   const [showOnlyTopSectors, setShowOnlyTopSectors] = useState(false);
   const [uploadTimeframe, setUploadTimeframe] = useState("1D");
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedStocks, setSelectedStocks] = useState(new Set());
   const fileInputRef = useRef(null);
 
   const fetchData = async () => {
@@ -233,6 +234,26 @@ const App = () => {
 
   const activeCount = [...new Set(signals.filter(s => s.signal_HH).map(s => s.code))].length;
 
+  const toggleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedStocks(new Set(candidates.map(s => s.code)));
+    } else {
+      setSelectedStocks(new Set());
+    }
+  };
+
+  const toggleSelectStock = (code) => {
+    setSelectedStocks(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(code)) {
+        newSet.delete(code);
+      } else {
+        newSet.add(code);
+      }
+      return newSet;
+    });
+  };
+
   const generateReportContent = () => {
     // Collect all stocks that match current filter or at least have HH signal
     const reportStocks = candidates.filter(stock => {
@@ -300,16 +321,10 @@ const App = () => {
   };
 
   const generateTelegramContent = () => {
-    const reportStocks = candidates.filter(stock => {
-      const timeframeSignals = getSignalsForStock(stock.code);
-      const hasSuSignal = Object.values(timeframeSignals).some(s => s && (s.signal_HH || s.DHH2));
-      const hasHighAdx = stock.latestSignal && stock.latestSignal.adx >= 30;
-      const isUpwardTrend = timeframeSignals['1D'] && timeframeSignals['1D'].cond_up7;
-      return (hasSuSignal && hasHighAdx && isUpwardTrend) || stock.latestSignal?.entry_approved;
-    });
+    const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code));
 
     if (reportStocks.length === 0) {
-      alert("현재 확정된 HH 신호나 매수 승인 종목이 없습니다.");
+      alert("텔레그램으로 발송할 종목을 체크박스로 선택해주세요.");
       return null;
     }
 
@@ -671,6 +686,9 @@ const App = () => {
           <table style={{ tableLayout: 'auto', width: '100%' }}>
             <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--bg)' }}>
               <tr>
+                <th style={{ minWidth: '30px', textAlign: 'center', padding: '0.4rem 0.2rem' }}>
+                  <input type="checkbox" onChange={toggleSelectAll} checked={candidates.length > 0 && selectedStocks.size === candidates.length} />
+                </th>
                 <th style={{ minWidth: '60px', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>종목명</th>
                 <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>세력강도</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>점수</th>
@@ -685,7 +703,7 @@ const App = () => {
             <tbody>
               {candidates.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
                     <div style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#fff' }}>
                       {searchQuery ? "검색 결과가 없습니다." : "사용 방법: 1. 가져올 시간대를 선택 👉 2. 전종목 자동 동기화 실행"}
                     </div>
@@ -796,6 +814,14 @@ const App = () => {
                   return (
                   <React.Fragment key={stock.code}>
                   <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent', borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
+                    <td style={{ textAlign: 'center', padding: '0.4rem 0.2rem' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedStocks.has(stock.code)} 
+                        onChange={() => toggleSelectStock(stock.code)} 
+                        style={{ transform: 'scale(1.2)', cursor: 'pointer' }}
+                      />
+                    </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -982,7 +1008,7 @@ const App = () => {
                   </tr>
                   {stock.latestSignal && (
                     <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <td colSpan="8" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
+                      <td colSpan="9" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
                         <SignalIndicator signal={stock.latestSignal} />
                       </td>
                     </tr>
