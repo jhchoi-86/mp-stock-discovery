@@ -764,10 +764,10 @@ const App = () => {
                       const isDown = signCode === '4' || signCode === '5';
                       const color = isUp ? '#ff4d4d' : (isDown ? '#4d94ff' : 'var(--text-muted)');
                       const arrow = isUp ? '▲' : (isDown ? '▼' : '-');
-                      const signText = kisInfo.rate > 0 ? '+' : '';
+                      const absRate = Math.abs(parseFloat(kisInfo.rate));
                       return (
                         <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>
-                          {arrow} {kisInfo.change.toLocaleString()} ({signText}{kisInfo.rate.toFixed(2)}%)
+                          {arrow} {kisInfo.change.toLocaleString()} ({absRate.toFixed(2)}%)
                         </span>
                       );
                     }
