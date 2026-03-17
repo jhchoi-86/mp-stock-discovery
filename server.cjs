@@ -384,8 +384,8 @@ app.post('/api/auto-sync', async (req, res) => {
     const tf = timeframe || '1D';
     
     // Map internal timeframe to Yahoo Finance interval
-    // 1H -> 1h, 4H -> 1h (4h not directly supported easily, will use 1h), 1D -> 1d, 1W -> 1wk
-    const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '4H': '1h', '1D': '1d', '1W': '1wk' };
+    // 1H -> 1h, 2H -> 1h, 4H -> 1h (4h not directly supported easily, will use 1h), 1D -> 1d, 1W -> 1wk
+    const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '1W': '1wk' };
     const interval = intervalMap[tf] || '1d';
 
     const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));

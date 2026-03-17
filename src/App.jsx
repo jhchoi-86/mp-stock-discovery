@@ -10,6 +10,7 @@ const App = () => {
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
   const [marketFilter, setMarketFilter] = useState("ALL");
+  const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [showAll, setShowAll] = useState(false);
   const [showOnlyApproved, setShowOnlyApproved] = useState(false);
   const [showOnlyTopSectors, setShowOnlyTopSectors] = useState(false);
@@ -134,7 +135,7 @@ const App = () => {
 
   const getSignalsForStock = (code) => {
     const stockSignals = signals.filter(s => s.code === code);
-    const timeframes = ["5M", "15M", "30M", "1H", "4H", "1D", "1W"];
+    const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
     const status = {};
     
     timeframes.forEach(tf => {
@@ -195,7 +196,9 @@ const App = () => {
       matchesView = false;
     }
     
-    return matchesSearch && matchesMarket && matchesView;
+    const matchesCategory = categoryFilter === 'ALL' || (latest && latest.category === categoryFilter);
+
+    return matchesSearch && matchesMarket && matchesCategory && matchesView;
   });
 
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
@@ -506,6 +509,19 @@ const App = () => {
           <option value="KOSPI 200">KOSPI 200</option>
           <option value="KOSDAQ 150">KOSDAQ 150</option>
         </select>
+
+        <select 
+          className="card"
+          style={{ padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff' }}
+          value={categoryFilter}
+          onChange={(e) => setCategoryFilter(e.target.value)}
+        >
+          <option value="ALL">모든 카테고리</option>
+          <option value="추세 지속형">추세 지속형</option>
+          <option value="박스권 횡보">박스권 횡보</option>
+          <option value="바닥권 반등">바닥권 반등</option>
+          <option value="하락 추세">하락 추세</option>
+        </select>
         
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff' }}>
           <input 
@@ -545,7 +561,7 @@ const App = () => {
 
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)' }}>
           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>가져올 시간대:</span>
-          {["5M", "15M", "30M", "1H", "4H", "1D", "1W"].map(tf => (
+          {["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"].map(tf => (
             <button
               key={tf}
               onClick={() => setUploadTimeframe(tf)}
