@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import authService from '../api/authService';
 import useAuthStore from '../store/authStore';
+import { Bot, Zap, Target } from 'lucide-react';
 
 const Login = () => {
   const setAuth = useAuthStore(state => state.setAuth);
@@ -61,26 +62,35 @@ const Login = () => {
   };
 
   return (
-    <div style={{
-      display: 'flex', 
-      flexDirection: 'column', 
-      alignItems: 'center', 
-      justifyContent: 'center', 
-      height: '100vh',
-      backgroundColor: 'var(--bg-default)' 
-    }}>
-      <div className="card fade-in" style={{
-        padding: '2rem',
-        width: '100%',
-        maxWidth: '400px',
-        backgroundColor: 'var(--glass)',
-        border: '1px solid var(--glass-border)',
-        borderRadius: '8px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.5)'
-      }}>
-        <h2 style={{ textAlign: 'center', marginBottom: '1.5rem', color: '#fff' }}>
-          {isRegisterMode ? '회원가입 (Sign Up)' : '주식종목발굴 로그인'}
-        </h2>
+    <div className="login-split-container fade-in">
+      {/* Left Branding Panel */}
+      <div className="login-left-panel">
+        <span className="brand-title">MP STOCK DISCOVERY</span>
+        <h1 className="hero-title">최적의 투자,<br />데이터가 말하다.</h1>
+        <p className="hero-subtitle">스마트한 데이터 분석으로 당신의 다음 성공 종목을 미리 확인하세요.</p>
+        
+        <div className="feature-list">
+          <div className="feature-item">
+            <div className="feature-icon-wrapper"><Bot size={24} /></div>
+            알고리즘 기반 AI 주식 분석
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon-wrapper"><Zap size={24} /></div>
+            실시간 매수/매도 시그널 포착
+          </div>
+          <div className="feature-item">
+            <div className="feature-icon-wrapper"><Target size={24} /></div>
+            전문가의 진입가 및 목표가 추천
+          </div>
+        </div>
+      </div>
+
+      {/* Right Login Panel */}
+      <div className="login-right-panel">
+        <div className="glass-panel">
+          <h2 style={{ textAlign: 'center', marginBottom: '2rem', color: '#fff', fontSize: '1.5rem', fontWeight: '800' }}>
+            {isRegisterMode ? '회원가입 (Sign Up)' : '주식종목발굴 로그인'}
+          </h2>
         
         {errorMsg && (
           <div style={{
@@ -96,7 +106,7 @@ const Login = () => {
           </div>
         )}
 
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
           {isRegisterMode && (
             <>
               <input 
@@ -105,7 +115,7 @@ const Login = () => {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                style={inputStyle}
+                className="glass-input"
               />
               <input 
                 type="tel" 
@@ -113,7 +123,7 @@ const Login = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 required
-                style={inputStyle}
+                className="glass-input"
               />
             </>
           )}
@@ -124,7 +134,7 @@ const Login = () => {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             required
-            style={inputStyle}
+            className="glass-input"
           />
           
           <input 
@@ -133,19 +143,16 @@ const Login = () => {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required
-            style={inputStyle}
+            className="glass-input"
           />
 
           <button 
             type="submit" 
             disabled={isLoading}
-            style={{
-              ...buttonStyle,
-              backgroundColor: isLoading ? '#555' : 'var(--primary)',
-              cursor: isLoading ? 'not-allowed' : 'pointer'
-            }}
+            className="glass-btn"
+            style={{ marginTop: '0.5rem' }}
           >
-            {isLoading ? '처리중...' : (isRegisterMode ? '가입하기' : '로그인')}
+            {isLoading ? '처리중...' : (isRegisterMode ? '가입하기' : '로그인 시작하기')}
           </button>
         </form>
 
@@ -161,30 +168,9 @@ const Login = () => {
             {isRegisterMode ? '로그인' : '회원가입'}
           </span>
         </div>
+        </div>
       </div>
     </div>
   );
 };
-
-const inputStyle = {
-  padding: '0.75rem 1rem',
-  background: 'rgba(0,0,0,0.2)',
-  border: '1px solid var(--glass-border)',
-  color: '#fff',
-  borderRadius: '4px',
-  outline: 'none',
-  fontSize: '1rem'
-};
-
-const buttonStyle = {
-  padding: '0.75rem',
-  color: '#fff',
-  border: 'none',
-  borderRadius: '4px',
-  fontWeight: 'bold',
-  fontSize: '1rem',
-  transition: 'background-color 0.2s',
-  marginTop: '0.5rem'
-};
-
 export default Login;
