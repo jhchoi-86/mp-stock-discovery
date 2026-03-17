@@ -727,6 +727,18 @@ const App = () => {
                   
                   const curPrice = s?.current_price || s?.entry_price || 0;
                   
+                  // KIS data might be attached to a specific synced timeframe (like 1D) rather than the latest webhook signal
+                  let kisData = s?.kis_change_data;
+                  if (!kisData) {
+                    const tfKeys = Object.keys(stock.timeframeStatus);
+                    for (const tf of tfKeys) {
+                      if (stock.timeframeStatus[tf]?.kis_change_data) {
+                        kisData = stock.timeframeStatus[tf].kis_change_data;
+                        break;
+                      }
+                    }
+                  }
+                  
                   // Extract Daily Open and Prev Close from 1D timeframe if available, else fallback
                   const dailyPrevClose = t1D?.prev_close || s?.prev_close || 0;
                   const dailyOpen = t1D?.open_price || s?.open_price || 0;

@@ -499,8 +499,18 @@ app.post('/api/auto-sync', async (req, res) => {
                 const lastIdx = chartData.close.length - 1;
                 if (lastIdx >= 0 && currentPrice) {
                     if (tf === '1D') {
-                        const lastDate = new Date(chartData.time[lastIdx] * 1000);
-                        const isToday = lastDate.toDateString() === new Date().toDateString();
+                        // Yahoo timestamps for KS/KQ are usually 00:00:00 UTC (9:00 AM KST)
+                        // We need to compare dates in KST (+9 hours) to avoid UTC boundary issues on AWS
+                        const getKSTDateString = (timestampMs) => {
+                            const date = new Date(timestampMs);
+                            // Add 9 hours for KST
+                            date.setUTCHours(date.getUTCHours() + 9);
+                            return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+                        };
+                        
+                        const lastCandleKST = getKSTDateString(chartData.time[lastIdx] * 1000);
+                        const currentKST = getKSTDateString(Date.now());
+                        const isToday = lastCandleKST === currentKST;
                         
                         if (isToday) {
                             chartData.open[lastIdx] = currentOpen;
