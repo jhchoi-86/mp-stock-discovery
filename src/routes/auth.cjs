@@ -1,7 +1,5 @@
 const express = require('express');
 const bcrypt = require('bcrypt');
-const jwt = require('jwt-simple'); // The repo has 'jsonwebtoken' installed usually, but looking at older projects, let's use jsonwebtoken
-// Wait, I installed jsonwebtoken.
 const jsonwebtoken = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
