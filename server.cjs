@@ -465,6 +465,12 @@ app.post('/api/auto-sync', async (req, res) => {
                 const currentLow = parseInt(kisData.stck_lwpr);
                 const currentOpen = parseInt(kisData.stck_oprc);
                 const currentVolume = parseInt(kisData.acml_vol);
+                
+                chartData.kis_change_data = {
+                    sign: kisData.prdy_vrss_sign,
+                    change: parseInt(kisData.prdy_vrss),
+                    rate: parseFloat(kisData.prdy_ctrt)
+                };
 
                 const lastIdx = chartData.close.length - 1;
                 if (lastIdx >= 0 && currentPrice) {

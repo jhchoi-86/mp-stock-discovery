@@ -720,6 +720,7 @@ const App = () => {
 
                   const s = stock.latestSignal;
                   const t1H = stock.timeframeStatus['1H'];
+                  const t2H = stock.timeframeStatus['2H'];
                   const t1D = stock.timeframeStatus['1D'];
                   
                   const curPrice = s?.current_price || s?.entry_price || 0;
@@ -737,6 +738,24 @@ const App = () => {
                     const color = isUp ? '#ff4d4d' : '#4d94ff';
                     const arrow = isUp ? '▲' : '▼';
                     return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
+                  };
+
+                  const renderKISChange = (currentPrice, fallbackBase, kisInfo) => {
+                    if (kisInfo) {
+                      const signCode = String(kisInfo.sign);
+                      const isUp = signCode === '1' || signCode === '2';
+                      const isDown = signCode === '4' || signCode === '5';
+                      const color = isUp ? '#ff4d4d' : (isDown ? '#4d94ff' : 'var(--text-muted)');
+                      const arrow = isUp ? '▲' : (isDown ? '▼' : '-');
+                      const signText = kisInfo.rate > 0 ? '+' : '';
+                      return (
+                        <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>
+                          {arrow} {kisInfo.change.toLocaleString()} ({signText}{kisInfo.rate.toFixed(2)}%)
+                        </span>
+                      );
+                    }
+                    // Fallback if KIS data missing
+                    return fallbackBase > 0 ? renderChange(currentPrice, fallbackBase) : null;
                   };
 
                   return (
@@ -866,26 +885,26 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetPrice = t1D && t1D.bb_upper > 0 ? t1D.bb_upper : 0;
+                          const targetPrice = t2H && t2H.bb_upper > 0 ? t2H.bb_upper : 0;
                           
-                          if (t1H && t1H.ema10 > 0) {
+                          if (t2H && t2H.ema5 > 0) {
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                   현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
-                                  {dailyPrevClose > 0 ? renderChange(curPrice, dailyPrevClose) : null}
+                                  {renderKISChange(curPrice, dailyPrevClose, s?.kis_change_data)}
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                                  급등1차: {Math.round(t1H.ema10).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t1H.ema10, dailyPrevClose) : null}
+                                  급등1차: {Math.round(t2H.ema5).toLocaleString()}원
+                                  {dailyPrevClose > 0 ? renderChange(t2H.ema5, dailyPrevClose) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림1차: {Math.round(t1H.ema20).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t1H.ema20, dailyPrevClose) : null}
+                                  눌림1차: {Math.round(t2H.ema20).toLocaleString()}원
+                                  {dailyPrevClose > 0 ? renderChange(t2H.ema20, dailyPrevClose) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림2차: {Math.round(t1H.ema60).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t1H.ema60, dailyPrevClose) : null}
+                                  눌림2차: {Math.round(t2H.ema60).toLocaleString()}원
+                                  {dailyPrevClose > 0 ? renderChange(t2H.ema60, dailyPrevClose) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
                                   1차목표가: {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
@@ -898,7 +917,7 @@ const App = () => {
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                   현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
-                                  {dailyPrevClose > 0 ? renderChange(curPrice, dailyPrevClose) : null}
+                                  {renderKISChange(curPrice, dailyPrevClose, s?.kis_change_data)}
                                 </span>
                                 <span style={{ color: 'var(--text-muted)' }}>
                                   타점: {s ? Math.round(s.entry_price || s.result_2).toLocaleString() : '-'}원

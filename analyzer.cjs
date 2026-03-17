@@ -436,7 +436,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         bb_upper: bb_upper ? Math.round(bb_upper) : 0,
         current_price: close[last_idx] ? Math.round(close[last_idx]) : 0,
         open_price: open[last_idx] ? Math.round(open[last_idx]) : 0,
-        prev_close: (last_idx > 0 && close[last_idx - 1]) ? Math.round(close[last_idx - 1]) : 0
+        prev_close: (last_idx > 0 && close[last_idx - 1]) ? Math.round(close[last_idx - 1]) : 0,
+        kis_change_data: history.kis_change_data || null
     };
 }
 

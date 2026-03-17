@@ -255,3 +255,8 @@ h1, .stat-value, .stock-name {
 .spin {
   animation: spin 1s linear infinite;
 }
+
+option {
+  background-color: var(--bg);
+  color: #fff;
+}
