@@ -1,10 +1,19 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import axios from 'axios';
 // Report Logic v1.2 - Forced MD Extension
-import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw, RefreshCw, Trash2, Power } from 'lucide-react';
+import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw, RefreshCw, Trash2, Power, LogOut, UserCog, Archive } from 'lucide-react';
 import SignalIndicator from './SignalIndicator';
+import Login from './components/Login.jsx';
+import AdminDashboard from './components/AdminDashboard.jsx';
+import UserProfile from './components/UserProfile.jsx';
+import RoiRankingWidget from './components/RoiRankingWidget.jsx';
+import ReportArchive from './components/ReportArchive.jsx';
+import useAuthStore from './store/authStore.js';
+import axiosClient from './api/axiosClient.js';
 
 const App = () => {
+  const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
+  
   const [stocks, setStocks] = useState([]);
   const [signals, setSignals] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
@@ -18,6 +27,9 @@ const App = () => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [selectedStocks, setSelectedStocks] = useState(new Set());
   const fileInputRef = useRef(null);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -46,25 +58,16 @@ const App = () => {
       const csvData = e.target.result;
 
       try {
-        const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
-        const response = await fetch(`${API_URL}/api/import-csv`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ csv: csvData, timeframe: uploadTimeframe }),
-        });
+        // Swap default fetch with axiosClient attached to backend
+        const response = await axiosClient.post('/api/import-csv', { csv: csvData, timeframe: uploadTimeframe });
 
-        if (response.ok) {
+        if (response.status === 200) {
           alert('CSV 데이터가 성공적으로 업로드되었습니다.');
           fetchData();
-        } else {
-          const err = await response.json();
-          alert(`업로드 실패: ${err.error || '알 수 없는 오류'}`);
         }
       } catch (error) {
         console.error('Upload error:', error);
-        alert('업로드 중 오류가 발생했습니다.');
+        alert(`업로드 실패: ${error.response?.data?.error || '알 수 없는 오류'}`);
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = '';
       }
@@ -121,10 +124,20 @@ const App = () => {
   };
 
   useEffect(() => {
-    fetchData(); // Initial data load
+    // 1. Authenticate / Refresh on Setup First
+    initAuth().then(() => {
+      // Once auth finishes (whether logged in or not), fetching is allowed contextually later.
+      // But we shouldn't attempt WS/Data fetches if not authenticated.
+    });
+  }, [initAuth]);
 
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    fetchData(); // Initial data load
+    
     // Setup Server-Sent Events (SSE) for instant real-time updates
-    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : import.meta.env.VITE_API_BASE_URL || `http://13.211.128.167:3001`;
     const eventSource = new EventSource(`${API_URL}/api/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
@@ -137,7 +150,21 @@ const App = () => {
     return () => {
       eventSource.close();
     };
-  }, []);
+  }, [isAuthenticated]);
+
+  // Handle Boot Screen / Authentication gates
+  if (!isInitialized) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-default)', color: 'white' }}>
+        <RefreshCw className="spin" size={32} />
+        <span style={{ marginLeft: '1rem' }}>인증 정보를 불러오는 중입니다...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   const getSignalsForStock = (code) => {
     const stockSignals = signals.filter(s => s.code === code);
@@ -437,6 +464,25 @@ const App = () => {
     const tgContent = generateTelegramContent();
     if (!tgContent) return;
 
+    // Filter explicitly checked stocks for ROI tracking payload
+    const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code));
+    const approvedStocks = reportStocks.filter(s => s.latestSignal && s.latestSignal.entry_approved);
+
+    const recommendations = approvedStocks.map(s => {
+      const tfSigs = getSignalsForStock(s.code);
+      const sig2H = tfSigs['2H'];
+      
+      const ePrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.ema5) : Math.round(s.latestSignal.entry_price || s.latestSignal.result_2 || 0);
+      const tPrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.bb_upper) : Math.round(s.latestSignal.target_price || 0);
+
+      return {
+        stockCode: s.code,
+        stockName: s.name,
+        entryPrice: ePrice,
+        targetPrice: tPrice
+      };
+    });
+
     setIsSendingTg(true);
     try {
       // Telegram has a 4096 character limit for messages.
@@ -444,18 +490,16 @@ const App = () => {
         ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 
         : tgContent;
 
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
-      const response = await fetch(`${API_URL}/api/send-report`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ reportText: safeContent }),
-      });
-      
-      const data = await response.json();
-      if (response.ok) {
-        alert("텔레그램으로 리포트가 성공적으로 전송되었습니다!");
-      } else {
-        alert(`전송 실패: ${data.error}`);
+      try {
+        // Send report text and tracked metadata to DB
+        const response = await axiosClient.post('/api/send-report', { reportText: safeContent, recommendations });
+        if (response.data && response.data.success) {
+          alert(`텔레그램으로 리포트가 성공적으로 전송되었습니다! (완료: ${response.data.sentCount}건)`);
+        } else {
+          alert("전송 실패: " + (response.data?.error || "알 수 없는 에러"));
+        }
+      } catch (err) {
+        alert("전송 실패: 권한이 부족하거나 서버 에러 발생 (" + err.message + ")");
       }
     } catch (e) {
       console.error(e);
@@ -500,14 +544,69 @@ const App = () => {
           {isSyncing && (
             <div className="stat-item" style={{ borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '1rem' }}>
               <div className="stat-label">진행중</div>
-              <div className="stat-value" style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>
-                전종목 분석중...
-              </div>
+            <div className="stat-value" style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>
+              전종목 분석중...
             </div>
-          )}
-        </div>
-      </header>
+          </div>
+        )}
 
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: 'auto', paddingLeft: '2rem', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
+          <button 
+            onClick={() => setIsProfileOpen(true)}
+            style={{ textAlign: 'right', background: 'none', border: 'none', cursor: 'pointer', display: 'block', padding: '0.2rem 0.5rem', borderRadius: '4px', transition: 'background 0.2s', ':hover': { background: 'rgba(255,255,255,0.05)' } }}
+          >
+            <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{user?.name || user?.email?.split('@')[0]}</div>
+            <div style={{ 
+              fontSize: '0.65rem', 
+              color: user?.role === 'ADMIN' ? '#e74c3c' : (user?.role === 'PRO_USER' ? '#f1c40f' : '#bdc3c7'),
+              background: 'rgba(255,255,255,0.1)',
+              padding: '2px 6px',
+              borderRadius: '12px',
+              display: 'inline-block',
+              marginTop: '4px'
+            }}>
+              {user?.role?.replace('_USER', '')}
+            </div>
+          </button>
+          <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+          {user?.role === 'ADMIN' && (
+            <button 
+              onClick={() => setShowAdminPanel(!showAdminPanel)} 
+              className="action-btn"
+              style={{ padding: '0.5rem 1rem', background: showAdminPanel ? 'var(--primary)' : 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}
+              title="관리자 패널 토글"
+            >
+              <UserCog size={18} /> {showAdminPanel ? '신호 대시보드' : '관리자 패널'}
+            </button>
+          )}
+          {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+            <button 
+              onClick={() => setIsReportArchiveOpen(true)} 
+              className="action-btn"
+              style={{ padding: '0.5rem 1rem', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}
+              title="VIP 자료실"
+            >
+              <Archive size={18} /> VIP 자료실
+            </button>
+          )}
+          <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
+          <button 
+            onClick={clearAuth} 
+            className="action-btn"
+            style={{ padding: '0.5rem', background: 'rgba(231, 76, 60, 0.2)', color: '#e74c3c' }}
+            title="로그아웃"
+          >
+            <LogOut size={18} />
+          </button>
+        </div>
+      </div>
+    </header>
+
+      {showAdminPanel && user?.role === 'ADMIN' ? (
+        <AdminDashboard />
+      ) : (
+        <>
+      <RoiRankingWidget />
       <div className="controls fade-in" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input 
           type="text" 
@@ -567,7 +666,7 @@ const App = () => {
           <label htmlFor="showOnlyTopSectorsToggle" style={{ cursor: 'pointer', userSelect: 'none', color: 'var(--secondary)', fontWeight: 'bold' }}>[주도 섹터]만 보기</label>
         </div>
 
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff' }}>
+        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', color: '#fff' }}>
           <input 
             type="checkbox" 
             id="showAllToggle" 
@@ -606,58 +705,33 @@ const App = () => {
           style={{ display: 'none' }} 
           onChange={handleCsvUpload}
         />
-        <button 
-          onClick={handleReset}
-          className="card" 
-          style={{ 
-            padding: '0.75rem 1.5rem', 
-            background: 'rgba(239, 68, 68, 0.2)', 
-            border: '1px solid rgba(239, 68, 68, 0.5)', 
-            color: '#f87171', 
-            cursor: 'pointer', 
-            fontWeight: 600, 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-          }}
-        >
-          <RotateCcw size={18} /> 초기화 리셋
-        </button>
-        <button 
-          onClick={() => fileInputRef.current?.click()}
-          className="card" 
-          style={{ 
-            padding: '0.75rem 1.5rem', 
-            background: 'rgba(255, 255, 255, 0.05)', 
-            border: '1px solid rgba(255, 255, 255, 0.2)', 
-            color: '#fff', 
-            cursor: 'pointer', 
-            fontWeight: 600, 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-          }}
-        >
-          <Upload size={18} /> CSV 불러오기
-        </button>
-        <button 
-          onClick={handleAutoSync}
-          disabled={isSyncing}
-          className="card" 
-          style={{ 
-            padding: '0.75rem 1.5rem', 
-            background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', 
-            border: 'none', 
-            color: '#fff', 
-            cursor: isSyncing ? 'not-allowed' : 'pointer', 
-            fontWeight: 600, 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem',
-          }}
-        >
-          <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
-        </button>
+        
+        {user?.role === 'ADMIN' && (
+          <>
+            <button 
+              onClick={handleReset}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <RotateCcw size={18} /> 초기화 리셋
+            </button>
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
+            >
+              <Upload size={18} /> CSV 불러오기
+            </button>
+            <button 
+              onClick={handleAutoSync}
+              disabled={isSyncing}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
+            </button>
+          </>
+        )}
         <button 
           onClick={handleDownloadReport}
           className="card" 
@@ -1022,7 +1096,9 @@ const App = () => {
             </tbody>
           </table>
         </div>
-      </div>
+        </div>
+        </>
+      )}
     </div>
   );
 };

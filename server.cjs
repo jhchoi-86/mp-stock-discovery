@@ -114,8 +114,29 @@ async function getKisAccessToken() {
     }
 }
 
-app.use(cors());
-app.use(bodyParser.json());
+const cookieParser = require('cookie-parser');
+const authRouter = require('./src/routes/auth.cjs');
+const adminRouter = require('./src/routes/admin.cjs');
+const usersRouter = require('./src/routes/users.cjs');
+const reportRouter = require('./src/routes/report.cjs');
+
+// Trust proxies if behind AWS ELB/NGINX
+app.set('trust proxy', 1);
+
+const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173';
+app.use(cors({
+  origin: [CLIENT_URL, 'http://13.211.128.167', 'http://localhost:5173'], // Allow client domains
+  credentials: true
+}));
+
+app.use(cookieParser());
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+app.use('/api/auth', authRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/users', usersRouter);
+app.use('/api/send-report', reportRouter);
 
 const DATA_DIR = path.join(__dirname, 'data');
 const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
@@ -162,45 +183,10 @@ fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
 console.log(`[Init] Created fresh, empty signals.json for a new session.`);
 
 
-// Send Custom Report to Telegram
-app.post('/api/send-report', async (req, res) => {
-    const { reportText } = req.body;
-
-    if (!TELEGRAM_BOT_TOKEN || TELEGRAM_CHAT_IDS.length === 0) {
-        return res.status(400).json({ error: 'Telegram is not configured on the server.' });
-    }
-    
-    if (!reportText) {
-        return res.status(400).json({ error: 'Report text is required.' });
-    }
-
-    let successCount = 0;
-    
-    for (const chatId of TELEGRAM_CHAT_IDS) {
-        try {
-            const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-            const response = await axios.post(url, { 
-                chat_id: chatId, 
-                text: reportText
-            }, {
-                httpsAgent: new https.Agent({ family: 4 })
-            });
-            if (response.status === 200) {
-                successCount++;
-            } else {
-                console.error(`[Telegram] HTTP Error ${response.status}:`, response.data);
-            }
-        } catch (e) {
-            console.error(`[Telegram] Failed to send report to ${chatId}:`, e.message || String(e), e.response?.data || '');
-        }
-    }
-
-    if (successCount > 0) {
-        res.json({ message: `Report sent to ${successCount} chat(s) successfully.` });
-    } else {
-        res.status(500).json({ error: 'Failed to send report to any chat.' });
-    }
-});
+// Routes
+app.use('/api/reports', require('./src/routes/archive.cjs'));
+app.use('/api/roi-ranking', require('./src/routes/roi.cjs'));
+app.use('/api/subscriptions', require('./src/routes/subscriptions.cjs'));
 
 // Routes
 app.get('/api/stocks', (req, res) => {
