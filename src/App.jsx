@@ -914,10 +914,12 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetPrice = t2H && t2H.bb_upper > 0 ? t2H.bb_upper : 0;
+                          const targetData = (t2H && t2H.ema5 > 0) ? t2H : (t1D && t1D.ema5 > 0 ? t1D : null);
+                          const tfLabel = (t2H && t2H.ema5 > 0) ? "2H" : "1D";
+                          const targetPrice = targetData && targetData.bb_upper > 0 ? targetData.bb_upper : 0;
                           const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
                           
-                          if (t2H && t2H.ema5 > 0) {
+                          if (targetData) {
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -926,19 +928,19 @@ const App = () => {
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                                  급등1차: {Math.round(t2H.ema5).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema5) : null}
+                                  급등1차: {Math.round(targetData.ema5).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, targetData.ema5) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림1차: {Math.round(t2H.ema20).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema20) : null}
+                                  눌림1차: {Math.round(targetData.ema20).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, targetData.ema20) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림2차: {Math.round(t2H.ema60).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema60) : null}
+                                  눌림2차: {Math.round(targetData.ema60).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, targetData.ema60) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
-                                  1차목표가: {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
+                                  1차목표가({tfLabel}): {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
                                   {targetPrice > 0 && dailyPrevClose > 0 ? renderChange(targetPrice, dailyPrevClose) : null}
                                 </span>
                               </>
@@ -953,7 +955,6 @@ const App = () => {
                                 </span>
                                 <span style={{ color: 'var(--text-muted)' }}>
                                   타점: {s ? Math.round(s.entry_price || s.result_2).toLocaleString() : '-'}원
-                                  {s && dailyPrevClose > 0 ? renderChange(s.entry_price || s.result_2, dailyPrevClose) : null}
                                 </span>
                               </>
                             );

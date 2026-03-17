@@ -543,7 +543,76 @@ app.post('/api/auto-sync', async (req, res) => {
             }
         }
 
+        if (tf === '2H') chartData = resampleChartData(chartData, 2);
+        if (tf === '4H') chartData = resampleChartData(chartData, 4);
+
         return chartData;
+    };
+
+    const resampleChartData = (raw, hourCount) => {
+        let resampled = { open: [], high: [], low: [], close: [], volume: [], time: [] };
+        if (!raw.time || raw.time.length === 0) return resampled;
+
+        let currentCandle = null;
+        let candleCount = 0;
+        let currentDayStr = null;
+
+        for (let i = 0; i < raw.time.length; i++) {
+            const date = new Date(raw.time[i] * 1000);
+            date.setUTCHours(date.getUTCHours() + 9);
+            const dayStr = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+
+            if (currentDayStr !== dayStr) {
+                if (currentCandle) {
+                    resampled.open.push(currentCandle.open);
+                    resampled.high.push(currentCandle.high);
+                    resampled.low.push(currentCandle.low);
+                    resampled.close.push(currentCandle.close);
+                    resampled.volume.push(currentCandle.volume);
+                    resampled.time.push(currentCandle.time);
+                }
+                currentDayStr = dayStr;
+                currentCandle = { open: raw.open[i], high: raw.high[i], low: raw.low[i], close: raw.close[i], volume: raw.volume[i], time: raw.time[i] };
+                candleCount = 1;
+            } else {
+                if (candleCount === 0) {
+                    currentCandle = { open: raw.open[i], high: raw.high[i], low: raw.low[i], close: raw.close[i], volume: raw.volume[i], time: raw.time[i] };
+                    candleCount = 1;
+                } else {
+                    currentCandle.high = Math.max(currentCandle.high, raw.high[i]);
+                    currentCandle.low = Math.min(currentCandle.low, raw.low[i]);
+                    currentCandle.close = raw.close[i];
+                    currentCandle.volume += raw.volume[i];
+                    candleCount++;
+                    
+                    if (candleCount === hourCount) {
+                        resampled.open.push(currentCandle.open);
+                        resampled.high.push(currentCandle.high);
+                        resampled.low.push(currentCandle.low);
+                        resampled.close.push(currentCandle.close);
+                        resampled.volume.push(currentCandle.volume);
+                        resampled.time.push(currentCandle.time);
+                        currentCandle = null;
+                        candleCount = 0;
+                    }
+                }
+            }
+        }
+
+        if (currentCandle) {
+            resampled.open.push(currentCandle.open);
+            resampled.high.push(currentCandle.high);
+            resampled.low.push(currentCandle.low);
+            resampled.close.push(currentCandle.close);
+            resampled.volume.push(currentCandle.volume);
+            resampled.time.push(currentCandle.time);
+        }
+
+        if (raw.kis_change_data) {
+            resampled.kis_change_data = raw.kis_change_data;
+        }
+
+        return resampled;
     };
 
     // Process in batches to avoid rate limits (KIS API strict limit: 20 req/sec)
