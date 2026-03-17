@@ -1,5 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
 const prisma = new PrismaClient();
 const authMiddleware = require('../middlewares/authMiddleware.cjs');
 const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
@@ -93,6 +94,49 @@ router.put('/users/:id/status', async (req, res) => {
   } catch (error) {
     console.error('[Admin PUT /users/:id/status Error]', error);
     res.status(500).json({ error: 'Internal server error during user update.' });
+  }
+});
+
+// B-2. 관리자 유저 패스워드 강제 초기화 (PUT /api/admin/users/:id/reset-password)
+router.put('/users/:id/reset-password', async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const adminId = req.user.userId;
+
+    // Verify Target User Exists
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }});
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+
+    // Set default password '0000'
+    const defaultPassword = '0000';
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(defaultPassword, saltRounds);
+
+    // Execute Prisma Transaction safely
+    await prisma.$transaction([
+      // 1. Update user password
+      prisma.user.update({
+        where: { id: targetUserId },
+        data: { passwordHash: newPasswordHash }
+      }),
+      // 2. Insert Audit Log
+      prisma.auditLog.create({
+        data: {
+          adminId: adminId,
+          targetUserId: targetUserId,
+          action: 'FORCE_PASSWORD_RESET',
+          details: { message: `Admin forcefully reset password to default (${defaultPassword})` }
+        }
+      })
+    ]);
+
+    res.status(200).json({ message: '비밀번호가 0000으로 성공적으로 초기화되었습니다.' });
+
+  } catch (error) {
+    console.error('[Admin PUT /users/:id/reset-password Error]', error);
+    res.status(500).json({ error: '비밀번호 초기화 중 오류가 발생했습니다.' });
   }
 });
 

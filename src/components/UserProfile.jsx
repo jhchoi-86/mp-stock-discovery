@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Send, User, ChevronRight, Activity } from 'lucide-react';
 import axiosClient from '../api/axiosClient';
 import useAuthStore from '../store/authStore';
@@ -14,6 +15,11 @@ const UserProfile = ({ isOpen, onClose }) => {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [isSubscribing, setIsSubscribing] = useState(false);
+
+  // Password Change States
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
 
   useEffect(() => {
     if (isOpen && user) {
@@ -61,6 +67,30 @@ const UserProfile = ({ isOpen, onClose }) => {
     }
   };
 
+  const handlePasswordChange = async () => {
+    if (!currentPassword || !newPassword) {
+      setMessage({ text: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.', type: 'error' });
+      return;
+    }
+
+    setIsChangingPassword(true);
+    setMessage({ text: '', type: '' });
+    try {
+      const response = await axiosClient.put('/api/users/me/password', {
+        currentPassword,
+        newPassword
+      });
+      setMessage({ text: response.data.message || '비밀번호가 성공적으로 변경되었습니다.', type: 'success' });
+      setCurrentPassword('');
+      setNewPassword('');
+      setTimeout(() => setMessage({ text: '', type: '' }), 5000);
+    } catch (error) {
+      setMessage({ text: error.response?.data?.error || '비밀번호 변경에 실패했습니다.', type: 'error' });
+    } finally {
+      setIsChangingPassword(false);
+    }
+  };
+
   const handleSubscribeRequest = async () => {
     setIsSubscribing(true);
     setMessage({ text: '', type: '' });
@@ -82,7 +112,7 @@ const UserProfile = ({ isOpen, onClose }) => {
   if (usagePercentage > 75) progressColor = '#fbbf24'; // Yellow warning
   if (usagePercentage > 95) progressColor = '#ef4444'; // Red limit
 
-  return (
+  return createPortal(
     <div style={overlayStyle}>
       <div className="card fade-in" style={modalStyle}>
         
@@ -175,16 +205,7 @@ const UserProfile = ({ isOpen, onClose }) => {
                 </p>
               </div>
             </div>
-
-            {/* Messages & Actions */}
-            {message.text && (
-              <div style={{ padding: '0.75rem', borderRadius: '4px', fontSize: '0.85rem', textAlign: 'center', 
-                backgroundColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-                color: message.type === 'success' ? '#34d399' : '#ef4444' }}>
-                {message.text}
-              </div>
-            )}
-
+            
             <button 
               onClick={handleSave}
               disabled={isSaving}
@@ -194,8 +215,52 @@ const UserProfile = ({ isOpen, onClose }) => {
                 marginTop: '0.5rem'
               }}
             >
-              {isSaving ? '저장 중...' : '프로필 저장'}
+              {isSaving ? '저장 중...' : '프로필 기본 정보 저장'}
             </button>
+
+            <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.1)', margin: '0.5rem 0' }} />
+
+            {/* Password Change Form */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.05)' }}>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#fff', fontSize: '1rem' }}>비밀번호 변경</h3>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                <input 
+                  type="password" 
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  style={inputStyle}
+                  placeholder="현재 비밀번호"
+                />
+                <input 
+                  type="password" 
+                  value={newPassword}
+                  onChange={(e) => setNewPassword(e.target.value)}
+                  style={inputStyle}
+                  placeholder="새 비밀번호"
+                />
+                <button 
+                  onClick={handlePasswordChange}
+                  disabled={isChangingPassword || !currentPassword || !newPassword}
+                  style={{
+                    padding: '0.6rem', borderRadius: '4px', cursor: (isChangingPassword || !currentPassword || !newPassword) ? 'not-allowed' : 'pointer',
+                    background: 'rgba(255, 255, 255, 0.1)', color: '#fff', border: '1px solid rgba(255, 255, 255, 0.2)', 
+                    fontWeight: 'bold', fontSize: '0.9rem', marginTop: '0.25rem',
+                    transition: 'all 0.2s'
+                  }}
+                >
+                  {isChangingPassword ? '변경 중...' : '비밀번호 변경하기'}
+                </button>
+              </div>
+            </div>
+
+            {/* Messages & Actions */}
+            {message.text && (
+              <div style={{ padding: '0.75rem', borderRadius: '4px', fontSize: '0.85rem', textAlign: 'center', 
+                backgroundColor: message.type === 'success' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                color: message.type === 'success' ? '#34d399' : '#ef4444' }}>
+                {message.text}
+              </div>
+            )}
 
             {user?.role === 'FREE_USER' && (
               <button 
@@ -218,7 +283,8 @@ const UserProfile = ({ isOpen, onClose }) => {
           </div>
         )}
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

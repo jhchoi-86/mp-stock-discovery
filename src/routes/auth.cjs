@@ -12,10 +12,10 @@ const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secre
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, phone } = req.body;
 
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Email, password, and name are required.' });
+    if (!email || !password || !name || !phone) {
+      return res.status(400).json({ error: 'Email, password, name, and phone are required.' });
     }
 
     // Check if user already exists
@@ -29,15 +29,24 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Create user
-    const newUser = await prisma.user.create({
-      data: {
-        email,
-        passwordHash,
-        name,
-        role: 'FREE_USER',
-        status: 'ACTIVE'
-      }
-    });
+    console.log('[Auth Registration] Attempting to create user in DB...', { email, name, role: 'FREE_USER' });
+    let newUser;
+    try {
+      newUser = await prisma.user.create({
+        data: {
+          email,
+          passwordHash,
+          name,
+          phone,
+          role: 'FREE_USER',
+          status: 'ACTIVE'
+        }
+      });
+      console.log('[Auth Registration] Prisma user created successfully:', newUser.id);
+    } catch (dbError) {
+      console.error('[Auth Registration] Prisma DB Error during create:', dbError);
+      return res.status(500).json({ error: 'Database insertion failed', details: dbError.message });
+    }
 
     res.status(201).json({ 
       message: 'User registered successfully', 
@@ -45,7 +54,7 @@ router.post('/register', async (req, res) => {
     });
   } catch (error) {
     console.error('[Auth Register Error]', error);
-    res.status(500).json({ error: 'Internal server error during registration.' });
+    res.status(500).json({ error: 'Internal server error during registration.', details: error.message });
   }
 });
 
@@ -94,8 +103,8 @@ router.post('/login', async (req, res) => {
     // Set HttpOnly Cookie for Refresh Token
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production', // Secure in production for Cross-Origin
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // Allow cross-origin cross-site in production
+      secure: false, // Must be false for plain HTTP (like 13.211.128.167)
+      sameSite: 'lax', // Must be lax (not none) for non-Secure HTTP contexts
       path: '/api/auth', // Broaden path slightly so logout and refresh can both read it
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
@@ -134,8 +143,8 @@ router.post('/logout', async (req, res) => {
     // Clear Cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: false,
+      sameSite: 'lax',
       path: '/api/auth'
     });
     
@@ -205,8 +214,8 @@ router.post('/refresh', async (req, res) => {
     // Set NEW HttpOnly Cookie
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax',
+      secure: false,
+      sameSite: 'lax',
       path: '/api/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });

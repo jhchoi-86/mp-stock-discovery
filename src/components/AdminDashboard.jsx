@@ -77,6 +77,16 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleResetPassword = async (targetUser) => {
+    if (!confirm(`'${targetUser.name}' 유저의 비밀번호를 '0000'으로 초기화하시겠습니까?`)) return;
+    try {
+      await axiosClient.put(`/api/admin/users/${targetUser.id}/reset-password`);
+      alert(`[완료] ${targetUser.name} 유저의 비밀번호가 0000으로 초기화되었습니다.`);
+    } catch (err) {
+      alert('비밀번호 초기화에 실패했습니다.');
+    }
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -231,6 +241,22 @@ const AdminDashboard = () => {
                         >
                           {u.status === 'ACTIVE' ? <ShieldAlert size={16} /> : <ShieldCheck size={16} />} 
                           {u.status === 'ACTIVE' ? '정지' : '해제'}
+                        </button>
+                        
+                        <button 
+                          disabled={isSelf || isAdmin}
+                          onClick={() => handleResetPassword(u)}
+                          title="비밀번호를 초기화합니다 (0000)"
+                          style={{
+                            ...actionButtonStyle,
+                            color: '#9ca3af',
+                            background: 'rgba(156, 163, 175, 0.1)',
+                            border: '1px solid rgba(156, 163, 175, 0.5)',
+                            opacity: isSelf || isAdmin ? 0.3 : 1,
+                            cursor: isSelf || isAdmin ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          초기화
                         </button>
                       </div>
                     </td>

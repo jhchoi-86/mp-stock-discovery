@@ -1,5 +1,6 @@
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
+const bcrypt = require('bcrypt');
 const authMiddleware = require('../middlewares/authMiddleware.cjs');
 
 const router = express.Router();
@@ -16,7 +17,7 @@ const LIMITS = {
 // Fetch profile details including Telegram ID and Today's computed usage quota
 router.get('/me', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.userId;
     const role = req.user.role;
 
     // 1. Fetch user data
@@ -84,7 +85,7 @@ router.get('/me', authMiddleware, async (req, res) => {
 // Update Name and/or Telegram ID
 router.put('/me', authMiddleware, async (req, res) => {
   try {
-    const userId = req.user.id;
+    const userId = req.user.userId;
     const { name, telegramId } = req.body;
 
     const updateData = {};
@@ -112,6 +113,61 @@ router.put('/me', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('[User API] Modifying profile failed:', error);
     res.status(500).json({ error: 'Failed to update profile.' });
+  }
+});
+
+// PUT /api/users/me/password
+// Option 1: Self Password Change
+router.put('/me/password', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.userId;
+    const { currentPassword, newPassword } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: '현재 비밀번호와 새 비밀번호를 모두 입력해주세요.' });
+    }
+
+    // 1. Fetch user to get existing password hash
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { passwordHash: true }
+    });
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found.' });
+    }
+
+    // 2. Verify current password
+    const isMatch = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isMatch) {
+      return res.status(401).json({ error: '현재 비밀번호가 일치하지 않습니다.' });
+    }
+
+    // 3. Hash new password
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    // 4. Update the DB
+    await prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: newPasswordHash }
+    });
+
+    // 5. Audit Log (Self Change)
+    await prisma.auditLog.create({
+      data: {
+        adminId: userId, // Self-action, so adminId is the user themselves
+        targetUserId: userId,
+        action: 'SELF_PASSWORD_CHANGE',
+        details: { message: 'User changed their own password.' }
+      }
+    });
+
+    res.json({ message: '비밀번호가 성공적으로 변경되었습니다.' });
+
+  } catch (error) {
+    console.error('[User API] Password update failed:', error);
+    res.status(500).json({ error: '비밀번호 변경 중 오류가 발생했습니다.' });
   }
 });
 

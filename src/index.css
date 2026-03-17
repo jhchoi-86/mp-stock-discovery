@@ -63,6 +63,8 @@ header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-wrap: wrap;       /* NEW: allow dynamic wrapping */
+  gap: 1.5rem;           /* NEW: spacing when wrapping occurs */
   margin-bottom: 3rem;
   padding: 1.5rem;
   background: var(--glass);
@@ -82,7 +84,8 @@ header {
 
 .stats-bar {
   display: flex;
-  gap: 2rem;
+  gap: 1.5rem;      /* Reduced from 2rem to prevent premature wrapping */
+  flex-wrap: wrap;  /* Allow stats to wrap independently */
 }
 
 .stat-item {

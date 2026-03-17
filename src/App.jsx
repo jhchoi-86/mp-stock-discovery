@@ -30,6 +30,7 @@ const App = () => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
+  const [isSendingTg, setIsSendingTg] = useState(false);
 
   const fetchData = async () => {
     try {
@@ -152,20 +153,6 @@ const App = () => {
     };
   }, [isAuthenticated]);
 
-  // Handle Boot Screen / Authentication gates
-  if (!isInitialized) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-default)', color: 'white' }}>
-        <RefreshCw className="spin" size={32} />
-        <span style={{ marginLeft: '1rem' }}>인증 정보를 불러오는 중입니다...</span>
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Login />;
-  }
-
   const getSignalsForStock = (code) => {
     const stockSignals = signals.filter(s => s.code === code);
     const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
@@ -205,6 +192,20 @@ const App = () => {
       .slice(0, 3)
       .map(entry => entry[0]);
   }, [stocks, signals]);
+
+  // Handle Boot Screen / Authentication gates
+  if (!isInitialized) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-default)', color: 'white' }}>
+        <RefreshCw className="spin" size={32} />
+        <span style={{ marginLeft: '1rem' }}>인증 정보를 불러오는 중입니다...</span>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Login />;
+  }
 
   const filteredStocks = stocks.filter(stock => {
     const matchesSearch = stock.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -459,7 +460,6 @@ const App = () => {
     URL.revokeObjectURL(url);
   };
 
-  const [isSendingTg, setIsSendingTg] = useState(false);
   const handleSendToTelegram = async () => {
     const tgContent = generateTelegramContent();
     if (!tgContent) return;
@@ -512,17 +512,17 @@ const App = () => {
   return (
     <div className="container">
       <header className="fade-in">
-        <div className="logo-section" style={{ minWidth: '300px' }}>
-          <h1 style={{ lineHeight: '1.4', fontSize: '1.3rem', fontWeight: '800' }}>
+        <div className="logo-section" style={{ minWidth: '300px', flex: '1 1 auto' }}>
+          <h1 style={{ lineHeight: '1.4', fontSize: '1.7rem', fontWeight: '800' }}>
             MP KOSPI 200, KOSDAQ 150 우량주<br/>
             <span style={{ color: 'var(--accent)' }}>매수 추천 종목 리서치</span>
           </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '4px' }}>정리 시스템 (전체 350개 종목)</p>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '6px' }}>정리 시스템 (전체 350개 종목)</p>
         </div>
         <div className="stats-bar">
           <div className="stat-item">
-            <div className="stat-label">시스템 상태</div>
-            <div className="stat-value" style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>시스템 상태</div>
+            <div className="stat-value" style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
               <div className="pulse-dot"></div>
               실시간 가동중
             </div>
@@ -536,26 +536,26 @@ const App = () => {
             <div className="stat-value" style={{ color: 'var(--accent)' }}>{activeCount}</div>
           </div>
           <div className="stat-item">
-            <div className="stat-label">🔥 주도 섹터 (HH 밀집)</div>
-            <div className="stat-value" style={{ fontSize: '0.85rem', color: 'var(--secondary)' }}>
+            <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>🔥 주도 섹터 (HH 밀집)</div>
+            <div className="stat-value" style={{ fontSize: '0.85rem', color: 'var(--secondary)', whiteSpace: 'nowrap' }}>
               {topSectors.length > 0 ? topSectors.join(' · ') : '분석중'}
             </div>
           </div>
           {isSyncing && (
             <div className="stat-item" style={{ borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '1rem' }}>
-              <div className="stat-label">진행중</div>
-            <div className="stat-value" style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>
-              전종목 분석중...
+              <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>진행중</div>
+              <div className="stat-value" style={{ color: 'var(--primary)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
+                전종목 분석중...
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginLeft: 'auto', paddingLeft: '2rem', borderLeft: '1px solid rgba(255,255,255,0.1)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingLeft: '1.5rem', borderLeft: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'center' }}>
           <button 
             onClick={() => setIsProfileOpen(true)}
-            style={{ textAlign: 'right', background: 'none', border: 'none', cursor: 'pointer', display: 'block', padding: '0.2rem 0.5rem', borderRadius: '4px', transition: 'background 0.2s', ':hover': { background: 'rgba(255,255,255,0.05)' } }}
+            style={{ textAlign: 'right', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '0.2rem 0.5rem', borderRadius: '4px', transition: 'background 0.2s', ':hover': { background: 'rgba(255,255,255,0.05)' } }}
           >
-            <div style={{ fontSize: '0.85rem', color: '#fff', fontWeight: 'bold' }}>{user?.name || user?.email?.split('@')[0]}</div>
+            <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0]}</div>
             <div style={{ 
               fontSize: '0.65rem', 
               color: user?.role === 'ADMIN' ? '#e74c3c' : (user?.role === 'PRO_USER' ? '#f1c40f' : '#bdc3c7'),
@@ -573,7 +573,7 @@ const App = () => {
             <button 
               onClick={() => setShowAdminPanel(!showAdminPanel)} 
               className="action-btn"
-              style={{ padding: '0.5rem 1rem', background: showAdminPanel ? 'var(--primary)' : 'rgba(255,255,255,0.05)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}
+              style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', background: showAdminPanel ? 'var(--primary)' : 'rgba(255,255,255,0.08)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: 500, transition: 'all 0.2s' }}
               title="관리자 패널 토글"
             >
               <UserCog size={18} /> {showAdminPanel ? '신호 대시보드' : '관리자 패널'}
@@ -583,7 +583,7 @@ const App = () => {
             <button 
               onClick={() => setIsReportArchiveOpen(true)} 
               className="action-btn"
-              style={{ padding: '0.5rem 1rem', background: 'rgba(99, 102, 241, 0.2)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem', marginRight: '0.5rem' }}
+              style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', background: 'rgba(99, 102, 241, 0.15)', color: '#818cf8', border: '1px solid rgba(99, 102, 241, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: 500, transition: 'all 0.2s' }}
               title="VIP 자료실"
             >
               <Archive size={18} /> VIP 자료실
@@ -593,7 +593,7 @@ const App = () => {
           <button 
             onClick={clearAuth} 
             className="action-btn"
-            style={{ padding: '0.5rem', background: 'rgba(231, 76, 60, 0.2)', color: '#e74c3c' }}
+            style={{ padding: '0.6rem', borderRadius: '8px', background: 'rgba(231, 76, 60, 0.15)', color: '#e74c3c', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid rgba(231, 76, 60, 0.3)', transition: 'all 0.2s' }}
             title="로그아웃"
           >
             <LogOut size={18} />
@@ -641,30 +641,7 @@ const App = () => {
           <option value="하락 추세">하락 추세</option>
         </select>
         
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff' }}>
-          <input 
-            type="checkbox" 
-            id="showOnlyApprovedToggle" 
-            checked={showOnlyApproved}
-            onChange={(e) => {
-              setShowOnlyApproved(e.target.checked);
-              if (e.target.checked) setShowAll(true); // Auto expand universe to find approved
-            }}
-            style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '16px', height: '16px' }}
-          />
-          <label htmlFor="showOnlyApprovedToggle" style={{ cursor: 'pointer', userSelect: 'none', color: 'var(--accent)', fontWeight: 'bold' }}>[매수 승인]만 보기</label>
-        </div>
 
-        <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff' }}>
-          <input 
-            type="checkbox" 
-            id="showOnlyTopSectorsToggle" 
-            checked={showOnlyTopSectors}
-            onChange={(e) => setShowOnlyTopSectors(e.target.checked)}
-            style={{ accentColor: 'var(--secondary)', cursor: 'pointer', width: '16px', height: '16px' }}
-          />
-          <label htmlFor="showOnlyTopSectorsToggle" style={{ cursor: 'pointer', userSelect: 'none', color: 'var(--secondary)', fontWeight: 'bold' }}>[주도 섹터]만 보기</label>
-        </div>
 
         <div className="card" style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.75rem 1.25rem', color: '#fff' }}>
           <input 
@@ -714,13 +691,6 @@ const App = () => {
               style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
               <RotateCcw size={18} /> 초기화 리셋
-            </button>
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              className="card" 
-              style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.05)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }} 
-            >
-              <Upload size={18} /> CSV 불러오기
             </button>
             <button 
               onClick={handleAutoSync}

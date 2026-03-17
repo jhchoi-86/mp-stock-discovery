@@ -11,13 +11,15 @@ const authService = {
    * @param {string} email 
    * @param {string} password 
    * @param {string} name 
+   * @param {string} phone 
    * @returns {Promise<Object>} The registered user data
    */
-  async register(email, password, name) {
+  async register(email, password, name, phone) {
     const response = await axiosClient.post('/api/auth/register', {
       email,
       password,
-      name
+      name,
+      phone
     });
     return response.data;
   },

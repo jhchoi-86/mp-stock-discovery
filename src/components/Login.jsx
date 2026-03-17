@@ -9,6 +9,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -21,10 +22,10 @@ const Login = () => {
     try {
       if (isRegisterMode) {
         // Handle Registration
-        if (!name.trim()) {
-          throw new Error('이름을 입력해주세요.');
+        if (!name.trim() || !phone.trim()) {
+          throw new Error('이름과 핸드폰 번호를 모두 입력해주세요.');
         }
-        await authService.register(email, password, name);
+        await authService.register(email, password, name, phone);
         alert('회원가입이 완료되었습니다. 로그인 해주세요.');
         setIsRegisterMode(false);
       } else {
@@ -97,14 +98,24 @@ const Login = () => {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {isRegisterMode && (
-            <input 
-              type="text" 
-              placeholder="이름 (Name)" 
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              required
-              style={inputStyle}
-            />
+            <>
+              <input 
+                type="text" 
+                placeholder="이름 (Name)" 
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={inputStyle}
+              />
+              <input 
+                type="tel" 
+                placeholder="휴대폰 번호 (Phone - 예: 01012345678)" 
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                required
+                style={inputStyle}
+              />
+            </>
           )}
           
           <input 
