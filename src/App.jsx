@@ -20,9 +20,10 @@ const App = () => {
 
   const fetchData = async () => {
     try {
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
       const [stocksRes, signalsRes] = await Promise.all([
-        fetch(`http://${window.location.hostname}:3001/api/stocks`),
-        fetch(`http://${window.location.hostname}:3001/api/signals`)
+        fetch(`${API_URL}/api/stocks`),
+        fetch(`${API_URL}/api/signals`)
       ]);
       const stocksData = await stocksRes.json();
       const signalsData = await signalsRes.json();
@@ -44,7 +45,8 @@ const App = () => {
       const csvData = e.target.result;
 
       try {
-        const response = await fetch(`http://${window.location.hostname}:3001/api/import-csv`, {
+        const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+        const response = await fetch(`${API_URL}/api/import-csv`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -73,7 +75,8 @@ const App = () => {
     if (!confirm('정말 모든 분석 데이터를 초기화하시겠습니까? (복구할 수 없습니다)')) return;
     
     try {
-      const response = await fetch(`http://${window.location.hostname}:3001/api/reset`, {
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const response = await fetch(`${API_URL}/api/reset`, {
         method: 'POST'
       });
       if (response.ok) {
@@ -94,7 +97,8 @@ const App = () => {
     
     setIsSyncing(true);
     try {
-      const response = await fetch(`http://${window.location.hostname}:3001/api/auto-sync`, {
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const response = await fetch(`${API_URL}/api/auto-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ timeframe: uploadTimeframe }),
@@ -119,7 +123,8 @@ const App = () => {
     fetchData(); // Initial data load
 
     // Setup Server-Sent Events (SSE) for instant real-time updates
-    const eventSource = new EventSource(`http://${window.location.hostname}:3001/api/stream`);
+    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+    const eventSource = new EventSource(`${API_URL}/api/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
@@ -254,10 +259,9 @@ const App = () => {
       header += `## 🔥 [강력 추천] 매수 진입 승인 종목 (RSI 반등 + 거래량 발생 + 양봉)\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1H = tfSigs['1H'];
         const sig1D = tfSigs['1D'];
         
-        const priceText = (sig1H && sig1H.ema10 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig1H.ema10).toLocaleString()}원, 눌림1차: ${Math.round(sig1H.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig1H.ema60).toLocaleString()}원, 1차목표가: ${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+        const priceText = (sig1D && sig1D.ema5 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig1D.ema5).toLocaleString()}원, 눌림1차: ${Math.round(sig1D.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig1D.ema60).toLocaleString()}원, 1차목표가: ${Math.round(sig1D.bb_upper).toLocaleString()}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
         header += `- **${s.name}** (${s.code}): ${s.latestSignal.category} / 💡 추천매매(분할매수전략): **${priceText}**\n`;
       });
       header += `\n---\n\n`;
@@ -280,11 +284,10 @@ const App = () => {
       let category = stock.latestSignal ? stock.latestSignal.category : '-';
       if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
       
-      const sig1H = tfSigs['1H'];
       const sig1D = tfSigs['1D'];
 
-      const entryPrice = (sig1H && sig1H.ema10 > 0) 
-        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig1H.ema10).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1H.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1H.ema60).toLocaleString()}원 <br/>1차목표가:${sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-'}원` 
+      const entryPrice = (sig1D && sig1D.ema5 > 0) 
+        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig1D.ema5).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1D.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1D.ema60).toLocaleString()}원 <br/>1차목표가:${Math.round(sig1D.bb_upper).toLocaleString()}원` 
         : `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원`;
 
       return `| ${stock.name} | ${stock.code} | ${category} | **${entryPrice}** | ${getStatus('1D')} | ${getStatus('1W')} | ${trend} | ${prog} |`;
@@ -320,15 +323,14 @@ const App = () => {
       content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1H = tfSigs['1H'];
         const sig1D = tfSigs['1D'];
         
         let priceText = "-";
-        if (sig1H && sig1H.ema10 > 0) {
-          const p1 = Math.round(sig1H.ema10).toLocaleString();
-          const p2 = Math.round(sig1H.ema20).toLocaleString();
-          const p3 = Math.round(sig1H.ema60).toLocaleString();
-          const tar = sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-';
+        if (sig1D && sig1D.ema5 > 0) {
+          const p1 = Math.round(sig1D.ema5).toLocaleString();
+          const p2 = Math.round(sig1D.ema20).toLocaleString();
+          const p3 = Math.round(sig1D.ema60).toLocaleString();
+          const tar = Math.round(sig1D.bb_upper).toLocaleString();
           priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${tar}원`;
         } else {
           priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
@@ -357,14 +359,13 @@ const App = () => {
       let category = stock.latestSignal ? stock.latestSignal.category : '-';
       if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
       
-      const sig1H = tfSigs['1H'];
       const sig1D = tfSigs['1D'];
       let priceText = "-";
-      if (sig1H && sig1H.ema10 > 0) {
-         const p1 = Math.round(sig1H.ema10).toLocaleString();
-         const p2 = Math.round(sig1H.ema20).toLocaleString();
-         const p3 = Math.round(sig1H.ema60).toLocaleString();
-         const pt = sig1D ? Math.round(sig1D.bb_upper).toLocaleString() : '-';
+      if (sig1D && sig1D.ema5 > 0) {
+         const p1 = Math.round(sig1D.ema5).toLocaleString();
+         const p2 = Math.round(sig1D.ema20).toLocaleString();
+         const p3 = Math.round(sig1D.ema60).toLocaleString();
+         const pt = Math.round(sig1D.bb_upper).toLocaleString();
          priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${pt}원`;
       }
 
@@ -427,7 +428,8 @@ const App = () => {
         ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 
         : tgContent;
 
-      const response = await fetch(`http://${window.location.hostname}:3001/api/send-report`, {
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const response = await fetch(`${API_URL}/api/send-report`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reportText: safeContent }),
@@ -740,6 +742,21 @@ const App = () => {
                     return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
                   };
 
+                  const renderProfitRate = (target, entry) => {
+                    if (!target || !entry) return null;
+                    // For the recommended entry points, we want to show the potential *upside* profit rate
+                    // Formula: (Target Price - Entry Price) / Entry Price * 100
+                    const pct = ((target - entry) / entry) * 100;
+                    if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
+                    
+                    // The user specifically requested no negative indicators for these entry point profit rates: 
+                    // So we will always render it as an upward tick (upside potential). 
+                    // To do this, we force Math.abs to guarantee a positive number and always use the red upward arrow.
+                    const color = '#ff4d4d'; // Force red for profit upside 
+                    const arrow = '▲'; 
+                    return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
+                  };
+
                   const renderKISChange = (currentPrice, fallbackBase, kisInfo) => {
                     if (kisInfo) {
                       const signCode = String(kisInfo.sign);
@@ -800,13 +817,13 @@ const App = () => {
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       {stock.latestSignal ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="RSI(2) 기반 1차 지지선">
-                            1차지지: {s && s.result_2 ? `${Math.round(Math.min(s.result_2, curPrice)).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && s && s.result_2 ? renderChange(Math.min(s.result_2, curPrice), curPrice) : null}
+                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="일봉(1D) 5일선 기준 1차 지지선">
+                            1차지지: {t1D && t1D.ema5 > 0 ? `${Math.round(t1D.ema5).toLocaleString()}원` : '-'}
+                            {curPrice > 0 && t1D && t1D.ema5 > 0 ? renderChange(t1D.ema5, curPrice) : null}
                           </span>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="RSI(8) 기반 2차 지지선">
-                            2차지지: {s && s.result_3 ? `${Math.round(Math.min(s.result_3, curPrice)).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && s && s.result_3 ? renderChange(Math.min(s.result_3, curPrice), curPrice) : null}
+                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="일봉(1D) 20일선 기준 2차 지지선">
+                            2차지지: {t1D && t1D.ema20 > 0 ? `${Math.round(t1D.ema20).toLocaleString()}원` : '-'}
+                            {curPrice > 0 && t1D && t1D.ema20 > 0 ? renderChange(t1D.ema20, curPrice) : null}
                           </span>
                         </div>
                       ) : (
@@ -885,9 +902,9 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetPrice = t2H && t2H.bb_upper > 0 ? t2H.bb_upper : 0;
+                          const targetPrice = t1D && t1D.bb_upper > 0 ? t1D.bb_upper : 0;
                           
-                          if (t2H && t2H.ema5 > 0) {
+                          if (t1D && t1D.ema5 > 0) {
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -895,16 +912,16 @@ const App = () => {
                                   {renderKISChange(curPrice, dailyPrevClose, s?.kis_change_data)}
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                                  급등1차: {Math.round(t2H.ema5).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t2H.ema5, dailyPrevClose) : null}
+                                  급등1차: {Math.round(t1D.ema5).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema5) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림1차: {Math.round(t2H.ema20).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t2H.ema20, dailyPrevClose) : null}
+                                  눌림1차: {Math.round(t1D.ema20).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema20) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림2차: {Math.round(t2H.ema60).toLocaleString()}원
-                                  {dailyPrevClose > 0 ? renderChange(t2H.ema60, dailyPrevClose) : null}
+                                  눌림2차: {Math.round(t1D.ema60).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema60) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
                                   1차목표가: {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
