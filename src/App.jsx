@@ -739,8 +739,16 @@ const App = () => {
                     }
                   }
                   
-                  // Extract Daily Open and Prev Close from 1D timeframe if available, else fallback
-                  const dailyPrevClose = t1D?.prev_close || s?.prev_close || 0;
+                  // Extract Daily Open and Prev Close, prioritizing highly-accurate KIS reversed daily closure
+                  let truePrevClose = 0;
+                  if (kisData && curPrice > 0) {
+                    const signCode = String(kisData.sign);
+                    const isUp = signCode === '1' || signCode === '2';
+                    const isDown = signCode === '4' || signCode === '5';
+                    const directionalChange = isUp ? kisData.change : (isDown ? -kisData.change : 0);
+                    truePrevClose = curPrice - directionalChange;
+                  }
+                  const dailyPrevClose = truePrevClose > 0 ? truePrevClose : (t1D?.prev_close || s?.prev_close || 0);
                   const dailyOpen = t1D?.open_price || s?.open_price || 0;
                   
                   // Helper to format percentage with triangle
@@ -756,16 +764,14 @@ const App = () => {
 
                   const renderProfitRate = (target, entry) => {
                     if (!target || !entry) return null;
-                    // For the recommended entry points, we want to show the potential *upside* profit rate
+                    // For the recommended entry points, we want to show the potential upside/downside profit rate
                     // Formula: (Target Price - Entry Price) / Entry Price * 100
                     const pct = ((target - entry) / entry) * 100;
                     if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
                     
-                    // The user specifically requested no negative indicators for these entry point profit rates: 
-                    // So we will always render it as an upward tick (upside potential). 
-                    // To do this, we force Math.abs to guarantee a positive number and always use the red upward arrow.
-                    const color = '#ff4d4d'; // Force red for profit upside 
-                    const arrow = '▲'; 
+                    const isUp = pct > 0;
+                    const color = isUp ? '#ff4d4d' : '#4d94ff'; 
+                    const arrow = isUp ? '▲' : '▼'; 
                     return <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>{arrow} {Math.abs(pct).toFixed(2)}%</span>;
                   };
 
