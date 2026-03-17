@@ -259,9 +259,9 @@ const App = () => {
       header += `## 🔥 [강력 추천] 매수 진입 승인 종목 (RSI 반등 + 거래량 발생 + 양봉)\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1H = tfSigs['1H'];
+        const sig2H = tfSigs['2H'];
         
-        const priceText = (sig1H && sig1H.ema5 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig1H.ema5).toLocaleString()}원, 눌림1차: ${Math.round(sig1H.result_2).toLocaleString()}원, 눌림2차: ${Math.round(sig1H.result_3).toLocaleString()}원, 1차목표가: ${Math.round(sig1H.bb_upper).toLocaleString()}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+        const priceText = (sig2H && sig2H.ema5 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig2H.ema5).toLocaleString()}원, 눌림1차: ${Math.round(sig2H.result_2).toLocaleString()}원, 눌림2차: ${Math.round(sig2H.result_3).toLocaleString()}원, 1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
         header += `- **${s.name}** (${s.code}): ${s.latestSignal.category} / 💡 추천매매(분할매수전략): **${priceText}**\n`;
       });
       header += `\n---\n\n`;
@@ -284,10 +284,10 @@ const App = () => {
       let category = stock.latestSignal ? stock.latestSignal.category : '-';
       if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
       
-      const sig1H = tfSigs['1H'];
+      const sig2H = tfSigs['2H'];
 
-      const entryPrice = (sig1H && sig1H.ema5 > 0) 
-        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig1H.ema5).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1H.result_2).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1H.result_3).toLocaleString()}원 <br/>1차목표가:${Math.round(sig1H.bb_upper).toLocaleString()}원` 
+      const entryPrice = (sig2H && sig2H.ema5 > 0) 
+        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig2H.ema5).toLocaleString()}원 <br/>눌림1차:${Math.round(sig2H.result_2).toLocaleString()}원 <br/>눌림2차:${Math.round(sig2H.result_3).toLocaleString()}원 <br/>1차목표가:${Math.round(sig2H.bb_upper).toLocaleString()}원` 
         : `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원`;
 
       return `| ${stock.name} | ${stock.code} | ${category} | **${entryPrice}** | ${getStatus('1D')} | ${getStatus('1W')} | ${trend} | ${prog} |`;
@@ -323,14 +323,14 @@ const App = () => {
       content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1H = tfSigs['1H'];
+        const sig2H = tfSigs['2H'];
         
         let priceText = "-";
-        if (sig1H && sig1H.ema5 > 0) {
-          const p1 = Math.round(sig1H.ema5).toLocaleString();
-          const p2 = Math.round(sig1H.result_2).toLocaleString();
-          const p3 = Math.round(sig1H.result_3).toLocaleString();
-          const tar = Math.round(sig1H.bb_upper).toLocaleString();
+        if (sig2H && sig2H.ema5 > 0) {
+          const p1 = Math.round(sig2H.ema5).toLocaleString();
+          const p2 = Math.round(sig2H.result_2).toLocaleString();
+          const p3 = Math.round(sig2H.result_3).toLocaleString();
+          const tar = Math.round(sig2H.bb_upper).toLocaleString();
           priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${tar}원`;
         } else {
           priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
@@ -359,13 +359,13 @@ const App = () => {
       let category = stock.latestSignal ? stock.latestSignal.category : '-';
       if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
       
-      const sig1H = tfSigs['1H'];
+      const sig2H = tfSigs['2H'];
       let priceText = "-";
-      if (sig1H && sig1H.ema5 > 0) {
-         const p1 = Math.round(sig1H.ema5).toLocaleString();
-         const p2 = Math.round(sig1H.result_2).toLocaleString();
-         const p3 = Math.round(sig1H.result_3).toLocaleString();
-         const pt = Math.round(sig1H.bb_upper).toLocaleString();
+      if (sig2H && sig2H.ema5 > 0) {
+         const p1 = Math.round(sig2H.ema5).toLocaleString();
+         const p2 = Math.round(sig2H.result_2).toLocaleString();
+         const p3 = Math.round(sig2H.result_3).toLocaleString();
+         const pt = Math.round(sig2H.bb_upper).toLocaleString();
          priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${pt}원`;
       }
 
@@ -835,13 +835,13 @@ const App = () => {
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       {stock.latestSignal ? (
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="1시간봉(1H) RSI 패턴 기준 1차 지지선">
-                            1차지지: {t1H && t1H.result_2 > 0 ? `${Math.round(t1H.result_2).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && t1H && t1H.result_2 > 0 ? renderChange(t1H.result_2, curPrice) : null}
+                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="2시간봉(2H) RSI 패턴 기준 1차 지지선">
+                            1차지지: {t2H && t2H.result_2 > 0 ? `${Math.round(t2H.result_2).toLocaleString()}원` : '-'}
+                            {curPrice > 0 && t2H && t2H.result_2 > 0 ? renderChange(t2H.result_2, curPrice) : null}
                           </span>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="1시간봉(1H) RSI 패턴 기준 2차 지지선">
-                            2차지지: {t1H && t1H.result_3 > 0 ? `${Math.round(t1H.result_3).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && t1H && t1H.result_3 > 0 ? renderChange(t1H.result_3, curPrice) : null}
+                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="2시간봉(2H) RSI 패턴 기준 2차 지지선">
+                            2차지지: {t2H && t2H.result_3 > 0 ? `${Math.round(t2H.result_3).toLocaleString()}원` : '-'}
+                            {curPrice > 0 && t2H && t2H.result_3 > 0 ? renderChange(t2H.result_3, curPrice) : null}
                           </span>
                         </div>
                       ) : (
@@ -920,8 +920,8 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetData = (t1H && t1H.ema5 > 0) ? t1H : (t2H && t2H.ema5 > 0 ? t2H : (t1D && t1D.ema5 > 0 ? t1D : null));
-                          const tfLabel = (t1H && t1H.ema5 > 0) ? "1H" : ((t2H && t2H.ema5 > 0) ? "2H" : "1D");
+                          const targetData = (t2H && t2H.ema5 > 0) ? t2H : (t1D && t1D.ema5 > 0 ? t1D : null);
+                          const tfLabel = (t2H && t2H.ema5 > 0) ? "2H" : "1D";
                           const targetPrice = targetData && targetData.bb_upper > 0 ? targetData.bb_upper : 0;
                           const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
                           
