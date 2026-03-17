@@ -475,11 +475,29 @@ app.post('/api/auto-sync', async (req, res) => {
                 const currentLow = parseInt(kisData.stck_lwpr);
                 const currentOpen = parseInt(kisData.stck_oprc);
                 const currentVolume = parseInt(kisData.acml_vol);
+                const tradeAmount = parseInt(kisData.acml_tr_pbmn);
                 
+                let foreignBuy = '-';
+                let instBuy = '-';
+                try {
+                    const naverUrl = `https://m.stock.naver.com/api/stock/${stock.code}/integration`;
+                    const naverRes = await axios.get(naverUrl, { timeout: 3000 });
+                    if (naverRes.data && naverRes.data.dealTrendInfos && naverRes.data.dealTrendInfos.length > 0) {
+                        const todayTrend = naverRes.data.dealTrendInfos[0];
+                        foreignBuy = todayTrend.foreignerPureBuyQuant || '-';
+                        instBuy = todayTrend.organPureBuyQuant || '-';
+                    }
+                } catch(e) {
+                    // silently fallback if Naver API fails to keep sync running
+                }
+
                 chartData.kis_change_data = {
                     sign: kisData.prdy_vrss_sign,
                     change: parseInt(kisData.prdy_vrss),
-                    rate: parseFloat(kisData.prdy_ctrt)
+                    rate: parseFloat(kisData.prdy_ctrt),
+                    trade_amount: tradeAmount,
+                    foreign_buy: foreignBuy,
+                    inst_buy: instBuy
                 };
 
                 const lastIdx = chartData.close.length - 1;

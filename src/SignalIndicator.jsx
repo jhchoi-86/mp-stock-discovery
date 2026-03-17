@@ -13,7 +13,8 @@ const SignalIndicator = ({ signal }) => {
     result_2,
     result_3,
     bb_upper,
-    category
+    category,
+    kis_change_data
   } = signal;
 
   // 1. 신호 강도 계산
@@ -89,6 +90,28 @@ const SignalIndicator = ({ signal }) => {
           <span>카테고리: <strong>{category}</strong></span>
         </div>
       </div>
+
+      {kis_change_data && (
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          fontSize: '0.75rem', 
+          color: '#aaa', 
+          borderTop: '1px dashed rgba(255,255,255,0.1)', 
+          marginTop: '0.5rem', 
+          paddingTop: '0.5rem' 
+        }}>
+          <div>
+            <span style={{ marginRight: '12px' }}>
+              거래대금(백만): <strong>{kis_change_data.trade_amount ? Number(kis_change_data.trade_amount).toLocaleString() : '-'}</strong>
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: '12px' }}>
+            <span>외국인: <strong style={{ color: String(kis_change_data.foreign_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.foreign_buy}</strong></span>
+            <span>기관: <strong style={{ color: String(kis_change_data.inst_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.inst_buy}</strong></span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
