@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-// Get base URL from environment or fallback to local proxy/server
-const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3001';
+// Get base URL from environment or detect if we are in local development
+const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const baseURL = import.meta.env.VITE_API_BASE_URL || (isDevelopment ? 'http://localhost:3001' : '');
 
 // In-memory token storage (more secure than localStorage for XSS protection)
 let accessToken = null;
