@@ -60,9 +60,23 @@ const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
 let kisAccessToken = null;
 let kisTokenExpiry = 0;
 
+const TOKEN_DIR = path.join(__dirname, 'data');
+const KIS_TOKEN_FILE = path.join(TOKEN_DIR, 'kis_token.json');
+
 async function getKisAccessToken() {
     if (!KIS_APP_KEY || !KIS_APP_SECRET) {
         throw new Error("KIS API Keys are missing in .env");
+    }
+
+    // Load from file if not in memory
+    if (!kisAccessToken && fs.existsSync(KIS_TOKEN_FILE)) {
+        try {
+            const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
+            kisAccessToken = saved.token;
+            kisTokenExpiry = saved.expiry;
+        } catch (e) {
+            console.error("[KIS API] Failed to read token cache file:", e);
+        }
     }
 
     // Reuse token if valid (buffer of 1 hour)
@@ -81,7 +95,17 @@ async function getKisAccessToken() {
         kisAccessToken = response.data.access_token;
         // Token expires in 86400 seconds (24 hours). Store expiry as timestamp.
         kisTokenExpiry = Date.now() + (response.data.expires_in * 1000);
-        console.log(`[KIS API] Token successfully issued. Expires in ${response.data.expires_in}s`);
+        
+        // Save to file to survive PM2 restarts
+        if (!fs.existsSync(TOKEN_DIR)) {
+            fs.mkdirSync(TOKEN_DIR);
+        }
+        fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({
+            token: kisAccessToken,
+            expiry: kisTokenExpiry
+        }));
+        
+        console.log(`[KIS API] Token successfully issued and cached. Expires in ${response.data.expires_in}s`);
         
         return kisAccessToken;
     } catch (e) {
