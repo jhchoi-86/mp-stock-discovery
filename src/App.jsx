@@ -259,9 +259,9 @@ const App = () => {
       header += `## 🔥 [강력 추천] 매수 진입 승인 종목 (RSI 반등 + 거래량 발생 + 양봉)\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1D = tfSigs['1D'];
+        const sig2H = tfSigs['2H'];
         
-        const priceText = (sig1D && sig1D.ema5 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig1D.ema5).toLocaleString()}원, 눌림1차: ${Math.round(sig1D.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig1D.ema60).toLocaleString()}원, 1차목표가: ${Math.round(sig1D.bb_upper).toLocaleString()}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+        const priceText = (sig2H && sig2H.ema5 > 0) ? `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 급등1차: ${Math.round(sig2H.ema5).toLocaleString()}원, 눌림1차: ${Math.round(sig2H.ema20).toLocaleString()}원, 눌림2차: ${Math.round(sig2H.ema60).toLocaleString()}원, 1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원` : `현재가: ${s.latestSignal?.current_price ? Math.round(s.latestSignal.current_price).toLocaleString() : '-'}원 / 타점: ${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
         header += `- **${s.name}** (${s.code}): ${s.latestSignal.category} / 💡 추천매매(분할매수전략): **${priceText}**\n`;
       });
       header += `\n---\n\n`;
@@ -284,10 +284,10 @@ const App = () => {
       let category = stock.latestSignal ? stock.latestSignal.category : '-';
       if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
       
-      const sig1D = tfSigs['1D'];
+      const sig2H = tfSigs['2H'];
 
-      const entryPrice = (sig1D && sig1D.ema5 > 0) 
-        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig1D.ema5).toLocaleString()}원 <br/>눌림1차:${Math.round(sig1D.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig1D.ema60).toLocaleString()}원 <br/>1차목표가:${Math.round(sig1D.bb_upper).toLocaleString()}원` 
+      const entryPrice = (sig2H && sig2H.ema5 > 0) 
+        ? `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원 <br/>급등1차:${Math.round(sig2H.ema5).toLocaleString()}원 <br/>눌림1차:${Math.round(sig2H.ema20).toLocaleString()}원 <br/>눌림2차:${Math.round(sig2H.ema60).toLocaleString()}원 <br/>1차목표가:${Math.round(sig2H.bb_upper).toLocaleString()}원` 
         : `현재가:${stock.latestSignal?.current_price ? Math.round(stock.latestSignal.current_price).toLocaleString() : '-'}원`;
 
       return `| ${stock.name} | ${stock.code} | ${category} | **${entryPrice}** | ${getStatus('1D')} | ${getStatus('1W')} | ${trend} | ${prog} |`;
@@ -323,14 +323,14 @@ const App = () => {
       content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
       approvedStocks.forEach(s => {
         const tfSigs = getSignalsForStock(s.code);
-        const sig1D = tfSigs['1D'];
+        const sig2H = tfSigs['2H'];
         
         let priceText = "-";
-        if (sig1D && sig1D.ema5 > 0) {
-          const p1 = Math.round(sig1D.ema5).toLocaleString();
-          const p2 = Math.round(sig1D.ema20).toLocaleString();
-          const p3 = Math.round(sig1D.ema60).toLocaleString();
-          const tar = Math.round(sig1D.bb_upper).toLocaleString();
+        if (sig2H && sig2H.ema5 > 0) {
+          const p1 = Math.round(sig2H.ema5).toLocaleString();
+          const p2 = Math.round(sig2H.ema20).toLocaleString();
+          const p3 = Math.round(sig2H.ema60).toLocaleString();
+          const tar = Math.round(sig2H.bb_upper).toLocaleString();
           priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${tar}원`;
         } else {
           priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
@@ -779,7 +779,7 @@ const App = () => {
                       const absRate = Math.abs(parseFloat(kisInfo.rate));
                       return (
                         <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>
-                          {arrow} {kisInfo.change.toLocaleString()} ({absRate.toFixed(2)}%)
+                          {arrow} {absRate.toFixed(2)}%
                         </span>
                       );
                     }
@@ -914,26 +914,28 @@ const App = () => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetPrice = t1D && t1D.bb_upper > 0 ? t1D.bb_upper : 0;
+                          const targetPrice = t2H && t2H.bb_upper > 0 ? t2H.bb_upper : 0;
+                          const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
                           
-                          if (t1D && t1D.ema5 > 0) {
+                          if (t2H && t2H.ema5 > 0) {
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                   현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
-                                  {renderKISChange(curPrice, dailyPrevClose, s?.kis_change_data)}
+                                  {renderKISChange(curPrice, dailyPrevClose, kisData)}
+                                  {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                                  급등1차: {Math.round(t1D.ema5).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema5) : null}
+                                  급등1차: {Math.round(t2H.ema5).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema5) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림1차: {Math.round(t1D.ema20).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema20) : null}
+                                  눌림1차: {Math.round(t2H.ema20).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema20) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  눌림2차: {Math.round(t1D.ema60).toLocaleString()}원
-                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t1D.ema60) : null}
+                                  눌림2차: {Math.round(t2H.ema60).toLocaleString()}원
+                                  {targetPrice > 0 ? renderProfitRate(targetPrice, t2H.ema60) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
                                   1차목표가: {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
@@ -946,7 +948,8 @@ const App = () => {
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                   현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
-                                  {renderKISChange(curPrice, dailyPrevClose, s?.kis_change_data)}
+                                  {renderKISChange(curPrice, dailyPrevClose, kisData)}
+                                  {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
                                 <span style={{ color: 'var(--text-muted)' }}>
                                   타점: {s ? Math.round(s.entry_price || s.result_2).toLocaleString() : '-'}원
