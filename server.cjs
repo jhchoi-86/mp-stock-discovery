@@ -468,11 +468,32 @@ app.post('/api/auto-sync', async (req, res) => {
 
                 const lastIdx = chartData.close.length - 1;
                 if (lastIdx >= 0 && currentPrice) {
-                    chartData.open[lastIdx] = currentOpen;
-                    chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
-                    chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
-                    chartData.close[lastIdx] = currentPrice;
-                    chartData.volume[lastIdx] = currentVolume;
+                    if (tf === '1D') {
+                        const lastDate = new Date(chartData.time[lastIdx] * 1000);
+                        const isToday = lastDate.toDateString() === new Date().toDateString();
+                        
+                        if (isToday) {
+                            chartData.open[lastIdx] = currentOpen;
+                            chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
+                            chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
+                            chartData.close[lastIdx] = currentPrice;
+                            chartData.volume[lastIdx] = currentVolume;
+                        } else {
+                            // Yahoo is a day behind; push today's KIS data as a new candle
+                            chartData.open.push(currentOpen);
+                            chartData.high.push(currentHigh);
+                            chartData.low.push(currentLow);
+                            chartData.close.push(currentPrice);
+                            chartData.volume.push(currentVolume);
+                            chartData.time.push(Math.floor(Date.now() / 1000));
+                        }
+                    } else {
+                        // For Intraday & Weekly, appending Daily open/vol corrupts the candle!
+                        // Only safely extend the current developing candle's price reach.
+                        chartData.close[lastIdx] = currentPrice;
+                        chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentPrice);
+                        chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentPrice);
+                    }
                 }
             } catch(e) {
                 // If it fails, silent fallback to yahoo's tail
