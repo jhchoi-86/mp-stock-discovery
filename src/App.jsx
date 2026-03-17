@@ -684,24 +684,23 @@ const App = () => {
         />
         
         {user?.role === 'ADMIN' && (
-          <>
-            <button 
-              onClick={handleReset}
-              className="card" 
-              style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <RotateCcw size={18} /> 초기화 리셋
-            </button>
-            <button 
-              onClick={handleAutoSync}
-              disabled={isSyncing}
-              className="card" 
-              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
-            </button>
-          </>
+          <button 
+            onClick={handleReset}
+            className="card" 
+            style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <RotateCcw size={18} /> 초기화 리셋
+          </button>
         )}
+        
+        <button 
+          onClick={handleAutoSync}
+          disabled={isSyncing}
+          className="card" 
+          style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+        >
+          <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
+        </button>
         <button 
           onClick={handleDownloadReport}
           className="card" 
