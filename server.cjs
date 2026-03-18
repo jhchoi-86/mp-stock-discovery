@@ -674,4 +674,19 @@ app.post('/api/auto-sync', async (req, res) => {
 
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    // PM2 워커 준비 완료 신호 전송 (무중단 배포를 위한 listen_timeout 대기 해제)
+    if (process.send) {
+        process.send('ready');
+        console.log(`[PM2] Sent 'ready' signal from worker ${process.env.NODE_APP_INSTANCE || 'unknown'}`);
+    }
 });
+
+// --- [Background Tasks / Scheduler Guard] ---
+// PM2 클러스터 모드(instances: 'max') 적용 시 코어 수만큼 백그라운드 스케줄러가
+// 중복 실행되는 것을 방지하기 위해, 오직 0번 워커(Primary)에서만 동작하도록 제한합니다.
+const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
+if (isPrimaryWorker) {
+    console.log('[Scheduler] Primary worker initialized scheduling tasks.');
+    // 향후 node-cron 이나 setInterval 로직은 반드시 이 블록 내부에 작성하세요.
+    // 예: setInterval(() => { console.log('This runs once!'); }, 60000);
+}
