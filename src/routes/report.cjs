@@ -48,6 +48,12 @@ router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), asy
         },
         select: { id: true, email: true, telegramId: true }
       });
+      
+      // Also broadcast to the Official Shared Group (e.g. Mp-members)
+      const groupId = (process.env.TELEGRAM_GROUP_ID || '').trim();
+      if (groupId && !targetUsers.find(u => u.telegramId === groupId)) {
+        targetUsers.push({ id: 'GLOBAL_GROUP', email: 'MP 공유방 전체전송', telegramId: groupId });
+      }
     } else {
       // PRO_USER: Send only to their personal registered Telegram ID
       const selfUser = await prisma.user.findUnique({
