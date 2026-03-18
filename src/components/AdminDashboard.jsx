@@ -87,6 +87,17 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleDeleteUser = async (targetUser) => {
+    if (!window.confirm(`정말로 이 회원을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.\n\n대상: ${targetUser.name} (${targetUser.email})`)) return;
+    try {
+      await axiosClient.delete(`/api/admin/users/${targetUser.id}`);
+      setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+      alert(`[완료] ${targetUser.name} 유저가 성공적으로 영구 삭제되었습니다.`);
+    } catch (err) {
+      alert('유저 삭제에 실패했습니다.');
+    }
+  };
+
   const filteredUsers = users.filter(u => 
     u.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
@@ -187,6 +198,7 @@ const AdminDashboard = () => {
             <tr>
               <th style={thStyle}>이름</th>
               <th style={thStyle}>이메일</th>
+              <th style={thStyle}>핸드폰 번호</th>
               <th style={thStyle}>가입일</th>
               <th style={thStyle}>권한 등급</th>
               <th style={thStyle}>계정 상태</th>
@@ -196,7 +208,7 @@ const AdminDashboard = () => {
           <tbody>
             {filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>가입된 유저가 없습니다.</td>
+                <td colSpan="7" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>가입된 유저가 없습니다.</td>
               </tr>
             ) : (
               filteredUsers.map(u => {
@@ -207,6 +219,7 @@ const AdminDashboard = () => {
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', transition: 'background-color 0.2s', ':hover': { backgroundColor: 'rgba(255,255,255,0.02)' } }}>
                     <td style={tdStyle}>{u.name}</td>
                     <td style={tdStyle}>{u.email}</td>
+                    <td style={tdStyle}>{u.phone || '미등록'}</td>
                     <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td style={tdStyle}>{renderRoleBadge(u.role)}</td>
                     <td style={tdStyle}>{renderStatusBadge(u.status)}</td>
@@ -257,6 +270,22 @@ const AdminDashboard = () => {
                           }}
                         >
                           초기화
+                        </button>
+                        
+                        <button 
+                          disabled={isSelf || isAdmin}
+                          onClick={() => handleDeleteUser(u)}
+                          title="해당 회원을 영구 삭제합니다"
+                          style={{
+                            ...actionButtonStyle,
+                            color: '#ef4444',
+                            background: 'rgba(239, 68, 68, 0.1)',
+                            border: '1px solid rgba(239, 68, 68, 0.5)',
+                            opacity: isSelf || isAdmin ? 0.3 : 1,
+                            cursor: isSelf || isAdmin ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          <Trash2 size={16} /> 삭제
                         </button>
                       </div>
                     </td>

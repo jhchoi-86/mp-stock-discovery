@@ -20,6 +20,7 @@ router.get('/users', async (req, res) => {
       select: {
         id: true,
         email: true,
+        phone: true,
         name: true,
         role: true,
         status: true,
@@ -137,6 +138,47 @@ router.put('/users/:id/reset-password', async (req, res) => {
   } catch (error) {
     console.error('[Admin PUT /users/:id/reset-password Error]', error);
     res.status(500).json({ error: '비밀번호 초기화 중 오류가 발생했습니다.' });
+  }
+});
+
+// D. 유저 삭제 (DELETE /api/admin/users/:id)
+router.delete('/users/:id', async (req, res) => {
+  try {
+    const targetUserId = req.params.id;
+    const adminId = req.user.userId;
+
+    // Verify Target User Exists
+    const targetUser = await prisma.user.findUnique({ where: { id: targetUserId }});
+    if (!targetUser) {
+      return res.status(404).json({ error: 'Target user not found.' });
+    }
+
+    // Prevent self-deletion
+    if (targetUserId === adminId) {
+      return res.status(400).json({ error: 'Cannot delete own admin account.' });
+    }
+
+    // Execute Prisma Transaction safely
+    await prisma.$transaction([
+      // 1. Delete user
+      prisma.user.delete({
+        where: { id: targetUserId }
+      }),
+      // 2. Insert Audit Log
+      prisma.auditLog.create({
+        data: {
+          adminId: adminId,
+          action: 'DELETE_USER',
+          details: { deletedUserId: targetUserId, email: targetUser.email, name: targetUser.name }
+        }
+      })
+    ]);
+
+    res.status(200).json({ message: 'User deleted successfully.' });
+
+  } catch (error) {
+    console.error('[Admin DELETE /users/:id Error]', error);
+    res.status(500).json({ error: 'Internal server error during user deletion.' });
   }
 });
 
