@@ -416,6 +416,9 @@ app.post('/api/auto-sync', async (req, res) => {
     // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
     const fetchHybridHistory = async (stock) => {
         let days = 60;
+        if (tf === '5M') days = 5;
+        if (tf === '15M') days = 15;
+        if (tf === '30M') days = 30;
         if (tf === '1D') days = 365;
         if (tf === '1W') days = 1000;
 
