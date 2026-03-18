@@ -123,9 +123,9 @@ const reportRouter = require('./src/routes/report.cjs');
 // Trust proxies if behind AWS ELB/NGINX
 app.set('trust proxy', 1);
 
-const CLIENT_URL = process.env.CLIENT_URL || 'https://mp-stock.duckdns.org';
+const CLIENT_URL = process.env.CLIENT_URL || 'https://mpstock.co.kr';
 app.use(cors({
-  origin: [CLIENT_URL, 'https://mp-stock.duckdns.org', 'http://localhost:5173'], // Allow client domains
+  origin: [CLIENT_URL, 'https://mpstock.co.kr', 'https://www.mpstock.co.kr', 'http://localhost:5173'], // Allow client domains
   credentials: true
 }));
 
