@@ -14,7 +14,7 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
-        CLIENT_URL: 'http://13.211.128.167' // Update this environment array as commanded
+        CLIENT_URL: 'https://mp-stock.duckdns.org' // Update this environment array as commanded
       }
     }
   ]

@@ -34,7 +34,7 @@ const App = () => {
 
   const fetchData = async () => {
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mp-stock.duckdns.org`;
       const [stocksRes, signalsRes] = await Promise.all([
         fetch(`${API_URL}/api/stocks`),
         fetch(`${API_URL}/api/signals`)
@@ -80,7 +80,7 @@ const App = () => {
     if (!confirm('정말 모든 분석 데이터를 초기화하시겠습니까? (복구할 수 없습니다)')) return;
     
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mp-stock.duckdns.org`;
       const response = await fetch(`${API_URL}/api/reset`, {
         method: 'POST'
       });
@@ -102,7 +102,7 @@ const App = () => {
     
     setIsSyncing(true);
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `http://13.211.128.167:3001`;
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mp-stock.duckdns.org`;
       const response = await fetch(`${API_URL}/api/auto-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -138,7 +138,7 @@ const App = () => {
     fetchData(); // Initial data load
     
     // Setup Server-Sent Events (SSE) for instant real-time updates
-    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : import.meta.env.VITE_API_BASE_URL || `http://13.211.128.167:3001`;
+    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : import.meta.env.VITE_API_BASE_URL || `https://mp-stock.duckdns.org`;
     const eventSource = new EventSource(`${API_URL}/api/stream`);
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);

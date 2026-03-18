@@ -103,7 +103,7 @@ router.post('/login', async (req, res) => {
     // Set HttpOnly Cookie for Refresh Token
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: false, // Must be false for plain HTTP (like 13.211.128.167)
+      secure: true, // Switched to true for HTTPS deployment
       sameSite: 'lax', // Must be lax (not none) for non-Secure HTTP contexts
       path: '/api/auth', // Broaden path slightly so logout and refresh can both read it
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -143,7 +143,7 @@ router.post('/logout', async (req, res) => {
     // Clear Cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: 'lax',
       path: '/api/auth'
     });
@@ -214,7 +214,7 @@ router.post('/refresh', async (req, res) => {
     // Set NEW HttpOnly Cookie
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: false,
+      secure: true,
       sameSite: 'lax',
       path: '/api/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
