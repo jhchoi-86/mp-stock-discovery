@@ -1,5 +1,9 @@
 const axios = require('axios');
+const https = require('https');
 require('dotenv').config();
+
+// Force IPv4 to prevent Node.js on EC2 hanging on unreachable IPv6 routes
+const httpsAgent = new https.Agent({ family: 4 });
 
 /**
  * Sends a message to a specific Telegram Chat ID.
@@ -25,6 +29,8 @@ const sendMessage = async (chatId, message) => {
       chat_id: chatId,
       text: message,
       parse_mode: 'HTML' // Allow simple bolding/links in messages
+    }, {
+      httpsAgent
     });
     
     if (response.data && response.data.ok) {
