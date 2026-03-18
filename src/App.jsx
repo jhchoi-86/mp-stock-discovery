@@ -18,14 +18,27 @@ const App = () => {
   const [signals, setSignals] = useState([]);
   const [lastUpdate, setLastUpdate] = useState(new Date());
   const [searchQuery, setSearchQuery] = useState("");
-  const [marketFilter, setMarketFilter] = useState("ALL");
-  const [categoryFilter, setCategoryFilter] = useState('ALL');
-  const [showAll, setShowAll] = useState(false);
+  const [marketFilter, setMarketFilter] = useState(() => localStorage.getItem('mp_marketFilter') || "ALL");
+  const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('mp_categoryFilter') || 'ALL');
+  const [showAll, setShowAll] = useState(() => localStorage.getItem('mp_showAll') === 'true');
   const [showOnlyApproved, setShowOnlyApproved] = useState(false);
   const [showOnlyTopSectors, setShowOnlyTopSectors] = useState(false);
-  const [uploadTimeframe, setUploadTimeframe] = useState("1D");
+  const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
   const [isSyncing, setIsSyncing] = useState(false);
-  const [selectedStocks, setSelectedStocks] = useState(new Set());
+  const [selectedStocks, setSelectedStocks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mp_selectedStocks');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  useEffect(() => { localStorage.setItem('mp_marketFilter', marketFilter); }, [marketFilter]);
+  useEffect(() => { localStorage.setItem('mp_categoryFilter', categoryFilter); }, [categoryFilter]);
+  useEffect(() => { localStorage.setItem('mp_showAll', showAll); }, [showAll]);
+  useEffect(() => { localStorage.setItem('mp_uploadTimeframe', uploadTimeframe); }, [uploadTimeframe]);
+  useEffect(() => { localStorage.setItem('mp_selectedStocks', JSON.stringify([...selectedStocks])); }, [selectedStocks]);
   const fileInputRef = useRef(null);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
