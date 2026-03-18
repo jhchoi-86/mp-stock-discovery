@@ -7,7 +7,7 @@ const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 
 const router = express.Router();
 
-router.post('/', authMiddleware, guardMiddleware('ADMIN', 'BROADCAST_REPORT'), async (req, res) => {
+router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), async (req, res) => {
   try {
     const { reportText, recommendations } = req.body;
     if (!reportText) {
@@ -36,22 +36,31 @@ router.post('/', authMiddleware, guardMiddleware('ADMIN', 'BROADCAST_REPORT'), a
       ] : [])
     ]);
 
-    // Query active PRO_USER and ADMIN that have telegramId
-    const targetUsers = await prisma.user.findMany({
-      where: {
-        role: { in: ['PRO_USER', 'ADMIN'] },
-        status: 'ACTIVE',
-        telegramId: { not: null, not: '' }
-      },
-      select: {
-        id: true,
-        email: true,
-        telegramId: true
+    // Query targets based on User Role
+    let targetUsers = [];
+    if (req.user.role === 'ADMIN') {
+      // ADMIN: Broadcast to ALL active PRO and ADMIN users
+      targetUsers = await prisma.user.findMany({
+        where: {
+          role: { in: ['PRO_USER', 'ADMIN'] },
+          status: 'ACTIVE',
+          telegramId: { not: null, not: '' }
+        },
+        select: { id: true, email: true, telegramId: true }
+      });
+    } else {
+      // PRO_USER: Send only to their personal registered Telegram ID
+      const selfUser = await prisma.user.findUnique({
+        where: { id: req.user.userId },
+        select: { id: true, email: true, telegramId: true }
+      });
+      if (selfUser && selfUser.telegramId) {
+        targetUsers = [selfUser];
       }
-    });
+    }
 
     if (targetUsers.length === 0) {
-      return res.status(200).json({ success: true, message: 'DB저장 성공. 단, 텔레그램 발송 대상이 없습니다.', sentCount: 0 });
+      return res.status(200).json({ success: true, message: 'DB저장 성공. 단, 연동된 텔레그램 ID가 없습니다.', sentCount: 0 });
     }
 
     // Concurrent Dispatch using Promise.allSettled
@@ -61,14 +70,16 @@ router.post('/', authMiddleware, guardMiddleware('ADMIN', 'BROADCAST_REPORT'), a
     // Count successful requests based on the telegramService return (true/false boolean)
     const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
 
-    // Log the Admin Broadcast Action
-    await prisma.auditLog.create({
-      data: {
-        adminId: req.user.userId,
-        action: 'BROADCAST_REPORT',
-        details: { sentCount: successCount, totalTargeted: targetUsers.length, reportId: savedReport.id }
-      }
-    });
+    // Log the Admin Broadcast Action (Only for admins to prevent cluttering AuditLog with personal sends, or log differently)
+    if (req.user.role === 'ADMIN') {
+      await prisma.auditLog.create({
+        data: {
+          adminId: req.user.userId,
+          action: 'BROADCAST_REPORT',
+          details: { sentCount: successCount, totalTargeted: targetUsers.length, reportId: savedReport.id }
+        }
+      });
+    }
 
     res.status(200).json({ 
       success: true, 

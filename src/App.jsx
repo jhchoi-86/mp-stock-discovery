@@ -716,14 +716,16 @@ const App = () => {
         >
           <ExternalLink size={18} /> TV 관심종목(50점+)
         </button>
-        <button 
-          onClick={handleSendToTelegram}
-          disabled={isSendingTg}
-          className="card" 
-          style={{ padding: '0.75rem 1.5rem', background: isSendingTg ? 'rgba(255,255,255,0.05)' : '#0088cc', border: 'none', color: '#fff', cursor: isSendingTg ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <Share2 size={18} className={isSendingTg ? "spin" : ""} /> {isSendingTg ? "전송중..." : "텔레그램 발송"}
-        </button>
+        {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+          <button 
+            onClick={handleSendToTelegram}
+            disabled={isSendingTg}
+            className="card" 
+            style={{ padding: '0.75rem 1.5rem', background: isSendingTg ? 'rgba(255,255,255,0.05)' : '#0088cc', border: 'none', color: '#fff', cursor: isSendingTg ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Share2 size={18} className={isSendingTg ? "spin" : ""} /> {isSendingTg ? "전송중..." : "텔레그램 발송"}
+          </button>
+        )}
       </div>
 
       <div className="card fade-in" style={{ animationDelay: '0.1s' }}>
