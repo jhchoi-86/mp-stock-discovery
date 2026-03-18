@@ -1,9 +1,6 @@
 const axios = require('axios');
 require('dotenv').config();
 
-const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
-
 /**
  * Sends a message to a specific Telegram Chat ID.
  * Wraps error handling so the main process never crashes from a Bot ban/throttle.
@@ -13,10 +10,15 @@ const TELEGRAM_API_URL = `https://api.telegram.org/bot${BOT_TOKEN}`;
  * @returns {boolean} - Success boolean
  */
 const sendMessage = async (chatId, message) => {
-  if (!BOT_TOKEN || !chatId) {
-    console.error('[TelegramService] Missing BOT_TOKEN or ChatId. Cannot send message.');
+  // Dynamically load and explicitly trim to fix Windows (\r) line ending issues
+  const token = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
+  
+  if (!token || !chatId) {
+    console.error('[TelegramService] Missing TELEGRAM_BOT_TOKEN or ChatId. Cannot send message.');
     return false;
   }
+
+  const TELEGRAM_API_URL = `https://api.telegram.org/bot${token}`;
 
   try {
     const response = await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
@@ -33,9 +35,10 @@ const sendMessage = async (chatId, message) => {
   } catch (error) {
     if (error.response) {
       // User blocked the bot, ID invalid, or Telegram API Issue
-      console.error(`[TelegramService] HTTP Error sending to ${chatId}: ${error.response.data.description || error.message}`);
+      console.error(`[TelegramService] HTTP Error sending to ${chatId}: ${error.response.data?.description || error.message}`);
     } else {
-      console.error(`[TelegramService] Network Error sending to ${chatId}: ${error.message}`);
+      // Log the full error to safely catch hidden axios/network bugs
+      console.error(`[TelegramService] Network Error sending to ${chatId}:`, error.message || error);
     }
     return false;
   }
