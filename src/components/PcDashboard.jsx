@@ -415,13 +415,9 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                        )}
                        </div>
                     </td>
-                    <td style={{ padding: '0.4rem 0.2rem' }}>
-                      <div style={{
-                        background: stock.total_score >= 80 ? 'var(--accent)' : (stock.total_score >= 50 ? 'var(--primary)' : 'rgba(255,255,255,0.05)'),
-                        color: stock.total_score >= 50 ? '#fff' : 'rgba(255,255,255,0.4)',
-                        padding: '4px 6px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem', textAlign: 'center', minWidth: '32px'
-                      }}>
-                        {stock.total_score}
+                    <td style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }}>
+                      <div style={{ display: 'inline-block', color: '#FFD700', fontSize: '1.1rem', letterSpacing: '1px', textShadow: '0 0 2px rgba(0,0,0,0.5)' }} title={`${stock.total_score || 0}점`}>
+                        {'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}
                       </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
@@ -575,7 +571,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   {stock.latestSignal && (
                     <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
                       <td colSpan="9" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
-                        <SignalIndicator signal={stock.latestSignal} />
+                        <SignalIndicator signal={stock.latestSignal} totalScore={stock.total_score} />
                       </td>
                     </tr>
                   )}

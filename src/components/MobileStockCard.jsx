@@ -111,8 +111,8 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             <div style={{ background: catBg, color: catColor, padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
               {categoryLabel}
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
-              점수: {stock.total_score}
+            <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }} title={`${stock.total_score || 0}점`}>
+              점수: <span style={{ color: '#FFD700', letterSpacing: '1px', marginLeft: '4px' }}>{'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}</span>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
               세력: {Math.round(s?.adx || 0)}
@@ -159,7 +159,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
       {/* 3. Accordion Content (Signal Indicator) */}
       {isExpanded && s && (
         <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.3)' }} onClick={(e) => e.stopPropagation()}>
-          <SignalIndicator signal={s} />
+          <SignalIndicator signal={s} totalScore={stock.total_score} />
         </div>
       )}
     </div>
