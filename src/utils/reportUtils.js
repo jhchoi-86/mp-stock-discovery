@@ -81,8 +81,13 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
       const tfSigs = s.timeframeStatus || {};
       const sig2H = tfSigs['2H'];
       
-      const curPrice = s.kis_data?.stck_prpr ? Number(s.kis_data.stck_prpr) : (s.close_price || s.close || 0);
-      const curChange = s.kis_data?.prdy_ctrt ? Number(s.kis_data.prdy_ctrt) : (s.change_rate || 0);
+      const curPrice = s.latestSignal?.current_price || s.latestSignal?.entry_price || 0;
+      let curChange = 0;
+      if (s.latestSignal?.kis_change_data) {
+        const kd = s.latestSignal.kis_change_data;
+        const isUp = ['1', '2', '3'].includes(String(kd.sign));
+        curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
+      }
       const score = s.total_score || 0;
       const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
       
@@ -136,8 +141,13 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
     let category = stock.latestSignal ? stock.latestSignal.category : '-';
     if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
     
-    const curPrice = stock.kis_data?.stck_prpr ? Number(stock.kis_data.stck_prpr) : (stock.close_price || stock.close || 0);
-    const curChange = stock.kis_data?.prdy_ctrt ? Number(stock.kis_data.prdy_ctrt) : (stock.change_rate || 0);
+    const curPrice = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
+    let curChange = 0;
+    if (stock.latestSignal?.kis_change_data) {
+      const kd = stock.latestSignal.kis_change_data;
+      const isUp = ['1', '2', '3'].includes(String(kd.sign));
+      curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
+    }
     const score = stock.total_score || 0;
     const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
 
