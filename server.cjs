@@ -41,7 +41,8 @@ async function sendTelegramAlert(signal, stockName) {
                  `- 성향: ${signal.category}\n` +
                  `- 권장 진입가: ${priceText}\n` +
                  `- 타임프레임: ${signal.timeframe}\n` +
-                 `- 차트링크: https://www.tradingview.com/chart/?symbol=KRX:${signal.code}`;
+                 `- 차트링크: https://www.tradingview.com/chart/?symbol=KRX:${signal.code}\n\n` +
+                 `⚠️ 본 알림은 시스템에 의한 단순 참고용이며, 투자 결과에 대한 모든 법적 책임은 투자자 본인에게 있습니다.`;
                  
     for (const chatId of TELEGRAM_CHAT_IDS) {
         try {
@@ -813,7 +814,8 @@ if (isPrimaryWorker) {
                      `${priceText}\n`;
             }).join('\n');
 
-            content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.`;
+            content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.\n`;
+            content += `⚠️ 본 리포트는 알고리즘에 의한 자동 분석 결과일 뿐이며, 투자 매수/매도 리딩이 아닙니다. 투자 결과에 대한 법적 책임을 지지 않으며, 모든 투자의 최종 판단과 책임은 투자자 본인에게 있습니다.`;
 
             if (approvedStocks.length > 0) {
               savePastRecommendations(approvedStocks);

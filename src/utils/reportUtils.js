@@ -134,6 +134,7 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
            `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
   }).join('\n');
 
-  content += `\n* 본 리포트는 MP 자동 분석 로봇에 의해 생성되었습니다.`;
+  content += `\n* 본 리포트는 MP 자동 분석 로봇에 의해 생성되었습니다.\n`;
+  content += `⚠️ 본 리포트는 알고리즘에 의한 자동 분석 결과일 뿐이며, 투자 매수/매도 리딩이 아닙니다. 투자 결과에 대한 법적 책임을 지지 않으며, 모든 투자의 최종 판단과 책임은 투자자 본인에게 있습니다.`;
   return content;
 };
