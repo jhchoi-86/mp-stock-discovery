@@ -81,19 +81,40 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
       const tfSigs = s.timeframeStatus || {};
       const sig2H = tfSigs['2H'];
       
+      const curPrice = s.close || 0;
+      const curChange = s.change_rate || 0;
+      const score = s.total_score || 0;
+      const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
+      
       let priceText = "-";
       if (sig2H && sig2H.ema5 > 0) {
-        const p1 = Math.round(sig2H.ema5).toLocaleString();
-        const p2 = Math.round(sig2H.result_2).toLocaleString();
-        const p3 = Math.round(sig2H.result_3).toLocaleString();
-        const tar = Math.round(sig2H.bb_upper).toLocaleString();
-        priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${tar}원`;
+        const formatGap = (target) => {
+          if (!curPrice || typeof target !== 'number') return '';
+          const diff = Math.round(target - curPrice);
+          const sign = diff > 0 ? '+' : '';
+          const pct = ((target - curPrice) / curPrice * 100).toFixed(2);
+          return `(${sign}${diff.toLocaleString()}원, ${pct}%)`;
+        };
+        const formatProfit = (target) => {
+          if (!curPrice || typeof target !== 'number') return '';
+          const diff = Math.round(target - curPrice);
+          const sign = diff >= 0 ? '▲' : '▼';
+          const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
+          return `${sign} ${pct}%`;
+        };
+        const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+        
+        priceText = `${curPriceStr}\n` +
+                    `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
+                    `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
+                    `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
+                    `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
       } else {
         priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
       }
       
       content += `🔹 ${s.name} (${s.code})\n`;
-      content += `분류: ${s.latestSignal.category}\n`;
+      content += `분류: ${s.latestSignal.category} | 총점: ${stars} (${score}점)\n`;
       content += `${priceText}\n`;
       content += `차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
     });
@@ -115,20 +136,41 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
     let category = stock.latestSignal ? stock.latestSignal.category : '-';
     if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
     
+    const curPrice = stock.close || 0;
+    const curChange = stock.change_rate || 0;
+    const score = stock.total_score || 0;
+    const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
+
     const sig2H = tfSigs['2H'];
     let priceText = "-";
     if (sig2H && sig2H.ema5 > 0) {
-       const p1 = Math.round(sig2H.ema5).toLocaleString();
-       const p2 = Math.round(sig2H.result_2).toLocaleString();
-       const p3 = Math.round(sig2H.result_3).toLocaleString();
-       const pt = Math.round(sig2H.bb_upper).toLocaleString();
-       priceText = `급등1차/눌림1차/눌림2차: ${p1}원 / ${p2}원 / ${p3}원\n1차목표가: ${pt}원`;
+      const formatGap = (target) => {
+        if (!curPrice || typeof target !== 'number') return '';
+        const diff = Math.round(target - curPrice);
+        const sign = diff > 0 ? '+' : '';
+        const pct = ((target - curPrice) / curPrice * 100).toFixed(2);
+        return `(${sign}${diff.toLocaleString()}원, ${pct}%)`;
+      };
+      const formatProfit = (target) => {
+        if (!curPrice || typeof target !== 'number') return '';
+        const diff = Math.round(target - curPrice);
+        const sign = diff >= 0 ? '▲' : '▼';
+        const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
+        return `${sign} ${pct}%`;
+      };
+      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+      
+      priceText = `${curPriceStr}\n` +
+                  `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
+                  `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
+                  `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
+                  `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
     }
 
     const adx = stock.latestSignal ? Math.round(stock.latestSignal.adx) : "-";
 
     return `🔹 ${stock.name} (${stock.code})\n` +
-           `분류: ${category}\n` +
+           `분류: ${category} | 총점: ${stars} (${score}점)\n` +
            `세력강도: ${adx} | 1D:${getStatus('1D')} | 1W:${getStatus('1W')} | 추세:${trend}(${prog})\n` +
            `${priceText}\n` +
            `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
