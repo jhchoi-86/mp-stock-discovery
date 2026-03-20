@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive } from 'lucide-react';
+import { Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive, X } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import UserProfile from './UserProfile.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
@@ -120,11 +120,19 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               style={{ 
-                width: '100%', padding: '0.75rem 1rem 0.75rem 2.2rem', 
+                width: '100%', padding: '0.75rem 2.5rem 0.75rem 2.2rem', 
                 background: 'var(--glass)', border: '1px solid var(--glass-border)', 
                 borderRadius: '8px', color: '#fff', fontSize: '0.9rem' 
               }}
             />
+            {searchQuery && (
+              <button 
+                onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(255,255,255,0.1)', border: 'none', color: '#fff', borderRadius: '50%', padding: '4px', cursor: 'pointer', display: 'flex' }}
+              >
+                <X size={14} />
+              </button>
+            )}
           </div>
           <button 
             onClick={() => setIsBottomSheetOpen(true)}
