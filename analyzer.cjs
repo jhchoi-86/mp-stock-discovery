@@ -339,8 +339,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
             if (i >= 0) volSum += volume[i];
         }
         const volAvg = volSum / 20;
-        // 2. Volume Trigger: Meaningful participation (> 1.2x average)
-        if (volAvg > 0 && volume[last_idx] >= volAvg * 1.2) {
+        // 2. Volume Trigger: Meaningful participation (> 1.5x average)
+        if (volAvg > 0 && volume[last_idx] >= volAvg * 1.5) {
             trigger_vol = true;
         }
     }
