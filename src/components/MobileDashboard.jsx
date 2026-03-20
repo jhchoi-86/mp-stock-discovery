@@ -200,7 +200,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             {selectedStocks.size}개 선택됨
           </div>
           <button 
-            onClick={handleSendToTelegram}
+            onClick={() => handleSendToTelegram(kisDatas)}
             disabled={isSendingTg}
             style={{ 
               background: '#fff', color: '#0088cc', border: 'none', padding: '0.5rem 1rem', 

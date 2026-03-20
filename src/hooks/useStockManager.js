@@ -307,8 +307,12 @@ export const useStockManager = (isAuthenticated) => {
     URL.revokeObjectURL(url);
   };
 
-  const handleSendToTelegram = async () => {
-    const tgContent = generateTelegramContent(candidates, selectedStocks);
+  const handleSendToTelegram = async (kisDatas = {}) => {
+    const candidatesWithKis = candidates.map(c => ({
+      ...c,
+      kis_data: kisDatas[c.code] || c.kis_data
+    }));
+    const tgContent = generateTelegramContent(candidatesWithKis, selectedStocks);
     if (!tgContent) {
       alert("텔레그램으로 발송할 종목을 체크박스로 선택해주세요.");
       return;

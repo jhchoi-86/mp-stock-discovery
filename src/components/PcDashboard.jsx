@@ -237,7 +237,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         </button>
         {user?.role === 'ADMIN' && (
           <button 
-            onClick={handleSendToTelegram}
+            onClick={() => handleSendToTelegram(kisDatas)}
             disabled={isSendingTg}
             className="card" 
             style={{ padding: '0.75rem 1.5rem', background: isSendingTg ? 'rgba(255,255,255,0.05)' : '#0088cc', border: 'none', color: '#fff', cursor: isSendingTg ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
