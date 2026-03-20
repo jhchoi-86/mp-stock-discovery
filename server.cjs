@@ -10,6 +10,11 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
+
+// 플랜 3: 백엔드 무결성 자동 검증 시스템 가동
+const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
+verifyIntegrity();
+
 const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
