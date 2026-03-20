@@ -237,6 +237,7 @@ export const useStockManager = (isAuthenticated) => {
       if (response.ok) {
         const result = await response.json();
         alert(result.message);
+        setSelectedStocks(new Set());
         fetchData();
       } else {
         alert("초기화 중 오류가 발생했습니다.");
@@ -310,11 +311,11 @@ export const useStockManager = (isAuthenticated) => {
   const handleSendToTelegram = async () => {
     const tgContent = generateTelegramContent(candidates, selectedStocks);
     if (!tgContent) {
-      alert("텔레그램으로 발송할 종목을 체크박스로 선택해주세요.");
+      alert("텔레그램으로 발송할 종목을 체크박스로 선택하거나 총점이 75점 이상인 종목이 존재해야 합니다.");
       return;
     }
 
-    const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code));
+    const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code) || stock.total_score >= 75);
     const approvedStocks = reportStocks.filter(s => s.latestSignal && s.latestSignal.entry_approved);
 
     const recommendations = approvedStocks.map(s => {

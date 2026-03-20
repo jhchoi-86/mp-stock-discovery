@@ -63,7 +63,7 @@ export const generateReportContent = (candidates) => {
 };
 
 export const generateTelegramContent = (candidates, selectedStocksSet) => {
-  const reportStocks = candidates.filter(stock => selectedStocksSet.has(stock.code));
+  const reportStocks = candidates.filter(stock => selectedStocksSet.has(stock.code) || stock.total_score >= 75);
 
   if (reportStocks.length === 0) {
     return null;
