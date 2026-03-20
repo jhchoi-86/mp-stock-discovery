@@ -10,6 +10,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
+const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 
 const app = express();
@@ -687,6 +688,116 @@ app.listen(PORT, '0.0.0.0', () => {
 const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
 if (isPrimaryWorker) {
     console.log('[Scheduler] Primary worker initialized scheduling tasks.');
-    // 향후 node-cron 이나 setInterval 로직은 반드시 이 블록 내부에 작성하세요.
-    // 예: setInterval(() => { console.log('This runs once!'); }, 60000);
+    cron.schedule('0 21 * * 1-5', async () => {
+        console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
+        try {
+            const localApi = `http://127.0.0.1:${PORT}/api/auto-sync`;
+            console.log('[Cron] 1D 동기화 시작...');
+            await axios.post(localApi, { timeframe: '1D' });
+            console.log('[Cron] 2H 동기화 시작...');
+            await axios.post(localApi, { timeframe: '2H' });
+
+            const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
+            const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+
+            const getSignalsForStock = (code) => {
+              const stockSignals = signals.filter(s => s.code === code);
+              const timeframes = ["1H", "2H", "4H", "1D", "1W"];
+              const status = {};
+              timeframes.forEach(tf => {
+                const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];
+                status[tf] = latest;
+              });
+              return status;
+            };
+
+            const getLatestGlobal = (code) => signals.filter(s => s.code === code).sort((a, b) => b.timestamp - a.timestamp)[0];
+
+            let candidates = stocks.map(stock => {
+              const tfSigs = getSignalsForStock(stock.code);
+              const latest = getLatestGlobal(stock.code);
+              
+              let score = 0;
+              if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 25;
+              if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 25;
+              if (latest && latest.trigger_vol) score += 10;
+
+              const targetData = (tfSigs['2H'] && tfSigs['2H'].ema5 > 0) ? tfSigs['2H'] : (tfSigs['1D'] && tfSigs['1D'].ema5 > 0 ? tfSigs['1D'] : latest);
+              if (targetData && targetData.ema5 > 0 && targetData.result_2 > 0) {
+                const diffPercent = Math.abs(targetData.ema5 - targetData.result_2) / targetData.result_2 * 100;
+                if (diffPercent <= 0.5) score += 40;
+                else if (diffPercent <= 1.0) score += 25;
+              }
+
+              return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
+            }).filter(s => s.latestSignal);
+
+            candidates = candidates.filter(stock => {
+              const tfSigs = stock.timeframeStatus || {};
+              const hasSuSignal = Object.values(tfSigs).some(s => s && (s.signal_HH || s.DHH2));
+              const hasHighAdx = stock.latestSignal && stock.latestSignal.adx >= 30;
+              const isUpwardTrend = tfSigs['1D'] && tfSigs['1D'].cond_up7;
+              const isExcludedCategory = stock.latestSignal && (stock.latestSignal.category === "하락 추세" || stock.latestSignal.category === "바닥권 반등");
+              if (stock.latestSignal?.entry_approved) return true;
+              return (hasSuSignal && hasHighAdx && isUpwardTrend && !isExcludedCategory);
+            }).sort((a, b) => b.total_score - a.total_score);
+
+            if (candidates.length === 0) {
+              console.log('[Cron] 조건에 맞는 종목이 없어 발송하지 않습니다.');
+              return;
+            }
+
+            const approvedStocks = candidates.filter(s => s.latestSignal && s.latestSignal.entry_approved);
+
+            let content = `📈 야간 MP 종목 발굴 리포트 (자동)\n`;
+            content += `생성 일시: ${new Date().toLocaleString()}\n`;
+            content += `분석 종목 수: ${candidates.length}개\n\n`;
+
+            if (approvedStocks.length > 0) {
+              content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
+              approvedStocks.forEach(s => {
+                const tfSigs = s.timeframeStatus || {};
+                const sig2H = tfSigs['2H'];
+                let priceText = "-";
+                if (sig2H && sig2H.ema5 > 0) {
+                  priceText = `급등1차/눌림1차/눌림2차: ${Math.round(sig2H.ema5).toLocaleString()}원 / ${Math.round(sig2H.result_2).toLocaleString()}원 / ${Math.round(sig2H.result_3).toLocaleString()}원\n1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원`;
+                } else {
+                  priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+                }
+                content += `🔹 ${s.name} (${s.code})\n분류: ${s.latestSignal.category}\n${priceText}\n차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+              });
+              content += `---\n\n`;
+            }
+
+            content += `📋 주요 모니터링 리스트 (총합 점수순)\n\n`;
+            content += candidates.slice(0, 15).map(stock => {
+              const tfSigs = stock.timeframeStatus || {};
+              const getStat = tf => tfSigs[tf] ? (tfSigs[tf].signal_HH ? "수(HH)" : (tfSigs[tf].DHH2 ? "수" : "-")) : "-";
+              const trend = tfSigs['1D']?.cond_up7 ? "상승" : "-";
+              const sig2H = tfSigs['2H'];
+              let priceText = "-";
+              if (sig2H && sig2H.ema5 > 0) {
+                 priceText = `급등1차/눌림1차/눌림2차: ${Math.round(sig2H.ema5).toLocaleString()}원 / ${Math.round(sig2H.result_2).toLocaleString()}원 / ${Math.round(sig2H.result_3).toLocaleString()}원\n1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원`;
+              }
+              const adx = stock.latestSignal ? Math.round(stock.latestSignal.adx) : "-";
+              return `🔹 ${stock.name} (${stock.code}) | 점수: ${stock.total_score}\n` +
+                     `분류: ${stock.latestSignal.category}\n` +
+                     `세력강도: ${adx} | 1D:${getStat('1D')} | 1W:${getStat('1W')} | 추세:${trend}\n` +
+                     `${priceText}\n`;
+            }).join('\n');
+
+            content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.`;
+
+            for (const chatId of TELEGRAM_CHAT_IDS) {
+              try {
+                const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
+                await axios.post(url, { chat_id: chatId, text: content }, { httpsAgent: new https.Agent({ family: 4 }) });
+              } catch (e) { console.error(`[Telegram] 발송 실패 (${chatId}):`, e.message); }
+            }
+            console.log(`[Cron] 성공적으로 텔레그램에 야간 리포트를 전송했습니다.`);
+
+        } catch(e) {
+            console.error('[Cron Error] 야간 자동 발송 중 오류 발생:', e);
+        }
+    });
 }
