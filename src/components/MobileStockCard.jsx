@@ -123,7 +123,14 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
           {(t2H && t2H.ema5 > 0) && (
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>
                <div style={{ display: 'flex', flexDirection: 'column' }}>
-                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>1차급등: {Math.round(t2H.ema5).toLocaleString()}</span>
+                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
+                   돌파 매수타점: {Math.round(t2H.ema5).toLocaleString()}
+                   {stock.close > 0 && t2H.ema5 > 0 && (
+                     <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.ema5 >= stock.close ? '#ff6b6b' : '#339af0' }}>
+                       ({t2H.ema5 > stock.close ? '+' : ''}{(Math.round(t2H.ema5 - stock.close)).toLocaleString()}원, {((t2H.ema5 - stock.close) / stock.close * 100).toFixed(2)}%)
+                     </span>
+                   )}
+                 </span>
                  <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>목표: {Math.round(t2H.bb_upper).toLocaleString()}</span>
                </div>
                <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
@@ -131,7 +138,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
                    1차 매수타점: {Math.round(t2H.result_2).toLocaleString()}
                    {stock.close > 0 && t2H.result_2 > 0 && (
                      <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
-                       ({((t2H.result_2 - stock.close) / stock.close * 100).toFixed(2)}%)
+                       ({t2H.result_2 > stock.close ? '+' : ''}{(Math.round(t2H.result_2 - stock.close)).toLocaleString()}원, {((t2H.result_2 - stock.close) / stock.close * 100).toFixed(2)}%)
                      </span>
                    )}
                  </span>
@@ -140,7 +147,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
                      2차 매수타점: {Math.round(t2H.result_3).toLocaleString()}
                      {stock.close > 0 && t2H.result_3 > 0 && (
                        <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.result_3 >= stock.close ? '#ff6b6b' : '#339af0' }}>
-                         ({((t2H.result_3 - stock.close) / stock.close * 100).toFixed(2)}%)
+                         ({t2H.result_3 > stock.close ? '+' : ''}{(Math.round(t2H.result_3 - stock.close)).toLocaleString()}원, {((t2H.result_3 - stock.close) / stock.close * 100).toFixed(2)}%)
                        </span>
                      )}
                    </span>

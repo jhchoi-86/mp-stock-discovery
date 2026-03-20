@@ -530,7 +530,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   돌파 매수타점: {Math.round(targetData.ema5).toLocaleString()}원
                                   {curPrice > 0 && targetData.ema5 > 0 ? (
                                     <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.ema5 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({((targetData.ema5 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                      ({targetData.ema5 > curPrice ? '+' : ''}{(Math.round(targetData.ema5 - curPrice)).toLocaleString()}원, {((targetData.ema5 - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
@@ -538,7 +538,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   1차 매수타점: {targetData.result_2 > 0 ? Math.round(targetData.result_2).toLocaleString() : '-'}원
                                   {curPrice > 0 && targetData.result_2 > 0 ? (
                                     <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.result_2 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({((targetData.result_2 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                      ({targetData.result_2 > curPrice ? '+' : ''}{(Math.round(targetData.result_2 - curPrice)).toLocaleString()}원, {((targetData.result_2 - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
@@ -546,7 +546,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   2차 매수타점: {targetData.result_3 > 0 ? Math.round(targetData.result_3).toLocaleString() : '-'}원
                                   {curPrice > 0 && targetData.result_3 > 0 ? (
                                     <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.result_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({((targetData.result_3 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                      ({targetData.result_3 > curPrice ? '+' : ''}{(Math.round(targetData.result_3 - curPrice)).toLocaleString()}원, {((targetData.result_3 - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
