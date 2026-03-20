@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive, X } from 'lucide-react';
+import { Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import UserProfile from './UserProfile.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
@@ -24,7 +24,6 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
-  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', color: '#fff' }}>
@@ -48,10 +47,6 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           <button onClick={() => setIsProfileOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>
             {user?.name || user?.email?.split('@')[0]}
           </button>
-          
-          <button onClick={() => setIsSideMenuOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
-            <Menu size={24} />
-          </button>
         </div>
       </header>
       
@@ -59,42 +54,28 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
 
-      {/* Side Menu Overlay */}
-      {isSideMenuOpen && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex' }}>
-          <div style={{ flex: 1, background: 'rgba(0,0,0,0.5)' }} onClick={() => setIsSideMenuOpen(false)} />
-          <div style={{ width: '280px', background: 'var(--card-bg)', borderLeft: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', padding: '1.5rem', boxShadow: '-5px 0 15px rgba(0,0,0,0.5)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
-              <h2 style={{ fontSize: '1.2rem', margin: 0 }}>메뉴</h2>
-              <button onClick={() => setIsSideMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={24} /></button>
-            </div>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <button onClick={() => { handleAutoSync(); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', cursor: 'pointer' }}>
-                <RotateCcw size={20} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '데이터 수동 동기화'}
-              </button>
+      {/* Quick Action Bar */}
+      <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.75rem 1rem', borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <button onClick={() => handleAutoSync()} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+          <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '동기화'}
+        </button>
 
-              {['ADMIN', 'PRO_USER'].includes(user?.role) && (
-                <button onClick={() => { setIsReportArchiveOpen(true); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  <Archive size={20} /> VIP 리포트 보관함
-                </button>
-              )}
+        {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+          <button onClick={() => setIsReportArchiveOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+            <Archive size={14} /> VIP 자료실
+          </button>
+        )}
 
-              {user?.role === 'ADMIN' && (
-                <button onClick={() => { setShowAdminPanel(!showAdminPanel); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(0, 136, 204, 0.15)', border: '1px solid rgba(0, 136, 204, 0.3)', color: '#0088cc', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                  <UserCog size={20} /> {showAdminPanel ? '메인 화면으로 이동' : '관리자 패널 열기'}
-                </button>
-              )}
-            </div>
+        {user?.role === 'ADMIN' && (
+          <button onClick={() => setShowAdminPanel(!showAdminPanel)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(0, 136, 204, 0.15)', border: '1px solid rgba(0, 136, 204, 0.3)', color: '#0088cc', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+            <UserCog size={14} /> {showAdminPanel ? '메인 화면' : '관리자 패널'}
+          </button>
+        )}
 
-            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--glass-border)' }}>
-              <button onClick={() => { clearAuth(); setIsSideMenuOpen(false); }} style={{ width: '100%', padding: '1rem', background: 'rgba(231, 76, 60, 0.15)', border: 'none', color: '#e74c3c', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                <LogOut size={20} /> 로그아웃
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        <button onClick={clearAuth} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(231, 76, 60, 0.15)', border: '1px solid rgba(231, 76, 60, 0.3)', color: '#e74c3c', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+          <LogOut size={14} /> 로그아웃
+        </button>
+      </div>
 
       {showAdminPanel && user?.role === 'ADMIN' ? (
         <div style={{ flex: 1, overflowY: 'auto' }}>
