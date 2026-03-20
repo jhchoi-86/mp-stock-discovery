@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Menu, Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive } from 'lucide-react';
+import { Menu, Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive, X } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import UserProfile from './UserProfile.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
@@ -24,6 +24,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [isSideMenuOpen, setIsSideMenuOpen] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', color: '#fff' }}>
@@ -48,7 +49,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             {user?.name || user?.email?.split('@')[0]}
           </button>
           
-          <button style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
+          <button onClick={() => setIsSideMenuOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}>
             <Menu size={24} />
           </button>
         </div>
@@ -56,7 +57,50 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       
       {/* User Profile Modal Map */}
       <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+      <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
 
+      {/* Side Menu Overlay */}
+      {isSideMenuOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex' }}>
+          <div style={{ flex: 1, background: 'rgba(0,0,0,0.5)' }} onClick={() => setIsSideMenuOpen(false)} />
+          <div style={{ width: '280px', background: 'var(--card-bg)', borderLeft: '1px solid var(--glass-border)', display: 'flex', flexDirection: 'column', padding: '1.5rem', boxShadow: '-5px 0 15px rgba(0,0,0,0.5)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+              <h2 style={{ fontSize: '1.2rem', margin: 0 }}>메뉴</h2>
+              <button onClick={() => setIsSideMenuOpen(false)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer' }}><X size={24} /></button>
+            </div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <button onClick={() => { handleAutoSync(); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(255,255,255,0.05)', border: 'none', color: '#fff', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', cursor: 'pointer' }}>
+                <RotateCcw size={20} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '데이터 수동 동기화'}
+              </button>
+
+              {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+                <button onClick={() => { setIsReportArchiveOpen(true); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                  <Archive size={20} /> VIP 리포트 보관함
+                </button>
+              )}
+
+              {user?.role === 'ADMIN' && (
+                <button onClick={() => { setShowAdminPanel(!showAdminPanel); setIsSideMenuOpen(false); }} style={{ padding: '1rem', background: 'rgba(0, 136, 204, 0.15)', border: '1px solid rgba(0, 136, 204, 0.3)', color: '#0088cc', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '0.8rem', fontSize: '1rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                  <UserCog size={20} /> {showAdminPanel ? '메인 화면으로 이동' : '관리자 패널 열기'}
+                </button>
+              )}
+            </div>
+
+            <div style={{ marginTop: 'auto', paddingTop: '1rem', borderTop: '1px solid var(--glass-border)' }}>
+              <button onClick={() => { clearAuth(); setIsSideMenuOpen(false); }} style={{ width: '100%', padding: '1rem', background: 'rgba(231, 76, 60, 0.15)', border: 'none', color: '#e74c3c', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                <LogOut size={20} /> 로그아웃
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAdminPanel && user?.role === 'ADMIN' ? (
+        <div style={{ flex: 1, overflowY: 'auto' }}>
+          <AdminDashboard />
+        </div>
+      ) : (
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
         {/* 2. Status Widget (수평 스크롤) */}
         <div style={{ 
@@ -145,6 +189,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           />
         </div>
       </div>
+      )}
 
       {/* 5. Floating Action Bar (FAB) - 관리자 전용 텔레그램 발송 */}
       {selectedStocks.size > 0 && user?.role === 'ADMIN' && (
