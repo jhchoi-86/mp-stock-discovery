@@ -12,6 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 require('dotenv').config();
 const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
+const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -190,6 +191,13 @@ app.use('/api/roi-ranking', require('./src/routes/roi.cjs'));
 app.use('/api/subscriptions', require('./src/routes/subscriptions.cjs'));
 
 // Routes
+app.get('/api/download-history', (req, res) => {
+    if (!fs.existsSync(EXCEL_FILE)) {
+        return res.status(404).json({ error: '엑셀 파일이 아직 생성되지 않았습니다.' });
+    }
+    res.download(EXCEL_FILE, 'MP_추천성과_누적기록.xlsx');
+});
+
 app.get('/api/stocks', (req, res) => {
     const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
     res.json(stocks);
@@ -749,8 +757,27 @@ if (isPrimaryWorker) {
 
             const approvedStocks = candidates.filter(s => s.latestSignal && s.latestSignal.entry_approved);
 
+            const kisToken = await getKisAccessToken();
+            const reviewText = await evaluatePastRecommendations(kisToken, KIS_APP_KEY, KIS_APP_SECRET);
+
+            const now = new Date();
+            now.setUTCHours(now.getUTCHours() + 9);
+            const isFriday = now.getDay() === 5;
+            const tomorrow = new Date(now);
+            tomorrow.setDate(now.getDate() + 1);
+            const isEndOfMonth = tomorrow.getMonth() !== now.getMonth();
+
+            let weeklyText = null;
+            let monthlyText = null;
+
+            if (isFriday) weeklyText = await generateSummaryReport('weekly');
+            if (isEndOfMonth) monthlyText = await generateSummaryReport('monthly');
+
             let content = `📈 야간 MP 종목 발굴 리포트 (자동)\n`;
             content += `생성 일시: ${new Date().toLocaleString()}\n`;
+            if (reviewText) content += reviewText;
+            if (weeklyText) content += weeklyText;
+            if (monthlyText) content += monthlyText;
             content += `분석 종목 수: ${candidates.length}개\n\n`;
 
             if (approvedStocks.length > 0) {
@@ -787,6 +814,10 @@ if (isPrimaryWorker) {
             }).join('\n');
 
             content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.`;
+
+            if (approvedStocks.length > 0) {
+              savePastRecommendations(approvedStocks);
+            }
 
             for (const chatId of TELEGRAM_CHAT_IDS) {
               try {
