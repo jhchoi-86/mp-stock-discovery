@@ -799,5 +799,5 @@ if (isPrimaryWorker) {
         } catch(e) {
             console.error('[Cron Error] 야간 자동 발송 중 오류 발생:', e);
         }
-    });
+    }, { timezone: "Asia/Seoul" });
 }
