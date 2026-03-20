@@ -113,11 +113,11 @@ async function appendToExcel(records) {
     
     if (fs.existsSync(EXCEL_FILE)) {
       await workbook.xlsx.readFile(EXCEL_FILE);
-      worksheet = workbook.getWorksheet('History');
+      worksheet = workbook.getWorksheet('추천기록');
     } 
     
     if (!worksheet) {
-      worksheet = workbook.addWorksheet('History');
+      worksheet = workbook.addWorksheet('추천기록');
       worksheet.columns = [
         { header: '추천일자', key: 'date', width: 15 },
         { header: '종목코드', key: 'code', width: 15 },
@@ -147,7 +147,7 @@ async function generateSummaryReport(period = 'weekly') {
 
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(EXCEL_FILE);
-    const worksheet = workbook.getWorksheet('History');
+    const worksheet = workbook.getWorksheet('추천기록');
     
     if (!worksheet || worksheet.rowCount <= 1) return null;
 
