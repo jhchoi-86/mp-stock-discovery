@@ -113,7 +113,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         {/* 3. Search & Control Bar */}
         <div style={{ padding: '1rem', display: 'flex', gap: '0.5rem' }}>
           <div style={{ flex: 1, position: 'relative' }}>
-            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+            <Search size={16} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none' }} />
             <input 
               type="text" 
               placeholder="종목명/코드 검색..." 
