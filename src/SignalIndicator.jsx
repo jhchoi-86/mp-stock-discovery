@@ -68,11 +68,14 @@ const SignalIndicator = ({ signal, totalScore }) => {
     <div style={{ marginTop: '0.8rem', padding: '0.8rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', borderLeft: `3px solid ${badgeColor}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
         <span style={{ fontSize: '0.8rem', color: '#ccc' }}>PineScript 분석 데이터</span>
-        <span className="badge" style={{ backgroundColor: badgeColor, color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center' }}>
+        <span className="badge" style={{ backgroundColor: badgeColor, color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
           {totalScore !== undefined ? (
-            <span style={{ color: '#FFD700', fontSize: '1.2rem', letterSpacing: '2px', textShadow: '0 0 2px rgba(0,0,0,0.8)' }} title={`${totalScore}점`}>
-              {'★'.repeat(Math.round(totalScore / 20))}{'☆'.repeat(5 - Math.round(totalScore / 20))}
-            </span>
+            <>
+              <span style={{ color: '#FFD700', fontSize: '1.2rem', letterSpacing: '2px', textShadow: '0 0 2px rgba(0,0,0,0.8)' }}>
+                {'★'.repeat(Math.round(totalScore / 20))}{'☆'.repeat(5 - Math.round(totalScore / 20))}
+              </span>
+              <span style={{ fontSize: '0.9rem' }}>({totalScore}점)</span>
+            </>
           ) : `총점: ${strength}점 (${strengthLabel})`}
         </span>
       </div>

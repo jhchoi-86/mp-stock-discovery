@@ -416,8 +416,13 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                        </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }}>
-                      <div style={{ display: 'inline-block', color: '#FFD700', fontSize: '1.1rem', letterSpacing: '1px', textShadow: '0 0 2px rgba(0,0,0,0.5)' }} title={`${stock.total_score || 0}점`}>
-                        {'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
+                        <div style={{ color: '#FFD700', fontSize: '1.1rem', letterSpacing: '1px', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
+                          {'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                          {stock.total_score}점
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
