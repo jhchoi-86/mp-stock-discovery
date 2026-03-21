@@ -20,11 +20,8 @@ router.get('/users', async (req, res) => {
       select: {
         id: true,
         email: true,
-        phone: true,
-        name: true,
         role: true,
-        status: true,
-        lastLoginAt: true,
+        telegramId: true,
         createdAt: true
       },
       orderBy: {
@@ -46,8 +43,8 @@ router.put('/users/:id/status', async (req, res) => {
     const { role, status } = req.body;
     const adminId = req.user.userId;
 
-    if (!role && !status) {
-      return res.status(400).json({ error: 'Role or status must be provided for update.' });
+    if (!role) {
+      return res.status(400).json({ error: 'Role must be provided for update.' });
     }
 
     // Verify Target User Exists
@@ -57,9 +54,7 @@ router.put('/users/:id/status', async (req, res) => {
     }
 
     // Build update payload
-    const dataToUpdate = {};
-    if (role) dataToUpdate.role = role;
-    if (status) dataToUpdate.status = status;
+    const dataToUpdate = { role };
 
     // Execute Prisma Transaction safely
     const [updatedUser] = await prisma.$transaction([
@@ -70,19 +65,16 @@ router.put('/users/:id/status', async (req, res) => {
         select: {
           id: true,
           email: true,
-          name: true,
           role: true,
-          status: true,
           createdAt: true
         }
       }),
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          adminId: adminId,
-          targetUserId: targetUserId,
-          action: 'UPDATE_USER_STATUS',
-          details: dataToUpdate
+          userId: adminId,
+          action: 'UPDATE_USER_ROLE',
+          details: { targetUserId, updatedRole: role }
         }
       })
     ]);
@@ -125,10 +117,9 @@ router.put('/users/:id/reset-password', async (req, res) => {
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          adminId: adminId,
-          targetUserId: targetUserId,
+          userId: adminId,
           action: 'FORCE_PASSWORD_RESET',
-          details: { message: `Admin forcefully reset password to default (${defaultPassword})` }
+          details: { targetUserId, message: `Admin forcefully reset password to default (${defaultPassword})` }
         }
       })
     ]);
@@ -167,9 +158,9 @@ router.delete('/users/:id', async (req, res) => {
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          adminId: adminId,
+          userId: adminId,
           action: 'DELETE_USER',
-          details: { deletedUserId: targetUserId, email: targetUser.email, name: targetUser.name }
+          details: { deletedUserId: targetUserId, email: targetUser.email }
         }
       })
     ]);
@@ -195,7 +186,6 @@ router.post('/broadcast', async (req, res) => {
     const targetUsers = await prisma.user.findMany({
       where: {
         role: { in: ['PRO_USER', 'ADMIN'] },
-        status: 'ACTIVE',
         telegramId: { not: null, not: '' }
       },
       select: {
@@ -229,60 +219,21 @@ router.post('/broadcast', async (req, res) => {
   }
 });
 
-// GET /api/admin/subscriptions (Fetch Pending Requests)
+// GET /api/admin/subscriptions (Fetch Pending Requests - DEPRECATED)
 router.get('/subscriptions', async (req, res) => {
   try {
-    const pendingRequests = await prisma.subscriptionRequest.findMany({
-      where: { status: 'PENDING' },
-      include: {
-        user: {
-          select: { id: true, name: true, email: true, role: true, telegramId: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
-
-    res.json(pendingRequests);
+    // Model deleted in Phase 5 schema, returning empty array
+    res.json([]);
   } catch (error) {
     console.error('[Admin Get Subscriptions Error]', error);
     res.status(500).json({ error: 'Internal server error while fetching subscriptions' });
   }
 });
 
-// POST /api/admin/subscriptions/:id/approve (Approve Request & Upgrade Role)
+// POST /api/admin/subscriptions/:id/approve (Approve Request - DEPRECATED)
 router.post('/subscriptions/:id/approve', async (req, res) => {
   try {
-    const requestId = req.params.id;
-
-    // 1. Fetch Request
-    const subReq = await prisma.subscriptionRequest.findUnique({
-      where: { id: requestId },
-      include: { user: true }
-    });
-
-    if (!subReq || subReq.status !== 'PENDING') {
-      return res.status(404).json({ error: 'Pending subscription request not found.' });
-    }
-
-    // 2. Execute Transaction
-    await prisma.$transaction([
-      prisma.subscriptionRequest.update({
-        where: { id: requestId },
-        data: { status: 'APPROVED' }
-      }),
-      prisma.user.update({
-        where: { id: subReq.userId },
-        data: { role: 'PRO_USER' }
-      }),
-      prisma.auditLog.create({
-        data: {
-          adminId: req.user.userId,
-          targetUserId: subReq.userId,
-          action: 'APPROVE_PRO_SUBSCRIPTION',
-          details: { requestId: subReq.id }
-        }
-      })
-    ]);
+    return res.status(404).json({ error: 'Subscription logic deprecated in Phase 5.' });
 
     // 3. Send Telegram Notification
     if (subReq.user.telegramId) {
