@@ -102,6 +102,7 @@ model User {
 }
 
 enum Role {
+  @@schema("system_audit")
   FREE_TRIAL
   FREE
   PAID
