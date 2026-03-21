@@ -58,6 +58,8 @@ model SignalCandidate {
   stopLoss     Float
   category     String
   sourceHash   String
+  aiConfidenceScore Float?  @map("ai_confidence_score")
+  aiAnalyzedAt      DateTime? @map("ai_analyzed_at")
   createdAt    DateTime @default(now())
 }
 

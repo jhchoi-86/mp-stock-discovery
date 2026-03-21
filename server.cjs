@@ -18,6 +18,11 @@ verifyIntegrity();
 const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
+const { Queue } = require('bullmq');
+const redisClient = require('./platform/infra/redis/client.cjs');
+const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
+
+const aiScoringQueue = new Queue('aiScoringQueue', { connection: redisClient });
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -784,44 +789,169 @@ if (isPrimaryWorker) {
             if (isFriday) weeklyText = await generateSummaryReport('weekly');
             if (isEndOfMonth) monthlyText = await generateSummaryReport('monthly');
 
-            let content = `📈 야간 MP 종목 발굴 리포트 (자동)\n`;
+            let content = `📈 MP KOSPI 200, KOSDAQ 150 매수 추천 리서치 (자동발송)\n`;
             content += `생성 일시: ${new Date().toLocaleString()}\n`;
             if (reviewText) content += reviewText;
             if (weeklyText) content += weeklyText;
             if (monthlyText) content += monthlyText;
             content += `분석 종목 수: ${candidates.length}개\n\n`;
 
+            let aiCommentsMap = {};
             if (approvedStocks.length > 0) {
+              try {
+                // 1. Python 마이크로서비스 호출 (T5-02)
+                const aiPayload = approvedStocks.map(s => ({
+                  symbol: s.code,
+                  name: s.name,
+                  category: s.latestSignal.category,
+                  price: s.latestSignal.current_price || s.latestSignal.entry_price || 0,
+                  indicators: {
+                    adx: s.latestSignal.adx || 0,
+                    score: s.total_score,
+                    trend: s.timeframeStatus['1D']?.cond_up7 ? "상승" : "관망"
+                  }
+                }));
+                
+                // 2. 5초 Timeout Fallback 방어 로직 적용
+                const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
+                  { stocks: aiPayload }, 
+                  { timeout: 5000 }
+                );
+                
+                if (aiRes.data && Array.isArray(aiRes.data)) {
+                  aiRes.data.forEach(item => {
+                    if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
+                  });
+                }
+              } catch (aiErr) {
+                console.error('[AI Service LLM Fallback] Failed to fetch LLM comments:', aiErr.message);
+                // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
+              }
+
               content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
               approvedStocks.forEach(s => {
                 const tfSigs = s.timeframeStatus || {};
                 const sig2H = tfSigs['2H'];
+                
+                const curPrice = s.latestSignal?.current_price || s.latestSignal?.entry_price || 0;
+                let curChange = 0;
+                if (s.latestSignal?.kis_change_data) {
+                  const kd = s.latestSignal.kis_change_data;
+                  const isUp = ['1', '2', '3'].includes(String(kd.sign));
+                  curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
+                }
+                const score = s.total_score || 0;
+                const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
+                
                 let priceText = "-";
                 if (sig2H && sig2H.ema5 > 0) {
-                  priceText = `급등1차/눌림1차/눌림2차: ${Math.round(sig2H.ema5).toLocaleString()}원 / ${Math.round(sig2H.result_2).toLocaleString()}원 / ${Math.round(sig2H.result_3).toLocaleString()}원\n1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원`;
+                  const formatGap = (target) => {
+                    if (!curPrice || typeof target !== 'number') return '';
+                    const diff = Math.round(target - curPrice);
+                    const sign = diff > 0 ? '+' : '';
+                    const pct = ((target - curPrice) / curPrice * 100).toFixed(2);
+                    return `(${sign}${diff.toLocaleString()}원, ${pct}%)`;
+                  };
+                  const formatProfit = (target) => {
+                    if (!curPrice || typeof target !== 'number') return '';
+                    const diff = Math.round(target - curPrice);
+                    const sign = diff >= 0 ? '▲' : '▼';
+                    const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
+                    return `${sign} ${pct}%`;
+                  };
+                  const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+                  
+                  priceText = `${curPriceStr}\n` +
+                              `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
+                              `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
+                              `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
+                              `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
                 } else {
                   priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
                 }
-                content += `🔹 ${s.name} (${s.code})\n분류: ${s.latestSignal.category}\n${priceText}\n차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+                
+                content += `🔹 ${s.name} (${s.code})\n`;
+                content += `분류: ${s.latestSignal.category} | 총점: ${stars} (${score}점)\n`;
+                
+                // T5-03 & T5-04 연동: 비동기 큐 잡 푸시 (Non-blocking)
+                verifyAndApprove(s).then(approval => {
+                  if (approval && approval.status === 'PASS') {
+                    // DB 저장 성공이라 가정하고 (Mock) ML 워커에게 분석 요청 넘김. 응답은 기다리지 않음.
+                    aiScoringQueue.add('scorePredict', {
+                      candidateId: approval.candidateId || s.code,
+                      symbol: s.code,
+                      category: s.latestSignal.category,
+                      indicators: {
+                        score: score,
+                        adx: s.latestSignal.adx || 0
+                      }
+                    }, { removeOnComplete: true, removeOnFail: 1000 }).catch(err => console.error('[BullMQ] Queue Add Error:', err));
+                  }
+                }).catch(err => console.error('[TDRGate] Error:', err));
+                
+                if (aiCommentsMap[s.code]) {
+                  content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
+                }
+                
+                content += `${priceText}\n`;
+                content += `차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
               });
               content += `---\n\n`;
             }
 
-            content += `📋 주요 모니터링 리스트 (총합 점수순)\n\n`;
+            content += `📋 전체 모니터링 리스트 (HH 신호 발생)\n\n`;
+
             content += candidates.slice(0, 15).map(stock => {
               const tfSigs = stock.timeframeStatus || {};
               const getStat = tf => tfSigs[tf] ? (tfSigs[tf].signal_HH ? "수(HH)" : (tfSigs[tf].DHH2 ? "수" : "-")) : "-";
-              const trend = tfSigs['1D']?.cond_up7 ? "상승" : "-";
+              
+              const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관찰" : "-");
+              const prog = tfSigs['1D'] ? `${(tfSigs['1D'].progress * 100).toFixed(0)}%` : "-";
+              let category = stock.latestSignal ? stock.latestSignal.category : '-';
+              if (stock.total_score >= 80 && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
+              
+              const curPrice = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
+              let curChange = 0;
+              if (stock.latestSignal?.kis_change_data) {
+                const kd = stock.latestSignal.kis_change_data;
+                const isUp = ['1', '2', '3'].includes(String(kd.sign));
+                curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
+              }
+              const score = stock.total_score || 0;
+              const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
+
               const sig2H = tfSigs['2H'];
               let priceText = "-";
               if (sig2H && sig2H.ema5 > 0) {
-                 priceText = `급등1차/눌림1차/눌림2차: ${Math.round(sig2H.ema5).toLocaleString()}원 / ${Math.round(sig2H.result_2).toLocaleString()}원 / ${Math.round(sig2H.result_3).toLocaleString()}원\n1차목표가: ${Math.round(sig2H.bb_upper).toLocaleString()}원`;
+                const formatGap = (target) => {
+                  if (!curPrice || typeof target !== 'number') return '';
+                  const diff = Math.round(target - curPrice);
+                  const sign = diff > 0 ? '+' : '';
+                  const pct = ((target - curPrice) / curPrice * 100).toFixed(2);
+                  return `(${sign}${diff.toLocaleString()}원, ${pct}%)`;
+                };
+                const formatProfit = (target) => {
+                  if (!curPrice || typeof target !== 'number') return '';
+                  const diff = Math.round(target - curPrice);
+                  const sign = diff >= 0 ? '▲' : '▼';
+                  const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
+                  return `${sign} ${pct}%`;
+                };
+                const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+                
+                priceText = `${curPriceStr}\n` +
+                            `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
+                            `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
+                            `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
+                            `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
               }
               const adx = stock.latestSignal ? Math.round(stock.latestSignal.adx) : "-";
-              return `🔹 ${stock.name} (${stock.code}) | 점수: ${stock.total_score}\n` +
-                     `분류: ${stock.latestSignal.category}\n` +
-                     `세력강도: ${adx} | 1D:${getStat('1D')} | 1W:${getStat('1W')} | 추세:${trend}\n` +
-                     `${priceText}\n`;
+
+              return `🔹 ${stock.name} (${stock.code})\n` +
+                     `분류: ${category} | 총점: ${stars} (${score}점)\n` +
+                     `세력강도: ${adx} | 1D:${getStat('1D')} | 1W:${getStat('1W')} | 추세:${trend}(${prog})\n` +
+                     `${priceText}\n` +
+                     `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
             }).join('\n');
 
             content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.\n`;
