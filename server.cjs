@@ -815,7 +815,7 @@ if (isPrimaryWorker) {
                 // 2. 5초 Timeout Fallback 방어 로직 적용
                 const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
                   { stocks: aiPayload }, 
-                  { timeout: 5000 }
+                  { timeout: 15000 }
                 );
                 
                 let commentsArray = [];
