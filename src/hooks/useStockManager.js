@@ -332,6 +332,13 @@ export const useStockManager = (isAuthenticated) => {
     }
 
     const recommendations = approvedStocks.map(s => {
+      const tfSigs = s.timeframeStatus || {};
+      const sig2H = tfSigs['2H'];
+      const ePrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.ema5) : Math.round(s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0);
+      const tPrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.bb_upper) : Math.round(s.latestSignal?.target_price || 0);
+      return { stockCode: s.code, stockName: s.name, entryPrice: ePrice, targetPrice: tPrice };
+    });
+
     try {
       const safeContent = tgContent.length > 4000 
         ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 
