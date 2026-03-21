@@ -47,6 +47,9 @@ async def generate_comments(request: CommentRequest):
         raise HTTPException(status_code=500, detail="OpenAI client not initialized")
 
     prompt = "주식 종목들의 기술적 지표 데이터를 줄 테니, 각 종목마다 100자 이내의 핵심 요약 코멘트를 작성해줘.\n"
+    prompt += "[지표 해석 기준]\n"
+    prompt += "- ADX는 '현재 주가 추세의 강도'를 의미해. 주가가 상승(추세 상승 등)하면서 ADX가 높으면 강한 상승 추세로, 주가가 하락(하락 추세 등)하면서 ADX가 높으면 강한 하락 추세로 해석해.\n"
+    prompt += "- Score는 'MP Stock 종합분석 지수'야. 0~100점 범위를 가지며, 점수가 높을수록 매수 관점으로 타점에서 대기하다가 진입 시 기계적인 목표가에 이익 실현할 가능성이 매우 높은 지수야.\n\n"
     prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱(```json)은 절대 추가하지 마.\n"
     prompt += '[{"symbol": "종목코드", "ai_comment": "코멘트 내용"}]\n\n'
     
