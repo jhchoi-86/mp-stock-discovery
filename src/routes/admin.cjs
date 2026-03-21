@@ -20,6 +20,8 @@ router.get('/users', async (req, res) => {
       select: {
         id: true,
         email: true,
+        name: true,
+        phone: true,
         role: true,
         telegramId: true,
         createdAt: true

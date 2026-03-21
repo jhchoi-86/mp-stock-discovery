@@ -99,6 +99,7 @@ const AdminDashboard = () => {
   };
 
   const filteredUsers = users.filter(u => 
+    (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
@@ -215,9 +216,9 @@ const AdminDashboard = () => {
 
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={tdStyle}>{u.email.split('@')[0]}</td>
+                    <td style={tdStyle}>{u.name || '미입력'}</td>
                     <td style={tdStyle}>{u.email}</td>
-                    <td style={tdStyle}>{u.telegramId ? u.telegramId : '미등록'}</td>
+                    <td style={tdStyle}>{u.phone || '미등록'}</td>
                     <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td style={tdStyle}>{renderRoleBadge(u.role)}</td>
                     <td style={tdStyle}>
