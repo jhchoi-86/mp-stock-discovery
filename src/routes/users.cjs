@@ -28,7 +28,6 @@ router.get('/me', authMiddleware, async (req, res) => {
         email: true,
         name: true,
         role: true,
-        status: true,
         telegramId: true,
         createdAt: true,
         subscriptionRequests: {
@@ -104,7 +103,6 @@ router.put('/me', authMiddleware, async (req, res) => {
         email: true,
         name: true,
         role: true,
-        status: true,
         telegramId: true
       }
     });
@@ -156,8 +154,7 @@ router.put('/me/password', authMiddleware, async (req, res) => {
     // 5. Audit Log (Self Change)
     await prisma.auditLog.create({
       data: {
-        adminId: userId, // Self-action, so adminId is the user themselves
-        targetUserId: userId,
+        userId: userId, // Current schema uses userId
         action: 'SELF_PASSWORD_CHANGE',
         details: { message: 'User changed their own password.' }
       }
