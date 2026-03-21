@@ -154,8 +154,9 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
     const score = stock.total_score || 0;
     const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
 
-    const sig2H = tfSigs['2H'];
-    let priceText = "-";
+    const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+    let priceText = curPriceStr ? `${curPriceStr}` : "-";
+
     if (sig2H && sig2H.ema5 > 0) {
       const formatGap = (target) => {
         if (!curPrice || typeof target !== 'number') return '';
@@ -171,7 +172,6 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
         const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
         return `${sign} ${pct}%`;
       };
-      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
       
       priceText = `${curPriceStr}\n` +
                   `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
