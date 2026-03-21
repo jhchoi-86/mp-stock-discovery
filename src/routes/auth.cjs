@@ -38,8 +38,7 @@ router.post('/register', async (req, res) => {
           passwordHash,
           name,
           phone,
-          role: 'FREE_USER',
-          status: 'ACTIVE'
+          role: 'FREE_USER'
         }
       });
       console.log('[Auth Registration] Prisma user created successfully:', newUser.id);
@@ -69,8 +68,8 @@ router.post('/login', async (req, res) => {
 
     // Find User
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || user.status !== 'ACTIVE') {
-      return res.status(401).json({ error: 'Invalid credentials or inactive account.' });
+    if (!user) {
+      return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
     // Verify Password
@@ -185,8 +184,8 @@ router.post('/refresh', async (req, res) => {
     
     // Ensure the token corresponds to an active user
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.status !== 'ACTIVE') {
-      return res.status(401).json({ error: 'User is inactive or deleted' });
+    if (!user) {
+      return res.status(401).json({ error: 'User deleted' });
     }
     
     // RTR: Revoke the old token
