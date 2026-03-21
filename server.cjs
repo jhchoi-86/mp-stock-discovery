@@ -22,6 +22,11 @@ const { savePastRecommendations, evaluatePastRecommendations, generateSummaryRep
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// --- Platform 1.0 신규 라우터 연동 (Phase 2 T2-05) ---
+app.use('/admin-api', require('./platform/interfaces/api_admin/index.cjs'));
+app.use('/user-api', require('./platform/interfaces/api_user/index.cjs'));
+// ----------------------------------------------------
+
 // Telegram Alert Setup
 const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 // 콤마(,)로 구분하여 여러 명의 챗 아이디 입력 가능. 단체방/채널은 음수(-) 아이디를 사용해야 합니다.

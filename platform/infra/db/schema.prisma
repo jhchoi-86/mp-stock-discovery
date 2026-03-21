@@ -1,0 +1,167 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  schemas  = ["market_data", "analysis_results", "signal_approvals", "system_audit"]
+}
+
+// ── market_data 스키마
+model Instrument {
+  @@schema("market_data")
+  id        Int      @id @default(autoincrement())
+  symbol    String
+  name      String
+  market    String   // kr_kospi | kr_kosdaq | us_nasdaq | crypto
+  currency  String   // KRW | USD | USDT
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Candle {
+  @@schema("market_data")
+  id           Int      @id @default(autoincrement())
+  instrumentId Int
+  timeframe    String
+  open         Float
+  high         Float
+  low          Float
+  close        Float
+  volume       Float
+  source       String   // yahoo | kis | binance | upbit
+  isValid      Boolean  @default(true)
+  fetchedAt    DateTime
+  candleAt     DateTime
+}
+
+// ── analysis_results 스키마
+model SignalCandidate {
+  @@schema("analysis_results")
+  id           Int      @id @default(autoincrement())
+  instrumentId Int
+  timeframe    String
+  condUp7      Boolean
+  dhh2         Boolean
+  triggerRsi   Boolean
+  triggerVol   Boolean
+  entryApproved Boolean
+  isTrending   Boolean
+  signalHH     Boolean  // 최종 추천 여부
+  displayScore Int      // UI 표시용 배점 (0~100)
+  entryPrice1  Float
+  entryPrice2  Float?
+  entryPrice3  Float?
+  targetPrice  Float
+  stopLoss     Float
+  category     String
+  sourceHash   String
+  createdAt    DateTime @default(now())
+}
+
+// ── signal_approvals 스키마
+model ApprovedSignal {
+  @@schema("signal_approvals")
+  id              Int      @id @default(autoincrement())
+  candidateId     Int      @unique
+  execHash        String   @unique
+  sourceHash      String
+  status          String   // PASS | FAIL
+  approvedAt      DateTime @default(now())
+  rejectionReason String?
+}
+
+model SignalResult {
+  @@schema("signal_approvals")
+  id             Int      @id @default(autoincrement())
+  approvedSignalId Int
+  evalDate       DateTime
+  result         String   // SUCCESS | FAIL | IN_PROGRESS
+  evalHigh       Float
+  evalLow        Float
+  evalClose      Float
+  market         String   // kr_equity | crypto
+  evaluatedAt    DateTime @default(now())
+}
+
+// ── system_audit 스키마
+model User {
+  @@schema("system_audit")
+  id             Int       @id @default(autoincrement())
+  email          String    @unique
+  passwordHash   String
+  role           Role      @default(FREE_TRIAL)
+  trialExpiresAt DateTime?
+  telegramId     String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+enum Role {
+  FREE_TRIAL
+  FREE
+  PAID
+  ADMIN
+}
+
+model RefreshToken {
+  @@schema("system_audit")
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+}
+
+model AuditLog {
+  @@schema("system_audit")
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  action    String
+  details   Json?
+  ip        String?
+  createdAt DateTime @default(now())
+}
+
+model ErrorLog {
+  @@schema("system_audit")
+  id        Int      @id @default(autoincrement())
+  level     String
+  message   String
+  stack     String?
+  context   Json?
+  createdAt DateTime @default(now())
+}
+
+model AlarmLog {
+  @@schema("system_audit")
+  id             Int      @id @default(autoincrement())
+  userId         Int
+  symbol         String
+  entryPriceHit  Float
+  currentPrice   Float
+  sentAt         DateTime @default(now())
+}
+
+model ReportDistributionLog {
+  @@schema("system_audit")
+  id        Int      @id @default(autoincrement())
+  s3Key     String
+  type      String   // DAILY | WEEKLY | MONTHLY | YEARLY
+  date      String
+  createdAt DateTime @default(now())
+}
+
+model ScanRun {
+  @@schema("system_audit")
+  id             Int      @id @default(autoincrement())
+  market         String
+  timeframe      String
+  symbolsScanned Int
+  skipped        Int      @default(0)
+  duration       Int      // ms
+  startedAt      DateTime
+  completedAt    DateTime @default(now())
+}

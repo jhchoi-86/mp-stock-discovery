@@ -1,0 +1,16 @@
+filename,grade,current_path,target_path,note
+analyzer.cjs,A,./analyzer.cjs,platform/analysis/strategies/legacy_adapter/,절대 수정 금지 (Worker Thread 래핑)
+server.cjs,E,./server.cjs,-,Strangler Fig 완료 후 최종 폐기
+historyManager.cjs,B,./src/utils/historyManager.cjs,platform/application/report_generator/,인터페이스 래핑 후 활용
+reportUtils.js,B,./src/utils/reportUtils.js,platform/application/report_generator/,텔레그램 포맷 유틸
+integrityGuard.cjs,B,./src/utils/integrityGuard.cjs,platform/approval/tdr_bridge/,해시 무결성 검증 추가
+telegramBot.cjs,B,./telegramBot.cjs,platform/application/alarm_watcher/,웹훅 봇 로직 이관
+update_master.cjs,B,./update_master.cjs,platform/application/scheduler/,스케줄러에 편입
+test_kis.cjs,C,./test_kis.cjs,sandbox/legacy_tests/,테스트 샌드박스
+test_naver.cjs,C,./test_naver.cjs,sandbox/legacy_tests/,테스트 샌드박스
+test_cheerio.cjs,C,./test_cheerio.cjs,sandbox/legacy_tests/,테스트 샌드박스
+extract_codes.cjs,D,./extract_codes.cjs,quarantine/,사용처 불분명 14일 격리
+scrape_sectors.cjs,D,./scrape_sectors.cjs,quarantine/,사용처 불분명 14일 격리
+seal.cjs,D,./seal.cjs,quarantine/,사용처 불분명 14일 격리
+fix.cjs,D,./fix.cjs,quarantine/,사용처 불분명 14일 격리
+detect_format.cjs,D,./detect_format.cjs,quarantine/,사용처 불분명 14일 격리
