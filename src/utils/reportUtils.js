@@ -134,6 +134,7 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
 
   content += reportStocks.map(stock => {
     const tfSigs = stock.timeframeStatus || {};
+    const sig2H = tfSigs['2H'];
     const getStatus = (tf) => {
       const sig = tfSigs[tf];
       if (!sig) return "-";
