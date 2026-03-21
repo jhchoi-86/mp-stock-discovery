@@ -82,22 +82,8 @@ router.post('/login', async (req, res) => {
     const accessToken = jsonwebtoken.sign({ userId: user.id, role: user.role }, ACCESS_SECRET, { expiresIn: '1h' });
     const refreshToken = jsonwebtoken.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
 
-    // Save Refresh Token to DB
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // 7 days from now
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: refreshToken,
-        expiresAt
-      }
-    });
-
-    // Update Last Login
-    await prisma.user.update({
-      where: { id: user.id },
-      data: { lastLoginAt: new Date() }
-    });
+    // DB constraints removed: Removed lastLoginAt and RefreshToken saves since they are defunct
+    // JWT alone manages the active session locally via HttpOnly cookies.
 
     // Set HttpOnly Cookie for Refresh Token
     res.cookie('refreshToken', refreshToken, {
@@ -124,20 +110,8 @@ router.post('/logout', async (req, res) => {
   try {
     const { refreshToken } = req.cookies;
     
-    // Even if no token, just clear the cookie and return 200
-    if (refreshToken) {
-      // Find the token in DB and mark it as revoked
-      const dbToken = await prisma.refreshToken.findUnique({
-        where: { token: refreshToken }
-      });
-      
-      if (dbToken && !dbToken.isRevoked) {
-        await prisma.refreshToken.update({
-          where: { id: dbToken.id },
-          data: { isRevoked: true }
-        });
-      }
-    }
+    // Stateless Logout: We just clear the cookie.
+    // Future Note: Implement Redis blacklisting if stricter revocation is needed.
     
     // Clear Cookie
     res.clearCookie('refreshToken', {
@@ -173,14 +147,7 @@ router.post('/refresh', async (req, res) => {
     
     const { userId } = payload;
     
-    // Check Database existence and revocation status
-    const dbToken = await prisma.refreshToken.findUnique({
-      where: { token: refreshToken }
-    });
-    
-    if (!dbToken || dbToken.isRevoked) {
-      return res.status(401).json({ error: 'Refresh token revoked or invalid' });
-    }
+    // 3. Skip DB Token existence check since we are completely Stateless
     
     // Ensure the token corresponds to an active user
     const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -188,27 +155,9 @@ router.post('/refresh', async (req, res) => {
       return res.status(401).json({ error: 'User deleted' });
     }
     
-    // RTR: Revoke the old token
-    await prisma.refreshToken.update({
-      where: { id: dbToken.id },
-      data: { isRevoked: true }
-    });
-    
-    // Issue NEW Tokens
+    // Issue NEW Tokens (Stateless)
     const newAccessToken = jsonwebtoken.sign({ userId: user.id, role: user.role }, ACCESS_SECRET, { expiresIn: '1h' });
     const newRefreshToken = jsonwebtoken.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
-    
-    // Save NEW Refresh Token to DB
-    const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
-    
-    await prisma.refreshToken.create({
-      data: {
-        userId: user.id,
-        token: newRefreshToken,
-        expiresAt
-      }
-    });
     
     // Set NEW HttpOnly Cookie
     res.cookie('refreshToken', newRefreshToken, {
