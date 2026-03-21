@@ -22,7 +22,7 @@ module.exports = {
     },
     {
       name: 'mp-stock-ai-api',
-      script: './venv/bin/python',
+      script: './ai-service/venv/bin/python',
       args: '-m uvicorn main:app --host 127.0.0.1 --port 8000',
       cwd: './ai-service',
       interpreter: 'none',
@@ -37,7 +37,7 @@ module.exports = {
       name: 'mp-stock-ai-worker',
       script: 'ml_worker.py',
       cwd: './ai-service',
-      interpreter: './venv/bin/python',
+      interpreter: './ai-service/venv/bin/python',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
