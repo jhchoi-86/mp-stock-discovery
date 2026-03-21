@@ -65,9 +65,9 @@ async def generate_comments(request: CommentRequest):
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
-                max_tokens=600
+                max_tokens=4000
             ),
-            timeout=4.5  # 4.5s internal timeout to safely return before reaching Node's 5s timeout
+            timeout=14.5  # Increased timeout to 14.5s to prevent disconnecting early
         )
         
         reply_content = response.choices[0].message.content.strip()
