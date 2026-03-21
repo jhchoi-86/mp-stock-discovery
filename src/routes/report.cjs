@@ -11,12 +11,12 @@ const router = express.Router();
 // A proxy route for fetching LLM AI comments used in manual Telegram transmissions
 router.post('/preview-ai', authMiddleware, async (req, res) => {
   try {
-    const { approvedStocks } = req.body;
-    if (!approvedStocks || !Array.isArray(approvedStocks) || approvedStocks.length === 0) {
+    const { reportStocks } = req.body;
+    if (!reportStocks || !Array.isArray(reportStocks) || reportStocks.length === 0) {
       return res.json({ success: true, aiCommentsMap: {} });
     }
 
-    const aiPayload = approvedStocks.map(s => ({
+    const aiPayload = reportStocks.map(s => ({
       symbol: s.code,
       name: s.name,
       category: s.latestSignal?.category || '',

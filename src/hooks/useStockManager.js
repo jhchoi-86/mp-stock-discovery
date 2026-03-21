@@ -316,7 +316,7 @@ export const useStockManager = (isAuthenticated) => {
 
     let aiCommentsMap = {};
     try {
-      const aiRes = await axiosClient.post('/api/send-report/preview-ai', { approvedStocks });
+      const aiRes = await axiosClient.post('/api/send-report/preview-ai', { reportStocks });
       if (aiRes.data?.success) {
         aiCommentsMap = aiRes.data.aiCommentsMap || {};
       }

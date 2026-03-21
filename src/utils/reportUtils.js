@@ -182,10 +182,16 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
 
     const adx = stock.latestSignal ? Math.round(stock.latestSignal.adx) : "-";
 
+    let commentText = "";
+    if (aiCommentsMap[stock.code]) {
+      commentText = `💡 AI 코멘트: ${aiCommentsMap[stock.code]}\n`;
+    }
+
     return `🔹 ${stock.name} (${stock.code})\n` +
            `분류: ${category} | 총점: ${stars} (${score}점)\n` +
            `세력강도: ${adx} | 1D:${getStatus('1D')} | 1W:${getStatus('1W')} | 추세:${trend}(${prog})\n` +
            `${priceText}\n` +
+           `${commentText}` +
            `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
   }).join('\n');
 
