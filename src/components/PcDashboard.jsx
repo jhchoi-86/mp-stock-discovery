@@ -605,7 +605,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
 
       {/* Copyright Footer */}
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 'auto' }}>
-        <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>© 2024 MP Stock. All rights reserved.</p>
+        <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>© 2026 MP Stock. All rights reserved.</p>
         <p style={{ margin: 0, opacity: 0.7 }}>본 프로그램의 소유권은 MP Stock에 있으며 무단 복제 및 수정을 금합니다.</p>
       </div>
     </div>

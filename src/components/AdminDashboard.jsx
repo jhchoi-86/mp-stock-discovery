@@ -195,8 +195,9 @@ const AdminDashboard = () => {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', color: '#fff' }}>
           <thead style={{ backgroundColor: 'rgba(255, 255, 255, 0.05)' }}>
             <tr>
+              <th style={thStyle}>이름</th>
               <th style={thStyle}>이메일</th>
-              <th style={thStyle}>텔레그램 ID</th>
+              <th style={thStyle}>전화번호</th>
               <th style={thStyle}>가입일</th>
               <th style={thStyle}>권한 등급</th>
               <th style={thStyle}>관리 액션</th>
@@ -205,7 +206,7 @@ const AdminDashboard = () => {
           <tbody>
             {filteredUsers.length === 0 ? (
               <tr>
-                <td colSpan="5" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>가입된 유저가 없습니다.</td>
+                <td colSpan="6" style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>가입된 유저가 없습니다.</td>
               </tr>
             ) : (
               filteredUsers.map(u => {
@@ -214,8 +215,9 @@ const AdminDashboard = () => {
 
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                    <td style={tdStyle}>{u.email.split('@')[0]}</td>
                     <td style={tdStyle}>{u.email}</td>
-                    <td style={tdStyle}>{u.telegramId || '미연동'}</td>
+                    <td style={tdStyle}>{u.telegramId ? u.telegramId : '미등록'}</td>
                     <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
                     <td style={tdStyle}>{renderRoleBadge(u.role)}</td>
                     <td style={tdStyle}>

@@ -25,7 +25,7 @@ const App = () => {
       '%c본 프로그램의 모든 소스코드는 MP Stock의 지적재산입니다.\n' +
       '승인되지 않은 무단 접근, 복제, 수정 및 유출 시도 로그는 시스템에 실시간 기록되며,\n' +
       '관련 법령에 의거하여 강력한 민형사상 책임을 질 수 있습니다.\n\n' +
-      'Copyright © 2024 MP Stock. All rights reserved.',
+      'Copyright © 2026 MP Stock. All rights reserved.',
       'color: red; font-size: 20px; font-weight: bold; text-shadow: 1px 1px 0 #000;',
       'color: yellow; font-size: 14px; font-weight: bold; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px;'
     );
