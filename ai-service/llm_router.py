@@ -13,14 +13,17 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-# Instantiate AsyncOpenAI client
-# It automatically picks up OPENAI_API_KEY from env
-# We provide a dummy default to prevent immediate crash if not set, 
-# but we will manually check before making requests.
 try:
-    client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", "dummy_key"))
+    gemini_key = os.getenv("GEMINI_API_KEY")
+    if gemini_key:
+        client = AsyncOpenAI(
+            api_key=gemini_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+    else:
+        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", "dummy_key"))
 except Exception as e:
-    logger.error(f"Failed to initialize OpenAI client: {e}")
+    logger.error(f"Failed to initialize AI client: {e}")
     client = None
 
 class StockData(BaseModel):
@@ -35,10 +38,10 @@ class CommentRequest(BaseModel):
 
 @router.post("/generate-comment")
 async def generate_comments(request: CommentRequest):
-    if not os.getenv("OPENAI_API_KEY"):
+    if not os.getenv("GEMINI_API_KEY") and not os.getenv("OPENAI_API_KEY"):
         # Explicit fail for fallback testing if no key is provided
-        logger.warning("OPENAI_API_KEY is not configured. Falling back.")
-        raise HTTPException(status_code=503, detail="OPENAI_API_KEY is not configured")
+        logger.warning("No API key configured. Falling back.")
+        raise HTTPException(status_code=503, detail="API key is not configured")
         
     if not client:
         raise HTTPException(status_code=500, detail="OpenAI client not initialized")
@@ -56,7 +59,7 @@ async def generate_comments(request: CommentRequest):
         logger.info(f"Requesting OpenAI completion for {len(request.stocks)} stocks...")
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gpt-3.5-turbo",
+                model="gemini-2.5-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "너는 주식 차트 분석 AI야. 감정 없이 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
                     {"role": "user", "content": prompt}
