@@ -29,12 +29,7 @@ router.get('/me', authMiddleware, async (req, res) => {
         name: true,
         role: true,
         telegramId: true,
-        createdAt: true,
-        subscriptionRequests: {
-          where: { status: 'PENDING' },
-          select: { id: true, status: true },
-          take: 1
-        }
+        createdAt: true
       }
     });
 
@@ -47,22 +42,12 @@ router.get('/me', authMiddleware, async (req, res) => {
     const kstNow = new Date(now.getTime() + kstOffset);
     const todayKst = new Date(Date.UTC(kstNow.getUTCFullYear(), kstNow.getUTCMonth(), kstNow.getUTCDate()));
 
-    // 3. Find Today's API usage log 
-    // Action Type 'ANALYZE_STOCK' is the primary gated function.
-    const usageLog = await prisma.usageLog.findUnique({
-      where: {
-        userId_actionType_logDate: {
-          userId: userId,
-          actionType: 'ANALYZE_STOCK',
-          logDate: todayKst
-        }
-      }
-    });
-
-    const currentUsage = usageLog ? usageLog.usageCount : 0;
+    // 3. Legacy UsageLog and SubscriptionRequests DB joins have been removed. 
+    // Rate limits (Usage logs) are now exclusively maintained in Redis via guardMiddleware in Phase 1.
+    const currentUsage = 0; // Front-end will just display 0 if Redis doesn't expose it here yet.
     const maxUsage = LIMITS[role] || LIMITS.FREE_USER;
 
-    const hasPendingSubscription = user.subscriptionRequests && user.subscriptionRequests.length > 0;
+    const hasPendingSubscription = false;
 
     res.json({
       user: {
