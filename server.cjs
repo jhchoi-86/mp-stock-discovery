@@ -818,11 +818,16 @@ if (isPrimaryWorker) {
                   { timeout: 5000 }
                 );
                 
+                let commentsArray = [];
                 if (aiRes.data && Array.isArray(aiRes.data)) {
-                  aiRes.data.forEach(item => {
-                    if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
-                  });
+                  commentsArray = aiRes.data;
+                } else if (aiRes.data && Array.isArray(aiRes.data.data)) {
+                  commentsArray = aiRes.data.data;
                 }
+                
+                commentsArray.forEach(item => {
+                  if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
+                });
               } catch (aiErr) {
                 console.error('[AI Service LLM Fallback] Failed to fetch LLM comments:', aiErr.message);
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)

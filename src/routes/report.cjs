@@ -27,18 +27,25 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
         trend: s.timeframeStatus?.['1D']?.cond_up7 ? "상승" : "관망"
       }
     }));
+    console.log('[AI Proxy] payload:', JSON.stringify(aiPayload));
 
     const aiCommentsMap = {};
     const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
       { stocks: aiPayload }, 
       { timeout: 5000 }
     );
+    console.log('[AI Proxy] Raw API response:', JSON.stringify(aiRes.data));
 
+    let commentsArray = [];
     if (aiRes.data && Array.isArray(aiRes.data)) {
-      aiRes.data.forEach(item => {
-        if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
-      });
+      commentsArray = aiRes.data;
+    } else if (aiRes.data && Array.isArray(aiRes.data.data)) {
+      commentsArray = aiRes.data.data;
     }
+
+    commentsArray.forEach(item => {
+      if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
+    });
 
     return res.json({ success: true, aiCommentsMap });
   } catch (error) {
