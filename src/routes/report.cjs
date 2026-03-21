@@ -30,7 +30,6 @@ router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (
       targetUsers = await prisma.user.findMany({
         where: {
           role: { in: ['PAID', 'ADMIN'] },
-          status: 'ACTIVE',
           telegramId: { not: null, not: '' }
         },
         select: { id: true, email: true, telegramId: true }

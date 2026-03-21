@@ -46,7 +46,6 @@ router.post('/request', authMiddleware, async (req, res) => {
     const admins = await prisma.user.findMany({
       where: {
         role: 'ADMIN',
-        status: 'ACTIVE',
         telegramId: { not: null, not: '' }
       }
     });
