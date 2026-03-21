@@ -309,24 +309,29 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleSendToTelegram = async () => {
-    const tgContent = generateTelegramContent(candidates, selectedStocks);
-    if (!tgContent) {
-      alert("텔레그램으로 발송할 종목을 체크박스로 선택하거나 총점이 75점 이상인 종목이 존재해야 합니다.");
-      return;
-    }
+    setIsSendingTg(true);
 
     const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code) || stock.total_score >= 75);
     const approvedStocks = reportStocks.filter(s => s.latestSignal && s.latestSignal.entry_approved);
 
-    const recommendations = approvedStocks.map(s => {
-      const tfSigs = s.timeframeStatus || {};
-      const sig2H = tfSigs['2H'];
-      const ePrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.ema5) : Math.round(s.latestSignal.entry_price || s.latestSignal.result_2 || 0);
-      const tPrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.bb_upper) : Math.round(s.latestSignal.target_price || 0);
-      return { stockCode: s.code, stockName: s.name, entryPrice: ePrice, targetPrice: tPrice };
-    });
+    let aiCommentsMap = {};
+    try {
+      const aiRes = await axiosClient.post('/api/send-report/preview-ai', { approvedStocks });
+      if (aiRes.data?.success) {
+        aiCommentsMap = aiRes.data.aiCommentsMap || {};
+      }
+    } catch (e) {
+      console.warn("AI comments fetch failed", e);
+    }
 
-    setIsSendingTg(true);
+    const tgContent = generateTelegramContent(candidates, selectedStocks, aiCommentsMap);
+    if (!tgContent) {
+      alert("텔레그램으로 발송할 종목을 체크박스로 선택하거나 총점이 75점 이상인 종목이 존재해야 합니다.");
+      setIsSendingTg(false);
+      return;
+    }
+
+    const recommendations = approvedStocks.map(s => {
     try {
       const safeContent = tgContent.length > 4000 
         ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 

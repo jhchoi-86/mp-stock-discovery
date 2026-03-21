@@ -4,8 +4,48 @@ const prisma = new PrismaClient();
 const telegramService = require('../services/telegramService.cjs');
 const authMiddleware = require('../middlewares/authMiddleware.cjs');
 const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
+const axios = require('axios');
 
 const router = express.Router();
+
+// A proxy route for fetching LLM AI comments used in manual Telegram transmissions
+router.post('/preview-ai', authMiddleware, async (req, res) => {
+  try {
+    const { approvedStocks } = req.body;
+    if (!approvedStocks || !Array.isArray(approvedStocks) || approvedStocks.length === 0) {
+      return res.json({ success: true, aiCommentsMap: {} });
+    }
+
+    const aiPayload = approvedStocks.map(s => ({
+      symbol: s.code,
+      name: s.name,
+      category: s.latestSignal?.category || '',
+      price: s.latestSignal?.current_price || s.latestSignal?.entry_price || 0,
+      indicators: {
+        adx: s.latestSignal?.adx || 0,
+        score: s.total_score || 0,
+        trend: s.timeframeStatus?.['1D']?.cond_up7 ? "상승" : "관망"
+      }
+    }));
+
+    const aiCommentsMap = {};
+    const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
+      { stocks: aiPayload }, 
+      { timeout: 5000 }
+    );
+
+    if (aiRes.data && Array.isArray(aiRes.data)) {
+      aiRes.data.forEach(item => {
+        if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
+      });
+    }
+
+    return res.json({ success: true, aiCommentsMap });
+  } catch (error) {
+    console.error('[AI Service LLM Proxy Fallback] Failed to fetch LLM comments:', error.message);
+    return res.json({ success: true, aiCommentsMap: {} }); // Silent fallback, return empty map
+  }
+});
 
 router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (req, res) => {
   try {

@@ -62,7 +62,7 @@ export const generateReportContent = (candidates) => {
   return header + rows + footer;
 };
 
-export const generateTelegramContent = (candidates, selectedStocksSet) => {
+export const generateTelegramContent = (candidates, selectedStocksSet, aiCommentsMap = {}) => {
   const reportStocks = candidates.filter(stock => selectedStocksSet.has(stock.code) || stock.total_score >= 75);
 
   if (reportStocks.length === 0) {
@@ -121,6 +121,9 @@ export const generateTelegramContent = (candidates, selectedStocksSet) => {
       content += `🔹 ${s.name} (${s.code})\n`;
       content += `분류: ${s.latestSignal.category} | 총점: ${stars} (${score}점)\n`;
       content += `${priceText}\n`;
+      if (aiCommentsMap[s.code]) {
+        content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
+      }
       content += `차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
     });
     content += `---\n\n`;
