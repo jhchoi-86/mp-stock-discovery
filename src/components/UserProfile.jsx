@@ -136,9 +136,9 @@ const UserProfile = ({ isOpen, onClose }) => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                 <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>계정 등급</span>
                 <span style={{ 
-                  background: user?.role === 'PRO_USER' ? 'rgba(245, 158, 11, 0.2)' : (user?.role === 'ADMIN' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(156, 163, 175, 0.2)'),
-                  color: user?.role === 'PRO_USER' ? '#fbbf24' : (user?.role === 'ADMIN' ? '#f87171' : '#9ca3af'),
-                  padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold', border: `1px solid ${user?.role === 'PRO_USER' ? 'rgba(245,158,11,0.5)' : 'rgba(156,163,175,0.5)'}`
+                  background: user?.role === 'PAID' ? 'rgba(245, 158, 11, 0.2)' : (user?.role === 'ADMIN' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(156, 163, 175, 0.2)'),
+                  color: user?.role === 'PAID' ? '#fbbf24' : (user?.role === 'ADMIN' ? '#f87171' : '#9ca3af'),
+                  padding: '2px 8px', borderRadius: '12px', fontSize: '0.8rem', fontWeight: 'bold', border: `1px solid ${user?.role === 'PAID' ? 'rgba(245,158,11,0.5)' : 'rgba(156,163,175,0.5)'}`
                 }}>
                   {user?.role?.replace('_USER', '')}
                 </span>
@@ -262,7 +262,7 @@ const UserProfile = ({ isOpen, onClose }) => {
               </div>
             )}
 
-            {user?.role === 'FREE_USER' && (
+            {user?.role === 'FREE_TRIAL' && (
               <button 
                 onClick={handleSubscribeRequest}
                 disabled={profileData?.hasPendingSubscription || isSubscribing}

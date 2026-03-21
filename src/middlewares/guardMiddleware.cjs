@@ -1,23 +1,24 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-const ROLE_RANKS = {
-  FREE_USER: 1,
-  PRO_USER: 2,
+const ROLE_HIERARCHY = {
+  FREE_TRIAL: 1,
+  FREE: 1,
+  PAID: 2,
   ADMIN: 3
 };
 
 const USAGE_LIMITS = {
-  FREE_USER: 5,
-  PRO_USER: 50
+  FREE_TRIAL: 5,
+  PAID: 50
 };
 
 /**
- * RBAC & Usage Tracking Middleware Guard
- * @param {string} requiredRole - Minimum role required ('FREE_USER', 'PRO_USER', 'ADMIN')
- * @param {string} actionType - The specific action tracking ID/Name
+ * Factory for creating RBAC and Rate Limit middleware
+ * @param {string} requiredRole - Minimum role required ('FREE_TRIAL', 'PAID', 'ADMIN')
+ * @param {string} actionType - The type of action being performed (e.g., 'ANALYZE_STOCK')
  */
-const guardMiddleware = (requiredRole = 'FREE_USER', actionType = 'GENERAL_API_CALL') => {
+const guardMiddleware = (requiredRole = 'FREE_TRIAL', actionType = 'GENERAL_API_CALL') => {
   return async (req, res, next) => {
     try {
       const user = req.user; // Expected to be populated by authMiddleware
@@ -27,8 +28,8 @@ const guardMiddleware = (requiredRole = 'FREE_USER', actionType = 'GENERAL_API_C
       }
 
       // 1. Role Verification
-      const userRoleRank = ROLE_RANKS[user.role] || 0;
-      const requiredRoleRank = ROLE_RANKS[requiredRole] || 0;
+      const userRoleRank = ROLE_HIERARCHY[user.role] || 0;
+      const requiredRoleRank = ROLE_HIERARCHY[requiredRole] || 0;
 
       if (userRoleRank < requiredRoleRank) {
         return res.status(403).json({ error: 'Forbidden. Insufficient role permissions.' });
@@ -46,7 +47,8 @@ const guardMiddleware = (requiredRole = 'FREE_USER', actionType = 'GENERAL_API_C
       const todayStr = kstTime.toISOString().split('T')[0]; // YYYY-MM-DD
       const logDate = new Date(todayStr + "T00:00:00.000Z");
 
-      const limit = USAGE_LIMITS[user.role] || USAGE_LIMITS.FREE_USER;
+      // 2. Enforce Daily Global usage limit
+      const limit = USAGE_LIMITS[user.role] || USAGE_LIMITS.FREE_TRIAL;
 
       // Find or create usage log via Prisma Upsert to handle concurrent insertions gracefully
       const usageRecord = await prisma.usageLog.upsert({

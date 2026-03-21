@@ -7,7 +7,7 @@ const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 
 const router = express.Router();
 
-router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), async (req, res) => {
+router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (req, res) => {
   try {
     const { reportText, recommendations } = req.body;
     if (!reportText) {
@@ -29,14 +29,14 @@ router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), asy
       // ADMIN: Broadcast to ALL active PRO and ADMIN users
       targetUsers = await prisma.user.findMany({
         where: {
-          role: { in: ['PRO_USER', 'ADMIN'] },
+          role: { in: ['PAID', 'ADMIN'] },
           status: 'ACTIVE',
           telegramId: { not: null, not: '' }
         },
         select: { id: true, email: true, telegramId: true }
       });
     } else {
-      // PRO_USER: Send to their personal registered Telegram ID
+      // PAID: Send to their personal registered Telegram ID
       const selfUser = await prisma.user.findUnique({
         where: { id: req.user.userId },
         select: { id: true, email: true, telegramId: true }

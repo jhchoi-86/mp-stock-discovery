@@ -29,14 +29,14 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Create user
-    console.log('[Auth Registration] Attempting to create user in DB...', { email, role: 'FREE_USER' });
+    console.log('[Auth Registration] Attempting to create user in DB...', { email, role: 'FREE_TRIAL' });
     let newUser;
     try {
       newUser = await prisma.user.create({
         data: {
           email,
           passwordHash,
-          role: 'FREE_USER'
+          role: 'FREE_TRIAL'
         }
       });
       console.log('[Auth Registration] Prisma user created successfully:', newUser.id);

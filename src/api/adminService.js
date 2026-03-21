@@ -25,7 +25,7 @@ const adminService = {
    * Updates a user's role and/or status.
    * Requires ADMIN role. Can only affect non-ADMIN users.
    * @param {string} userId - UUID of the user to update
-   * @param {string} role - Enum ['FREE_USER', 'PRO_USER', 'ADMIN']
+   * @param {string} role - Enum ['FREE_TRIAL', 'FREE', 'PAID', 'ADMIN']
    * @param {string} status - Enum ['ACTIVE', 'SUSPENDED', 'DELETED']
    * @returns {Promise<Object>} The updated user object
    */

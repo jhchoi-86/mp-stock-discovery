@@ -185,7 +185,7 @@ router.post('/broadcast', async (req, res) => {
     // Fetch PRO & ADMIN users with active telegram mappings
     const targetUsers = await prisma.user.findMany({
       where: {
-        role: { in: ['PRO_USER', 'ADMIN'] },
+        role: { in: ['PAID', 'ADMIN'] },
         telegramId: { not: null, not: '' }
       },
       select: {

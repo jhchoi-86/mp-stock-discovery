@@ -7,7 +7,7 @@ const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 const router = express.Router();
 
 router.use(authMiddleware);
-router.use(guardMiddleware('PRO_USER', 'VIEW_ARCHIVE')); // VIP Only
+router.use(guardMiddleware('PAID', 'VIEW_ARCHIVE')); // VIP Only
 
 router.get('/', async (req, res) => {
   try {

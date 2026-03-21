@@ -12,7 +12,7 @@ router.post('/request', authMiddleware, async (req, res) => {
     const userId = req.user.userId;
 
     // Check if user is already PRO or ADMIN
-    if (req.user.role === 'PRO_USER' || req.user.role === 'ADMIN') {
+    if (req.user.role === 'PAID' || req.user.role === 'ADMIN') {
       return res.status(400).json({ error: 'Already a PRO or ADMIN user.' });
     }
 

@@ -7,9 +7,11 @@ const router = express.Router();
 const prisma = new PrismaClient();
 
 // Limit Constants (MATCHING Guard Middleware)
+// Limit Constants (MATCHING Guard Middleware)
 const LIMITS = {
-  FREE_USER: 5,
-  PRO_USER: 50,
+  FREE_TRIAL: 5,
+  FREE: 5,
+  PAID: 50,
   ADMIN: 99999
 };
 
@@ -26,7 +28,6 @@ router.get('/me', authMiddleware, async (req, res) => {
       select: {
         id: true,
         email: true,
-        name: true,
         role: true,
         telegramId: true,
         createdAt: true
@@ -45,7 +46,7 @@ router.get('/me', authMiddleware, async (req, res) => {
     // 3. Legacy UsageLog and SubscriptionRequests DB joins have been removed. 
     // Rate limits (Usage logs) are now exclusively maintained in Redis via guardMiddleware in Phase 1.
     const currentUsage = 0; // Front-end will just display 0 if Redis doesn't expose it here yet.
-    const maxUsage = LIMITS[role] || LIMITS.FREE_USER;
+    const maxUsage = LIMITS[role] || LIMITS.FREE_TRIAL;
 
     const hasPendingSubscription = false;
 
@@ -66,14 +67,13 @@ router.get('/me', authMiddleware, async (req, res) => {
 });
 
 // PUT /api/users/me
-// Update Name and/or Telegram ID
+// Update Telegram ID
 router.put('/me', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.userId;
-    const { name, telegramId } = req.body;
+    const { telegramId } = req.body;
 
     const updateData = {};
-    if (name !== undefined) updateData.name = name;
     if (telegramId !== undefined) updateData.telegramId = telegramId;
 
     if (Object.keys(updateData).length === 0) {
@@ -86,7 +86,6 @@ router.put('/me', authMiddleware, async (req, res) => {
       select: {
         id: true,
         email: true,
-        name: true,
         role: true,
         telegramId: true
       }

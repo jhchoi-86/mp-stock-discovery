@@ -75,7 +75,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0]}</div>
             <div style={{ 
               fontSize: '0.65rem', 
-              color: user?.role === 'ADMIN' ? '#e74c3c' : (user?.role === 'PRO_USER' ? '#f1c40f' : '#bdc3c7'),
+              color: user?.role === 'ADMIN' ? '#e74c3c' : (user?.role === 'PAID' ? '#f1c40f' : '#bdc3c7'),
               background: 'rgba(255,255,255,0.1)',
               padding: '2px 6px',
               borderRadius: '12px',
@@ -96,7 +96,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               <UserCog size={18} /> {showAdminPanel ? '신호 대시보드' : '관리자 패널'}
             </button>
           )}
-          {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+          {['ADMIN', 'PAID'].includes(user?.role) && (
             <button 
               onClick={() => setIsReportArchiveOpen(true)} 
               className="action-btn"

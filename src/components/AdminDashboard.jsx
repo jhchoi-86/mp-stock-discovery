@@ -58,7 +58,7 @@ const AdminDashboard = () => {
   };
 
   const handleToggleRole = async (targetUser) => {
-    const newRole = targetUser.role === 'PRO_USER' ? 'FREE_USER' : 'PRO_USER';
+    const newRole = targetUser.role === 'PAID' ? 'FREE_TRIAL' : 'PAID';
     try {
       const updatedUser = await adminService.updateUserStatus(targetUser.id, newRole, targetUser.status);
       setUsers(prev => prev.map(u => u.id === targetUser.id ? { ...u, role: updatedUser.user.role } : u));
@@ -107,7 +107,7 @@ const AdminDashboard = () => {
     switch (role) {
       case 'ADMIN':
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.5)' }}>ADMIN</span>;
-      case 'PRO_USER':
+      case 'PAID':
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.5)' }}>PRO</span>;
       default:
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(156, 163, 175, 0.2)', color: '#9ca3af', border: '1px solid rgba(156, 163, 175, 0.5)' }}>FREE</span>;

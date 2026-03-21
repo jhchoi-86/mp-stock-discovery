@@ -60,7 +60,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '동기화'}
         </button>
 
-        {['ADMIN', 'PRO_USER'].includes(user?.role) && (
+        {['ADMIN', 'PAID'].includes(user?.role) && (
           <button onClick={() => setIsReportArchiveOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
             <Archive size={14} /> VIP 자료실
           </button>
