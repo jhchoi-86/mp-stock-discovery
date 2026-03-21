@@ -120,7 +120,7 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
       }
       
       content += `🔹 ${s.name} (${s.code})\n`;
-      content += `분류: ${s.latestSignal.category} | 총점: ${stars} (${score}점)\n`;
+      content += `분류: ${s.latestSignal.category} | AI 분석 종합 점수: ${stars} (${score}점)\n`;
       content += `${priceText}\n`;
       if (aiCommentsMap[s.code]) {
         content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
@@ -191,8 +191,8 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
     }
 
     return `🔹 ${stock.name} (${stock.code})\n` +
-           `분류: ${category} | 총점: ${stars} (${score}점)\n` +
-           `세력강도: ${adx} | 1D:${getStatus('1D')} | 1W:${getStatus('1W')} | 추세:${trend}(${prog})\n` +
+           `분류: ${category} | AI 분석 종합 점수: ${stars} (${score}점)\n` +
+           `주가 추세 강도: ${adx} | 1D:${getStatus('1D')} | 1W:${getStatus('1W')} | 추세:${trend}(${prog})\n` +
            `${priceText}\n` +
            `${commentText}` +
            `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
