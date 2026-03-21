@@ -48,7 +48,7 @@ async def generate_comments(request: CommentRequest):
 
     prompt = "주식 종목들의 기술적 지표 데이터를 줄 테니, 각 종목마다 100자 이내의 핵심 요약 코멘트를 작성해줘.\n"
     prompt += "[지표 해석 기준]\n"
-    prompt += "- ADX는 '현재 주가 추세의 강도'를 의미해. 주가가 상승(추세 상승 등)하면서 ADX가 높으면 강한 상승 추세로, 주가가 하락(하락 추세 등)하면서 ADX가 높으면 강한 하락 추세로 해석해.\n"
+    prompt += "- ADX는 '주가 추세 강도'를 의미해. 코멘트를 작성할 때 무조건 '[ADX수치] 추세강도는 ' 이라는 표현으로 고정해서 작성해줘. 'ADX'라는 단어를 그대로 쓰지 마. (예: '64.86 추세강도는 강한 상승 추세로...')\n"
     prompt += "- Score는 'MP Stock 종합분석 지수'야. 0~100점 범위를 가지며, 점수가 높을수록 매수 관점으로 타점에서 대기하다가 진입 시 기계적인 목표가에 이익 실현할 가능성이 매우 높은 지수야.\n\n"
     prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱(```json)은 절대 추가하지 마.\n"
     prompt += '[{"symbol": "종목코드", "ai_comment": "코멘트 내용"}]\n\n'
@@ -64,7 +64,7 @@ async def generate_comments(request: CommentRequest):
             client.chat.completions.create(
                 model="gemini-2.5-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
                 messages=[
-                    {"role": "system", "content": "너는 주식 차트 분석 AI야. 감정 없이 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
+                    {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 객관적이고 단호한 전문가형 어투로 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
