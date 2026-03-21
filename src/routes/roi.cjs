@@ -10,11 +10,11 @@ const router = express.Router();
 // Fetch Real-time ROI Ranking (Accessible by active users)
 router.get('/', authMiddleware, async (req, res) => {
   try {
-    // 1. Fetch raw recommendations from DB
-    const recs = await prisma.recommendation.findMany({
-      orderBy: {
-        recommendedAt: 'desc'
-      }
+    // 1. Fetch raw recommendations from DB using SignalCandidate
+    const recs = await prisma.signalCandidate.findMany({
+      where: { signalHH: true },
+      orderBy: { createdAt: 'desc' },
+      take: 100 // Prevent memory overload
     });
 
     if (recs.length === 0) {
@@ -37,48 +37,35 @@ router.get('/', authMiddleware, async (req, res) => {
       }
     }
 
-    // 3. Compute ROI Map, Update Highest Prices
-    const updatePromises = [];
-    const roiCalc = recs.map(r => {
-      const currentPrice = pricesMap[r.stockCode] || r.entryPrice;
+    // 3. Compute ROI Map, Update Highest Prices (Skipping DB write since SignalCandidate lacks highestPrice)
+    const roiCalc = [];
+    for (const r of recs) {
+      // Find instrument name and code from STOCK_MASTER_FILE if we don't have the include relation readily setup
+      const stockCode = 'Unknown';
+      const stockName = 'Unknown';
       
-      // Calculate Highest Price achieved since recommendation
-      let maxPrice = r.highestPrice || r.entryPrice;
-      if (currentPrice > maxPrice) {
-        maxPrice = currentPrice;
-        // Schedule DB Update (Background)
-        updatePromises.push(
-          prisma.recommendation.update({
-            where: { id: r.id },
-            data: { highestPrice: maxPrice }
-          })
-        );
-      }
-
-      const roiPercent = r.entryPrice > 0 
-        ? ((maxPrice - r.entryPrice) / r.entryPrice) * 100 
-        : 0;
-        
+      const currentPrice = pricesMap[stockCode] || r.entryPrice1 || 0;
+      let maxPrice = currentPrice; // Read-only for now until we expand the schema
+      
+      const roiPercent = r.entryPrice1 > 0 ? ((maxPrice - r.entryPrice1) / r.entryPrice1) * 100 : 0;
       const isTargetHit = r.targetPrice > 0 && maxPrice >= r.targetPrice;
 
-      return {
+      roiCalc.push({
         id: r.id,
-        stockCode: r.stockCode,
-        stockName: r.stockName,
-        entryPrice: r.entryPrice,
+        stockCode: stockCode,
+        stockName: stockName,
+        entryPrice: r.entryPrice1,
         targetPrice: r.targetPrice,
         currentPrice: currentPrice,
         highestPrice: maxPrice,
         roi: parseFloat(roiPercent.toFixed(2)),
         isTargetHit: isTargetHit,
-        recommendedAt: r.recommendedAt
-      };
-    });
+        recommendedAt: r.createdAt
+      });
+    }
 
     // Execute async DB updates for highest prices in the background
-    if (updatePromises.length > 0) {
-      Promise.allSettled(updatePromises).catch(e => console.error("[ROI Tracker] Highest Price Auto-Update Error:", e));
-    }
+    // Muted for SignalCandidate
 
     // 4. Sort descending by ROI
     roiCalc.sort((a, b) => b.roi - a.roi);

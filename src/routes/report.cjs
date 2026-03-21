@@ -14,27 +14,14 @@ router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), asy
       return res.status(400).json({ success: false, error: 'reportText is required' });
     }
 
-    // Wrap DB operations natively in a Transaction
-    const [savedReport] = await prisma.$transaction([
-      // 1. Save Report text
-      prisma.report.create({
-        data: {
-          content: reportText,
-          authorId: req.user.userId
-        }
-      }),
-      // 2. Insert Recommendations
-      ...(recommendations && recommendations.length > 0 ? [
-        prisma.recommendation.createMany({
-          data: recommendations.map(r => ({
-            stockCode: r.stockCode,
-            stockName: r.stockName,
-            entryPrice: r.entryPrice,
-            targetPrice: r.targetPrice
-          }))
-        })
-      ] : [])
-    ]);
+    // Log the manual broadcast to AuditLog using the new schema
+    await prisma.auditLog.create({
+      data: {
+        userId: req.user.userId,
+        action: 'MANUAL_TELEGRAM_BROADCAST',
+        details: { textLength: reportText.length, recCount: recommendations?.length || 0 }
+      }
+    });
 
     // Query targets based on User Role
     let targetUsers = [];
@@ -80,9 +67,9 @@ router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), asy
     if (req.user.role === 'ADMIN') {
       await prisma.auditLog.create({
         data: {
-          adminId: req.user.userId,
-          action: 'BROADCAST_REPORT',
-          details: { sentCount: successCount, totalTargeted: targetUsers.length, reportId: savedReport.id }
+          userId: req.user.userId,
+          action: 'BROADCAST_REPORT_SUCCESS',
+          details: { sentCount: successCount, totalTargeted: targetUsers.length }
         }
       });
     }
