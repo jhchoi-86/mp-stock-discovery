@@ -12,10 +12,10 @@ const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secre
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name, phone } = req.body;
+    const { email, password } = req.body;
 
-    if (!email || !password || !name || !phone) {
-      return res.status(400).json({ error: 'Email, password, name, and phone are required.' });
+    if (!email || !password) {
+      return res.status(400).json({ error: 'Email and password are required.' });
     }
 
     // Check if user already exists
@@ -29,15 +29,13 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Create user
-    console.log('[Auth Registration] Attempting to create user in DB...', { email, name, role: 'FREE_USER' });
+    console.log('[Auth Registration] Attempting to create user in DB...', { email, role: 'FREE_USER' });
     let newUser;
     try {
       newUser = await prisma.user.create({
         data: {
           email,
           passwordHash,
-          name,
-          phone,
           role: 'FREE_USER'
         }
       });
@@ -49,7 +47,7 @@ router.post('/register', async (req, res) => {
 
     res.status(201).json({ 
       message: 'User registered successfully', 
-      user: { id: newUser.id, email: newUser.email, name: newUser.name, role: newUser.role } 
+      user: { id: newUser.id, email: newUser.email, role: newUser.role } 
     });
   } catch (error) {
     console.error('[Auth Register Error]', error);
