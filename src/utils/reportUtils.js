@@ -89,7 +89,8 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
         curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
       }
       const score = s.total_score || 0;
-      const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
+      const starCount = Math.max(0, Math.min(5, Math.round(score / 20)));
+      const stars = '★'.repeat(starCount) + '☆'.repeat(5 - starCount);
       
       let priceText = "-";
       if (sig2H && sig2H.ema5 > 0) {
@@ -152,7 +153,8 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
       curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
     }
     const score = stock.total_score || 0;
-    const stars = '★'.repeat(Math.round(score / 20)) + '☆'.repeat(5 - Math.round(score / 20));
+    const starCount = Math.max(0, Math.min(5, Math.round(score / 20)));
+    const stars = '★'.repeat(starCount) + '☆'.repeat(5 - starCount);
 
     const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
     let priceText = curPriceStr ? `${curPriceStr}` : "-";
