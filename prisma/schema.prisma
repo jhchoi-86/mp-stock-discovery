@@ -125,3 +125,27 @@ model SubscriptionRequest {
 
   @@map("subscription_requests")
 }
+
+model SniperSignal {
+  id         String   @id @default(uuid()) @db.Uuid
+  signalId   String   @unique @map("signal_id") @db.VarChar(255)
+  ticker     String   @db.VarChar(50)
+  type       String   @db.VarChar(50)  // 'ENTRY', 'EXIT_WARN'
+  entryPrice Float    @map("entry_price")
+  time       String   @db.VarChar(50)
+  grade      String?  @db.VarChar(10)
+  score      Int?
+  momentum   Json?    
+  
+  // Track continuous updates (e.g. tracking/exit warnings)
+  isExited   Boolean  @default(false) @map("is_exited")
+  exitPrice  Float?   @map("exit_price")
+  exitReason String?  @map("exit_reason")
+
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@map("sniper_signals")
+}
+

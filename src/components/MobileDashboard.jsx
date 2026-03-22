@@ -6,6 +6,7 @@ import AdminDashboard from './AdminDashboard.jsx';
 import ReportArchive from './ReportArchive.jsx';
 import MobileStockCard from './MobileStockCard.jsx';
 import BottomSheetFilter from './BottomSheetFilter.jsx';
+import SubscriptionModal from './SubscriptionModal.jsx';
 
 const MobileDashboard = ({ manager, user, clearAuth }) => {
   const {
@@ -24,6 +25,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', color: '#fff' }}>
@@ -53,9 +55,13 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       {/* User Profile Modal Map */}
       <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
+      <SubscriptionModal isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
 
       {/* Quick Action Bar */}
       <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.75rem 1rem', borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+        <button onClick={() => setIsSubscriptionOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'linear-gradient(to right, var(--primary), var(--secondary))', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(236,72,153,0.3)' }}>
+          👑 프리미엄
+        </button>
         <button onClick={() => handleAutoSync()} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
           <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '동기화'}
         </button>
@@ -178,6 +184,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             components={{
               Footer: () => (
                 <div style={{ textAlign: 'center', padding: '2rem 1rem', color: 'var(--text-muted)', fontSize: '0.7rem', marginTop: '1rem', borderTop: '1px solid var(--glass-border)' }}>
+                  <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', color: '#ffb86c' }}>⚠️ 본 서비스는 자동 매매가 아닙니다.<br/>모든 투자 판단 및 손실에 대한 책임은 투자자에게 있습니다.</p>
                   <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>© 2026 MP Stock. All rights reserved.</p>
                   <p style={{ margin: 0, opacity: 0.7 }}>본 프로그램의 소유권은 MP Stock에 있으며<br/>무단 복제 및 수정을 금합니다.</p>
                 </div>

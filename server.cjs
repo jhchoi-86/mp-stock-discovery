@@ -226,13 +226,24 @@ app.get('/api/signals', (req, res) => {
 
 // SSE Clients
 let clients = [];
+const jwt = require('jsonwebtoken');
 
 app.get('/api/stream', (req, res) => {
+    const token = req.cookies?.accessToken;
+    let role = 'GUEST';
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+            role = decoded.role;
+        } catch(e) {}
+    }
+
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.flushHeaders();
 
+    res.userRole = role;
     clients.push(res);
 
     req.on('close', () => {
@@ -318,6 +329,66 @@ app.post('/api/webhook', (req, res) => {
     broadcastUpdate();
 
     res.status(200).json({ message: 'PRD Signal recorded', signal: newSignal });
+});
+
+// ✅ Phase 8: Sniper Engine Webhook Receiver
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+
+app.post('/api/sniper/webhook', async (req, res) => {
+    // 🔴 [Red Team 방어] Webhook 인증 검사 (Bearer Token)
+    const authHeader = req.headers['authorization'];
+    const expectedSecret = process.env.CORE_INTEGRITY_HASH;
+    if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+        console.warn(`[SECURITY] 무단 Webhook 접근 차단 (IP: ${req.ip})`);
+        return res.status(401).json({ error: 'Unauthorized Webhook Access' });
+    }
+
+    const payload = req.body;
+    if (!payload || !payload.signal_id) return res.status(400).json({ error: 'Invalid payload' });
+
+    try {
+        // 1. DB 제어 (ENTRY는 Upsert, EXIT_WARN은 Update)
+        if (payload.type === 'ENTRY') {
+            await prisma.sniperSignal.upsert({
+                where: { signalId: payload.signal_id },
+                update: {},
+                create: {
+                    signalId: payload.signal_id,
+                    ticker: payload.ticker,
+                    type: payload.type,
+                    entryPrice: payload.price,
+                    time: payload.time,
+                    grade: payload.grade || null,
+                    score: payload.score || null,
+                    momentum: payload.momentum || {}
+                }
+            });
+        } else if (payload.type === 'EXIT_WARN') {
+            await prisma.sniperSignal.updateMany({
+                where: { signalId: payload.signal_id },
+                data: {
+                    isExited: true,
+                    exitPrice: payload.price,
+                    exitReason: payload.reason || 'None'
+                }
+            });
+        }
+
+        // 2. 어드민 전용 SSE 브로드캐스트 (Red Team 방어)
+        const eventData = `data: ${JSON.stringify({ type: 'sniper_alert', payload })}\n\n`;
+        clients.forEach(client => {
+            if (client.userRole === 'ADMIN') { 
+                // 어드민에게만 스나이퍼 속보 알림
+                client.write(eventData);
+            }
+        });
+
+        res.status(200).json({ message: 'Sniper webhook processed' });
+    } catch (error) {
+        console.error("[Sniper Webhook] Error:", error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 // CSV Batch Import

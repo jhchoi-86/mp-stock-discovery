@@ -11,6 +11,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [agreeRisk, setAgreeRisk] = useState(false);
   
   const [errorMsg, setErrorMsg] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -25,6 +26,9 @@ const Login = () => {
         // Handle Registration
         if (!name.trim() || !phone.trim()) {
           throw new Error('이름과 핸드폰 번호를 모두 입력해주세요.');
+        }
+        if (!agreeRisk) {
+          throw new Error('투자 손실 위험에 대한 책임에 동의하셔야 합니다.');
         }
         await authService.register(email, password, name, phone);
         alert('회원가입이 완료되었습니다. 로그인 해주세요.');
@@ -145,6 +149,22 @@ const Login = () => {
             required
             className="glass-input"
           />
+
+          {isRegisterMode && (
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.6rem', padding: '0.5rem 0.2rem' }}>
+              <input 
+                type="checkbox" 
+                id="agreeRisk" 
+                checked={agreeRisk}
+                onChange={(e) => setAgreeRisk(e.target.checked)}
+                required
+                style={{ marginTop: '3px', cursor: 'pointer', transform: 'scale(1.1)', accentColor: 'var(--accent)' }}
+              />
+              <label htmlFor="agreeRisk" style={{ cursor: 'pointer', lineHeight: '1.4', fontSize: '0.75rem', color: 'rgba(255,255,255,0.85)' }}>
+                본 서비스는 자동 매매가 아니며, 제공되는 정보에 따른 투자 판단과 최종 결과에 대한 책임은 전적으로 사용자 본인에게 있음을 인지하고 이에 동의합니다. <span style={{color: 'var(--accent)', fontWeight: 'bold'}}>(필수)</span>
+              </label>
+            </div>
+          )}
 
           <button 
             type="submit" 

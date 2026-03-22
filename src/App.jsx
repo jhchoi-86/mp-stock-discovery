@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { Toaster } from 'react-hot-toast';
 import useAuthStore from './store/authStore.js';
 import Login from './components/Login.jsx';
 import PcDashboard from './components/PcDashboard.jsx';
@@ -44,10 +45,15 @@ const App = () => {
     return <Login />;
   }
 
-  return isMobile ? (
-    <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
-  ) : (
-    <PcDashboard manager={manager} user={user} clearAuth={clearAuth} />
+  return (
+    <>
+      <Toaster position="bottom-right" />
+      {isMobile ? (
+        <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
+      ) : (
+        <PcDashboard manager={manager} user={user} clearAuth={clearAuth} />
+      )}
+    </>
   );
 };
 

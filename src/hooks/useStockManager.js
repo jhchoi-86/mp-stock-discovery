@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import axiosClient from '../api/axiosClient';
 import { generateReportContent, generateTelegramContent } from '../utils/reportUtils';
+import toast from 'react-hot-toast';
 
 export const useStockManager = (isAuthenticated) => {
   const [stocks, setStocks] = useState([]);
@@ -66,6 +67,21 @@ export const useStockManager = (isAuthenticated) => {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
         fetchData();
+      } else if (data.type === 'sniper_alert') {
+        const { ticker, type: alertType, price, grade, score, reason } = data.payload;
+        if (alertType === 'ENTRY') {
+            toast.success(`[스나이퍼 🚨포착] ${ticker} | 진입가: ${Math.round(price).toLocaleString()}원 (점수: ${score}점, ${grade}등급)`, {
+                duration: 6000,
+                icon: '🎯',
+                style: { background: '#1e1e2f', color: '#fff', border: '1px solid #FF1744' }
+            });
+        } else if (alertType === 'EXIT_WARN') {
+            toast.error(`[청산 ⚠️경고] ${ticker} | 사유: ${reason}`, {
+                duration: 8000,
+                icon: '⚠️',
+                style: { background: '#2d1a1a', color: '#ffb86c', border: '1px solid #ff5555' }
+            });
+        }
       }
     };
 

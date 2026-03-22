@@ -5,11 +5,13 @@ import AdminDashboard from './AdminDashboard.jsx';
 import UserProfile from './UserProfile.jsx';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import ReportArchive from './ReportArchive.jsx';
+import SubscriptionModal from './SubscriptionModal.jsx';
 
 const PcDashboard = ({ manager, user, clearAuth }) => {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
+  const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const fileInputRef = useRef(null);
 
   const {
@@ -86,6 +88,15 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             </div>
           </button>
           <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
+          <button 
+            onClick={() => setIsSubscriptionOpen(true)}
+            className="action-btn"
+            style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', background: 'linear-gradient(to right, var(--primary), var(--secondary))', color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: 700, transition: 'all 0.2s', boxShadow: '0 4px 12px rgba(236, 72, 153, 0.3)' }}
+            title="프리미엄 구독"
+          >
+            👑 프리미엄
+          </button>
+          <SubscriptionModal isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
           {user?.role === 'ADMIN' && (
             <button 
               onClick={() => setShowAdminPanel(!showAdminPanel)} 
@@ -258,7 +269,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <th style={{ minWidth: '60px', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>종목명</th>
                 <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>세력강도</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>점수</th>
-                <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>지지저항대</th>
+                <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }} title="추천 보호를 위한 권장 손절 기준: -10% 미만 이탈 시 즉각 대응">지지저항대 💡</th>
                 <th style={{ minWidth: '70px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>매수신호<br/>발생</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추세</th>
 
@@ -605,6 +616,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
 
       {/* Copyright Footer */}
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 'auto' }}>
+        <p style={{ margin: '0 0 6px 0', fontWeight: 'bold', color: '#ffb86c' }}>⚠️ 본 서비스는 자동 매매가 아닙니다. 모든 투자 판단 및 손실에 대한 책임은 투자자 본인에게 있습니다.</p>
         <p style={{ margin: '0 0 4px 0', fontWeight: 'bold' }}>© 2026 MP Stock. All rights reserved.</p>
         <p style={{ margin: 0, opacity: 0.7 }}>본 프로그램의 소유권은 MP Stock에 있으며 무단 복제 및 수정을 금합니다.</p>
       </div>

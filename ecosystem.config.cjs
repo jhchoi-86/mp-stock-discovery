@@ -48,6 +48,20 @@ module.exports = {
       env_production: {
         NODE_ENV: 'production'
       }
+    },
+    {
+      name: 'mp-stock-sniper-engine',
+      script: 'main.py',
+      cwd: './sniper_engine',
+      interpreter: './sniper_engine/venv/bin/python',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '1G',
+      env_production: {
+        NODE_ENV: 'production'
+      }
     }
   ]
 };

@@ -20,6 +20,13 @@ cd ..
 echo "2.6. Prisma DB 스키마 갱신 (Anomaly/Score 반영)..."
 npx prisma db push --schema=platform/infra/db/schema.prisma
 
+echo "2.7. Python 가상환경 및 Sniper Engine 셋업..."
+cd sniper_engine
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+cd ..
+
 echo "3. PM2 클러스터 롤링 리스타트 (무중단 서버 재시작)..."
 # reload 명령어는 old 프로세스를 유지한 채 new 프로세스를 하나씩 띄우며(ready 대기), 연결을 자연스럽게 넘겨줍니다.
 npx pm2 reload ecosystem.config.cjs --env production
