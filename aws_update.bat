@@ -1,24 +1,34 @@
 @echo off
-echo.
 echo ========================================================
-echo         Starting AWS Server Auto-Deploy Script
+echo         MP Stock Discovery Lite Deploy Script
 echo ========================================================
 echo.
 
 set "SSH_KEY=C:\Users\danbe\Documents\mp-key.pem"
 set "SSH_USER=ubuntu"
-set "SSH_HOST=13.211.128.167"
+set "SSH_HOST=15.134.243.209"
 set "PROJECT_DIR=~/mp-stock-discovery"
 
-echo [1/3] Connecting to AWS Server...
-echo.
+echo [1/4] Building React on Local Machine (Bypassing AWS RAM Limits)...
+call npm run build
 
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && echo '[2/3] Pulling latest code from Github...' && git reset --hard HEAD && git pull && echo '[3/3] Building React and restarting PM2 server...' && npm run build && pm2 restart all"
+echo.
+echo [2/4] Syncing latest Git codebase on AWS Server...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && git reset --hard HEAD && git clean -fd && git pull"
+
+echo.
+echo [3/4] Uploading compiled dist folder to AWS Server...
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r dist %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+
+echo.
+echo [4/4] Applying Permissions and Restarting PM2 Clusters...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && chmod -R 755 dist && pm2 restart all"
 
 echo.
 echo ========================================================
-echo     Server deployment and restart completed successfully!
+echo     [SUCCESS] Deployment completed successfully!
 echo     Please refresh (F5) your browser window now.
+echo     Access URL: http://mp-stock.duckdns.org
 echo ========================================================
 echo.
 pause
