@@ -18,6 +18,7 @@ verifyIntegrity();
 const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
+const { startNightlyMonitor } = require('./src/utils/nightlyMonitor.cjs');
 const { Queue } = require('bullmq');
 const redisClient = require('./platform/infra/redis/client.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
@@ -70,6 +71,21 @@ async function sendTelegramAlert(signal, stockName) {
         }
     }
     console.log(`[Telegram] Alert broadcasted for ${stockName} (${signal.code}) to ${TELEGRAM_CHAT_IDS.length} chats`);
+    
+    // Save Realtime webhook alert to DB
+    try {
+        const { PrismaClient } = require('@prisma/client');
+        const prisma = new PrismaClient();
+        const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
+        if (adminUser) {
+            await prisma.report.create({
+                data: { content: text, authorId: adminUser.id }
+            });
+            console.log(`[Telegram] Saved Realtime Alert to VIP DB`);
+        }
+    } catch(dbErr) {
+        console.error('[Telegram DB Error]', dbErr);
+    }
 }
 
 // KIS API Setup
@@ -143,7 +159,7 @@ app.set('trust proxy', 1);
 
 const CLIENT_URL = process.env.CLIENT_URL || 'https://mpstock.co.kr';
 app.use(cors({
-  origin: [CLIENT_URL, 'https://mpstock.co.kr', 'https://www.mpstock.co.kr', 'http://localhost:5173'], // Allow client domains
+  origin: [CLIENT_URL, 'https://mpstock.co.kr', 'https://www.mpstock.co.kr', 'http://localhost:5173', 'https://mp-stock.duckdns.org', 'http://mp-stock.duckdns.org'], // Allow client domains
   credentials: true
 }));
 
@@ -214,14 +230,55 @@ app.get('/api/download-history', (req, res) => {
     res.download(EXCEL_FILE, 'MP_추천성과_누적기록.xlsx');
 });
 
-app.get('/api/stocks', (req, res) => {
-    const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
-    res.json(stocks);
+// Phase 12: High-Concurrency In-Memory Stringified Cache
+let CACHED_STOCKS = '[]';
+let CACHED_SIGNALS = '[]';
+let lastStocksMtimeMs = 0;
+let lastSignalsMtimeMs = 0;
+
+setInterval(async () => {
+    try {
+        const stocksStat = await fs.promises.stat(STOCK_MASTER_FILE);
+        if (stocksStat.mtimeMs > lastStocksMtimeMs) {
+            CACHED_STOCKS = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+            lastStocksMtimeMs = stocksStat.mtimeMs;
+        }
+    } catch(e) {}
+    
+    try {
+        const signalsStat = await fs.promises.stat(SIGNALS_FILE);
+        if (signalsStat.mtimeMs > lastSignalsMtimeMs) {
+            CACHED_SIGNALS = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
+            lastSignalsMtimeMs = signalsStat.mtimeMs;
+        }
+    } catch(e) {}
+}, 5000);
+
+// Phase 12-2 Zero-Day Patch: Lightweight Auth Guard (No DB Hits)
+const requireProAuth = (req, res, next) => {
+    const token = req.cookies?.accessToken;
+    if (!token) return res.status(401).json({ error: '인증이 필요합니다.' });
+    try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
+        if (decoded.role === 'GUEST' || decoded.role === 'PENDING') {
+            return res.status(403).json({ error: '결제/승인된 회원만 접근 가능합니다.' });
+        }
+        res.userRole = decoded.role;
+        next();
+    } catch (e) {
+        return res.status(401).json({ error: '세션이 만료되었습니다.' });
+    }
+};
+
+app.get('/api/stocks', requireProAuth, (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(CACHED_STOCKS);
 });
 
-app.get('/api/signals', (req, res) => {
-    const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE));
-    res.json(signals);
+app.get('/api/signals', requireProAuth, (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.send(CACHED_SIGNALS);
 });
 
 // SSE Clients
@@ -236,6 +293,10 @@ app.get('/api/stream', (req, res) => {
             const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
             role = decoded.role;
         } catch(e) {}
+    }
+
+    if (role === 'GUEST' || role === 'PENDING') {
+        return res.status(403).json({ error: 'SSE 연결 권한이 없습니다.' });
     }
 
     res.setHeader('Content-Type', 'text/event-stream');
@@ -484,10 +545,43 @@ app.post('/api/reset', (req, res) => {
     }
 });
 
-// Auto-Sync with Yahoo Finance
+// Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
+let isSyncMutexLocked = false;
+
+// Auto-Sync with Yahoo Finance & KIS Realtime
 app.post('/api/auto-sync', async (req, res) => {
-    const { timeframe } = req.body;
-    const tf = timeframe || '1D';
+    // Phase 12: Admin & PRO guard for Auto-Sync DDOS prevention
+    let isAllowed = false;
+    const token = req.cookies?.accessToken;
+    let debugRole = 'NONE';
+    if (token) {
+        try {
+            const decoded = require('jsonwebtoken').verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
+            debugRole = decoded.role;
+            if (decoded.role === 'ADMIN' || decoded.role === 'PAID' || decoded.role === 'PRO_USER') isAllowed = true;
+        } catch(e) {
+            console.error('[Auto-Sync] JWT Verify Error:', e.message);
+        }
+    } else {
+        console.error('[Auto-Sync] Missing accessToken cookie in req.cookies!');
+    }
+    // Allow if requested by localhost cron, otherwise require ADMIN/PRO
+    const isLocalCron = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+    
+    if (!isAllowed && !isLocalCron) {
+        console.error(`[Auto-Sync] Rejected sync origin: ${req.ip}, Role: ${debugRole}, TokenExists: ${!!token}`);
+        return res.status(403).json({ error: '권한이 없습니다. 자동 동기화는 PRO 회원 또는 관리자 전용입니다.' });
+    }
+
+    // Fail-fast Mutual Exclusion: Prevent race conditions & DoS
+    if (isSyncMutexLocked) {
+        return res.status(409).json({ error: '현재 다른 사용자에 의해 분석 갱신이 진행 중입니다. 잠시 후(1~2분 뒤) 다시 시도해주세요' });
+    }
+    isSyncMutexLocked = true;
+    
+    try {
+        const { timeframe } = req.body;
+        const tf = timeframe || '1D';
     
     // Map internal timeframe to Yahoo Finance interval
     // 1H -> 1h, 2H -> 1h, 4H -> 1h (4h not directly supported easily, will use 1h), 1D -> 1d, 1W -> 1wk
@@ -746,7 +840,7 @@ app.post('/api/auto-sync', async (req, res) => {
         if (i > 0 && i % 50 === 0) {
             console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
         }
-        await sleep(200); // Increased delay to prevent KIS API 429 Too Many Requests
+        await sleep(350); // Increased delay to 350ms (Batch size 2 = ~5 TPS limit) to absolutely guarantee KIS API survival
     }
 
     if (syncResults.length > 0) {
@@ -766,6 +860,11 @@ app.post('/api/auto-sync', async (req, res) => {
         message: `${syncResults.length}개 종목 동기화 성공 (${errorCount}개 실패)`, 
         count: syncResults.length 
     });
+
+    } finally {
+        // Drop the mutex lock regardless of success or crash
+        isSyncMutexLocked = false;
+    }
 });
 
 app.listen(PORT, '0.0.0.0', () => {
@@ -780,9 +879,18 @@ app.listen(PORT, '0.0.0.0', () => {
 // --- [Background Tasks / Scheduler Guard] ---
 // PM2 클러스터 모드(instances: 'max') 적용 시 코어 수만큼 백그라운드 스케줄러가
 // 중복 실행되는 것을 방지하기 위해, 오직 0번 워커(Primary)에서만 동작하도록 제한합니다.
-const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
+const isPrimaryWorker = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0' || typeof process.env.NODE_APP_INSTANCE === 'undefined';
 if (isPrimaryWorker) {
     console.log('[Scheduler] Primary worker initialized scheduling tasks.');
+    
+    // Phase 11: Real-time Entry Sniper Monitoring
+    startNightlyMonitor(getKisAccessToken, {
+        KIS_APP_KEY,
+        KIS_APP_SECRET,
+        TELEGRAM_BOT_TOKEN,
+        TELEGRAM_CHAT_IDS
+    });
+
     cron.schedule('0 21 * * 1-5', async () => {
         console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
         try {
@@ -797,7 +905,7 @@ if (isPrimaryWorker) {
 
             const getSignalsForStock = (code) => {
               const stockSignals = signals.filter(s => s.code === code);
-              const timeframes = ["1H", "2H", "4H", "1D", "1W"];
+              const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
               const status = {};
               timeframes.forEach(tf => {
                 const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];
@@ -812,19 +920,32 @@ if (isPrimaryWorker) {
               const tfSigs = getSignalsForStock(stock.code);
               const latest = getLatestGlobal(stock.code);
               
-              let score = 0;
-              if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 25;
-              if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 25;
-              if (latest && latest.trigger_vol) score += 10;
+              let score = 0;              
+              
+              // 1️⃣ 코어 베이스 (기본 체력 점수) - 최대 40점
+              if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 20;
+              if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 20;
+              
+              // 2️⃣ 장기 수급 폭발 보너스 (거래량) - 최대 10점
+              if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
+              if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) score += 5;
 
-              const targetData = (tfSigs['2H'] && tfSigs['2H'].ema5 > 0) ? tfSigs['2H'] : (tfSigs['1D'] && tfSigs['1D'].ema5 > 0 ? tfSigs['1D'] : latest);
-              if (targetData && targetData.ema5 > 0 && targetData.result_2 > 0) {
-                const diffPercent = Math.abs(targetData.ema5 - targetData.result_2) / targetData.result_2 * 100;
-                if (diffPercent <= 0.5) score += 40;
-                else if (diffPercent <= 1.0) score += 25;
+              // 3️⃣ 스나이퍼 진입 타점 정밀도 (가격 이격도) - 최대 20점
+              if (tfSigs['2H'] && tfSigs['2H'].result_2) {
+                const curPrice = latest?.current_price || latest?.entry_price || 0;
+                if (curPrice > 0) {
+                  const diffPct = ((curPrice - tfSigs['2H'].result_2) / tfSigs['2H'].result_2) * 100;
+                  if (diffPct >= 0 && diffPct <= 0.5) score += 20;
+                  else if (diffPct > 0.5 && diffPct <= 1.0) score += 10;
+                }
               }
 
-              return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
+              // 4️⃣ 다중 시간대(MTF) 프랙탈 매수 신호 가산점 - 최대 15점
+              if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 5;
+              if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 5;
+              if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 5;
+
+              return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: score };
             }).filter(s => s.latestSignal);
 
             candidates = candidates.filter(stock => {
@@ -835,7 +956,61 @@ if (isPrimaryWorker) {
               const isExcludedCategory = stock.latestSignal && (stock.latestSignal.category === "하락 추세" || stock.latestSignal.category === "바닥권 반등");
               if (stock.latestSignal?.entry_approved) return true;
               return (hasSuSignal && hasHighAdx && isUpwardTrend && !isExcludedCategory);
-            }).sort((a, b) => b.total_score - a.total_score);
+            });
+
+            const kisToken = await getKisAccessToken();
+            const axios = require('axios');
+            
+            for (let i = 0; i < candidates.length; i++) {
+              try {
+                const url = `https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor`;
+                const headers = {
+                    'content-type': 'application/json; charset=utf-8',
+                    'authorization': `Bearer ${kisToken}`,
+                    'appkey': process.env.KIS_APP_KEY,
+                    'appsecret': process.env.KIS_APP_SECRET,
+                    'tr_id': 'FHKST01010900'
+                };
+                const params = { 'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': candidates[i].code };
+                const resAPI = await axios.get(url, { headers, params });
+                const out = resAPI.data?.output?.slice(0, 3);
+                
+                if (out && out.length === 3) {
+                    const frgn = out.map(o => parseInt(o.frgn_ntby_qty || '0'));
+                    const orgn = out.map(o => parseInt(o.orgn_ntby_qty || '0'));
+                    const prsn = out.map(o => parseInt(o.prsn_ntby_qty || '0'));
+                    
+                    let frgnScore = 0;
+                    if (frgn[0] > 0 && frgn[1] > 0 && frgn[2] > 0) frgnScore = 5;
+                    else if (frgn[0] > 0 && frgn[1] > 0) frgnScore = 4;
+                    else if (frgn[0] > 0) frgnScore = 3;
+                    
+                    let orgnScore = 0;
+                    if (orgn[0] > 0 && orgn[1] > 0 && orgn[2] > 0) orgnScore = 5;
+                    else if (orgn[0] > 0 && orgn[1] > 0) orgnScore = 4;
+                    else if (orgn[0] > 0) orgnScore = 3;
+                    
+                    let ssangScore = 0;
+                    const fg2 = (frgn[0] > 0 && frgn[1] > 0);
+                    const og2 = (orgn[0] > 0 && orgn[1] > 0);
+                    const pr2sell = (prsn[0] < 0 && prsn[1] < 0);
+                    const fg2sell = (frgn[0] < 0 && frgn[1] < 0);
+                    const og2sell = (orgn[0] < 0 && orgn[1] < 0);
+                    const pr2buy = (prsn[0] > 0 && prsn[1] > 0);
+                    
+                    if (fg2 && og2 && pr2sell) ssangScore = 5;
+                    else if (fg2sell && og2sell && pr2buy) ssangScore = -15;
+                    
+                    candidates[i].total_score += (frgnScore + orgnScore + ssangScore);
+                }
+                await new Promise(r => setTimeout(r, 200)); 
+              } catch(e) {
+                console.error('[Score Supply] API Error:', e.message);
+              }
+            }
+
+            candidates = candidates.sort((a, b) => b.total_score - a.total_score);
+            candidates.forEach(c => { c.total_score = Math.min(100, Math.max(0, c.total_score)); });
 
             if (candidates.length === 0) {
               console.log('[Cron] 조건에 맞는 종목이 없어 발송하지 않습니다.');
@@ -843,8 +1018,6 @@ if (isPrimaryWorker) {
             }
 
             const approvedStocks = candidates.filter(s => s.latestSignal && s.latestSignal.entry_approved);
-
-            const kisToken = await getKisAccessToken();
             const reviewText = await evaluatePastRecommendations(kisToken, KIS_APP_KEY, KIS_APP_SECRET);
 
             const now = new Date();
@@ -1044,9 +1217,36 @@ if (isPrimaryWorker) {
               } catch (e) { console.error(`[Telegram] 발송 실패 (${chatId}):`, e.message); }
             }
             console.log(`[Cron] 성공적으로 텔레그램에 야간 리포트를 전송했습니다.`);
+            
+            // Save Nightly cron alert to DB
+            try {
+              const { PrismaClient } = require('@prisma/client');
+              const prisma = new PrismaClient();
+              const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
+              if (adminUser) {
+                  await prisma.report.create({
+                      data: { content: content, authorId: adminUser.id }
+                  });
+                  console.log(`[Cron] Saved Nightly Report to VIP DB`);
+              }
+            } catch(dbErr) {
+                console.error('[Cron DB Error]', dbErr);
+            }
 
         } catch(e) {
             console.error('[Cron Error] 야간 자동 발송 중 오류 발생:', e);
         }
     }, { timezone: "Asia/Seoul" });
 }
+
+// ==========================================
+// Phase 5: Ensure the server binds to the port and signals PM2
+// ==========================================
+app.listen(PORT, '0.0.0.0', () => {
+    console.log(`[REST API] Server is successfully running on port ${PORT}`);
+    // PM2 배포 무중단 리로드를 위해 반드시 필요한 신호방출 코드
+    if (process.send) {
+        process.send('ready');
+        console.log(`[PM2] Sent 'ready' signal for zero-downtime deployment.`);
+    }
+});
