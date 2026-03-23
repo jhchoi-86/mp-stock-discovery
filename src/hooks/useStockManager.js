@@ -21,31 +21,28 @@ export const useStockManager = (isAuthenticated) => {
   const [isSendingTg, setIsSendingTg] = useState(false);
 
   // Selections
-  const [selectedStocks, setSelectedStocks] = useState(() => {
-    try {
-      const saved = localStorage.getItem('mp_selectedStocks');
-      return saved ? new Set(JSON.parse(saved)) : new Set();
-    } catch {
-      return new Set();
-    }
-  });
+  const [selectedStocks, setSelectedStocks] = useState(new Set());
 
   // LocalStorage Persist
   useEffect(() => { localStorage.setItem('mp_marketFilter', marketFilter); }, [marketFilter]);
   useEffect(() => { localStorage.setItem('mp_categoryFilter', categoryFilter); }, [categoryFilter]);
   useEffect(() => { localStorage.setItem('mp_showAll', String(showAll)); }, [showAll]);
   useEffect(() => { localStorage.setItem('mp_uploadTimeframe', uploadTimeframe); }, [uploadTimeframe]);
-  useEffect(() => { localStorage.setItem('mp_selectedStocks', JSON.stringify([...selectedStocks])); }, [selectedStocks]);
 
   const fetchData = async () => {
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mpstock.co.kr`;
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
       const [stocksRes, signalsRes] = await Promise.all([
-        fetch(`${API_URL}/api/stocks`),
-        fetch(`${API_URL}/api/signals`)
+        fetch(`${API_URL}/api/stocks`, { credentials: 'include' }),
+        fetch(`${API_URL}/api/signals`, { credentials: 'include' })
       ]);
-      const stocksData = await stocksRes.json();
-      const signalsData = await signalsRes.json();
+      
+      let stocksData = await stocksRes.json();
+      let signalsData = await signalsRes.json();
+      
+      // 방어 코드: 401/403 등 에러 JSON 객체가 반환되었을 경우 빈 배열로 강제 처리하여 React UI Crash(White Screen) 방지
+      if (!Array.isArray(stocksData)) stocksData = [];
+      if (!Array.isArray(signalsData)) signalsData = [];
       
       setStocks(stocksData);
       setSignals(signalsData);
@@ -61,8 +58,8 @@ export const useStockManager = (isAuthenticated) => {
     fetchData(); // Initial data load
     
     // Setup Server-Sent Events (SSE)
-    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : import.meta.env.VITE_API_BASE_URL || `https://mpstock.co.kr`;
-    const eventSource = new EventSource(`${API_URL}/api/stream`);
+    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
+    const eventSource = new EventSource(`${API_URL}/api/stream`, { withCredentials: true });
     eventSource.onmessage = (event) => {
       const data = JSON.parse(event.data);
       if (data.type === 'update') {
@@ -91,11 +88,11 @@ export const useStockManager = (isAuthenticated) => {
   }, [isAuthenticated]);
 
   const getSignalsForStock = (code) => {
-    const stockSignals = signals.filter(s => s.code === code);
+    const stockSignals = (Array.isArray(signals) ? signals : []).filter(s => s.code === code);
     const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
     const status = {};
     timeframes.forEach(tf => {
-      const latest = stockSignals
+      const latest = (Array.isArray(stockSignals) ? stockSignals : [])
         .filter(s => s.timeframe === tf)
         .sort((a, b) => b.timestamp - a.timestamp)[0];
       status[tf] = latest;
@@ -104,7 +101,7 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const getLatestGlobal = (code) => {
-    return signals
+    return (Array.isArray(signals) ? signals : [])
       .filter(s => s.code === code)
       .sort((a, b) => b.timestamp - a.timestamp)[0];
   };
@@ -128,63 +125,53 @@ export const useStockManager = (isAuthenticated) => {
       .map(entry => entry[0]);
   }, [stocks, signals]);
 
-  const filteredStocks = stocks.filter(stock => {
+  const filteredStocks = (Array.isArray(stocks) ? stocks : []).filter(stock => {
     const matchesSearch = stock.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           stock.code.includes(searchQuery);
     const matchesMarket = marketFilter === "ALL" || stock.market === marketFilter;
     
-    const timeframeSignals = getSignalsForStock(stock.code);
-    const latest = getLatestGlobal(stock.code);
-    const isTopSector = topSectors.includes(stock.sector);
-
-    const hasSuSignal = Object.values(timeframeSignals).some(s => s && (s.signal_HH || s.DHH2));
-    const hasHighAdx = latest && latest.adx >= 30;
-    const isUpwardTrend = timeframeSignals['1D'] && timeframeSignals['1D'].cond_up7;
-    const isExcludedCategory = latest && (latest.category === "하락 추세" || latest.category === "바닥권 반등");
-    
-    let matchesView = showAll ? true : (hasSuSignal && hasHighAdx && isUpwardTrend && !isExcludedCategory);
-
-    if (showOnlyApproved && (!latest || !latest.entry_approved)) {
-      matchesView = false;
-    }
-    if (showOnlyTopSectors && !isTopSector) {
-      matchesView = false;
+    let matchesCategory = true;
+    if (categoryFilter === '추천종목') {
+      matchesCategory = selectedStocks.has(stock.code);
+    } else if (categoryFilter !== 'ALL') {
+      const latest = getLatestGlobal(stock.code);
+      const cat = latest ? latest.category : '';
+      matchesCategory = (cat === categoryFilter);
     }
     
-    const matchesCategory = categoryFilter === 'ALL' || 
-                            (categoryFilter === '추천종목' ? selectedStocks.has(stock.code) : (latest && latest.category === categoryFilter));
-
-    return matchesSearch && matchesMarket && matchesCategory && matchesView;
+    return matchesSearch && matchesMarket && matchesCategory;
   });
 
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
     let score = 0;
-
-    // 2시간 봉 MACD 강세
-    if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 25;
-
-    // 2시간 봉 강세 신호
-    if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 25;
-
-    // 거래량 1.5배 이상 평균 대비 폭발 여부
-    if (latest && latest.trigger_vol) score += 10;
-
-    // 급등1차 (ema5) 와 눌림1차 (result_2) 간격 차이 계산
-    const targetData = (tfSigs['2H'] && tfSigs['2H'].ema5 > 0) ? tfSigs['2H'] : (tfSigs['1D'] && tfSigs['1D'].ema5 > 0 ? tfSigs['1D'] : latest);
     
-    if (targetData && targetData.ema5 > 0 && targetData.result_2 > 0) {
-      const diffPercent = Math.abs(targetData.ema5 - targetData.result_2) / targetData.result_2 * 100;
-      if (diffPercent <= 0.5) {
-        score += 40;
-      } else if (diffPercent <= 1.0) {
-        score += 25;
+    // 1️⃣ 코어 베이스 (기본 체력 점수) - 50점
+    if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 25;
+    if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 25;
+    
+    // 2️⃣ 장기 수급 폭발 보너스 (거래량) - 10점
+    if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
+    if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) score += 5;
+
+    // 3️⃣ 스나이퍼 진입 타점 정밀도 (가격 이격도) - 10점
+    if (tfSigs['2H'] && tfSigs['2H'].result_2) {
+      const curPrice = latest?.current_price || latest?.entry_price || 0;
+      if (curPrice > 0) {
+        const diffPct = ((curPrice - tfSigs['2H'].result_2) / tfSigs['2H'].result_2) * 100;
+        if (diffPct >= 0 && diffPct <= 0.5) score += 6;
+        else if (diffPct > 0.5 && diffPct <= 1.0) score += 4;
       }
     }
+
+    // 4️⃣ 다중 시간대(MTF) 매수 신호 가산점 - 30점
+    if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 10;
+    if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 10;
+    if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 10;
     
     return Math.min(score, 100);
   };
 
-  const candidates = filteredStocks.map(stock => {
+  const candidatesRaw = filteredStocks.map(stock => {
     const tfSigs = getSignalsForStock(stock.code);
     const latest = getLatestGlobal(stock.code);
     const isTopSector = topSectors.includes(stock.sector);
@@ -195,9 +182,13 @@ export const useStockManager = (isAuthenticated) => {
       isTopSector,
       total_score: calculateTotalScore(tfSigs, latest, isTopSector)
     };
-  }).sort((a, b) => b.total_score - a.total_score);
+  });
 
-  const activeCount = [...new Set(signals.filter(s => s.signal_HH).map(s => s.code))].length;
+  const candidates = showAll 
+    ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
+    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 10);
+
+  const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {
@@ -267,11 +258,13 @@ export const useStockManager = (isAuthenticated) => {
   const handleAutoSync = async () => {
     if (!window.confirm(`${uploadTimeframe} 시간대 데이터를 자동으로 동기화하시겠습니까? (이 작업은 약 1-2분 정도 소요될 수 있습니다.)`)) return;
     setIsSyncing(true);
+    setSelectedStocks(new Set());
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mpstock.co.kr`;
+      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
       const response = await fetch(`${API_URL}/api/auto-sync`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ timeframe: uploadTimeframe }),
       });
       if (response.ok) {
@@ -279,7 +272,8 @@ export const useStockManager = (isAuthenticated) => {
         alert(result.message);
         fetchData();
       } else {
-        alert("동기화 중 오류가 발생했습니다.");
+        const errResult = await response.json().catch(() => ({}));
+        alert(errResult.error || "동기화 중 오류가 발생했습니다.");
       }
     } catch (error) {
       console.error("Auto-sync error:", error);
@@ -305,7 +299,7 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleDownloadTVList = () => {
-    const tvStocks = candidates
+    const tvStocks = (Array.isArray(candidates) ? candidates : [])
       .filter(s => s.total_score >= 50)
       .map(s => `KRX:${s.code}`)
       .join(', ');
@@ -327,8 +321,8 @@ export const useStockManager = (isAuthenticated) => {
   const handleSendToTelegram = async () => {
     setIsSendingTg(true);
 
-    const reportStocks = candidates.filter(stock => selectedStocks.has(stock.code) || stock.total_score >= 75);
-    const approvedStocks = reportStocks.filter(s => s.latestSignal && s.latestSignal.entry_approved);
+    const reportStocks = (Array.isArray(candidates) ? candidates : []).filter(stock => selectedStocks.has(stock.code) || stock.total_score >= 75);
+    const approvedStocks = (Array.isArray(reportStocks) ? reportStocks : []).filter(s => s.latestSignal && s.latestSignal.entry_approved);
 
     let aiCommentsMap = {};
     try {

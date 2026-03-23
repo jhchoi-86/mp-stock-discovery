@@ -58,7 +58,11 @@ const AdminDashboard = () => {
   };
 
   const handleToggleRole = async (targetUser) => {
-    const newRole = targetUser.role === 'PAID' ? 'FREE_TRIAL' : 'PAID';
+    let newRole = 'FREE_TRIAL';
+    if (targetUser.role === 'PENDING') newRole = 'FREE_TRIAL';
+    else if (targetUser.role === 'FREE_TRIAL' || targetUser.role === 'FREE') newRole = 'PAID';
+    else if (targetUser.role === 'PAID') newRole = 'FREE_TRIAL';
+
     try {
       const updatedUser = await adminService.updateUserStatus(targetUser.id, newRole, targetUser.status);
       setUsers(prev => prev.map(u => u.id === targetUser.id ? { ...u, role: updatedUser.user.role } : u));
@@ -91,14 +95,14 @@ const AdminDashboard = () => {
     if (!window.confirm(`정말로 이 회원을 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.\n\n대상: ${targetUser.email}`)) return;
     try {
       await axiosClient.delete(`/api/admin/users/${targetUser.id}`);
-      setUsers(prev => prev.filter(u => u.id !== targetUser.id));
+      setUsers(prev => (Array.isArray(prev) ? prev : []).filter(u => u.id !== targetUser.id));
       alert(`[완료] ${targetUser.email} 유저가 성공적으로 영구 삭제되었습니다.`);
     } catch (err) {
       alert('유저 삭제에 실패했습니다.');
     }
   };
 
-  const filteredUsers = users.filter(u => 
+  const filteredUsers = (Array.isArray(users) ? users : []).filter(u => 
     (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
     u.email.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -109,6 +113,8 @@ const AdminDashboard = () => {
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.5)' }}>ADMIN</span>;
       case 'PAID':
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(245, 158, 11, 0.2)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.5)' }}>PRO</span>;
+      case 'PENDING':
+        return <span style={{ ...badgeStyle, backgroundColor: 'rgba(168, 85, 247, 0.2)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.5)' }}>승인 대기</span>;
       default:
         return <span style={{ ...badgeStyle, backgroundColor: 'rgba(156, 163, 175, 0.2)', color: '#9ca3af', border: '1px solid rgba(156, 163, 175, 0.5)' }}>FREE</span>;
     }
@@ -226,16 +232,16 @@ const AdminDashboard = () => {
                         <button 
                           disabled={isSelf || isAdmin}
                           onClick={() => handleToggleRole(u)}
-                          title="PRO / FREE 등급 토글"
+                          title={u.role === 'PENDING' ? "가입 승인 처리" : "PRO / FREE 등급 토글"}
                           style={{
                             ...actionButtonStyle,
-                            color: '#fbbf24',
-                            border: '1px solid rgba(245, 158, 11, 0.5)',
+                            color: u.role === 'PENDING' ? '#c084fc' : '#fbbf24',
+                            border: `1px solid ${u.role === 'PENDING' ? 'rgba(168, 85, 247, 0.5)' : 'rgba(245, 158, 11, 0.5)'}`,
                             opacity: isSelf || isAdmin ? 0.3 : 1,
                             cursor: isSelf || isAdmin ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          <ShieldCheck size={16} /> 등급
+                          <ShieldCheck size={16} /> {u.role === 'PENDING' ? '승인' : '등급'}
                         </button>
                         
                         <button 
