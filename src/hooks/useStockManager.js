@@ -145,25 +145,37 @@ export const useStockManager = (isAuthenticated) => {
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
     let score = 0;
     
-    // 1️⃣ 코어 베이스 (기본 체력 점수) - 50점
-    if (tfSigs['2H'] && tfSigs['2H'].cond_up7) score += 25;
-    if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 25;
+    // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
+    let coreScore = 0;
+    const tfs = ['2H', '1D', '1W'];
     
-    // 2️⃣ 장기 수급 폭발 보너스 (거래량) - 10점
+    tfs.forEach(tf => {
+      let tfScore = 0;
+      if (tfSigs[tf] && tfSigs[tf].cond_up7) tfScore += 25;
+      if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) tfScore += 25;
+      if (tfScore > coreScore) coreScore = tfScore; 
+    });
+    score += coreScore;
+    
+    // 2️⃣ 장기 수급 폭발 보너스 (거래량) (Max 10점)
     if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
     if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) score += 5;
 
-    // 3️⃣ 스나이퍼 진입 타점 정밀도 (가격 이격도) - 10점
-    if (tfSigs['2H'] && tfSigs['2H'].result_2) {
-      const curPrice = latest?.current_price || latest?.entry_price || 0;
-      if (curPrice > 0) {
-        const diffPct = ((curPrice - tfSigs['2H'].result_2) / tfSigs['2H'].result_2) * 100;
-        if (diffPct >= 0 && diffPct <= 0.5) score += 6;
-        else if (diffPct > 0.5 && diffPct <= 1.0) score += 4;
-      }
+    // 3️⃣ 스나이퍼 진입 타점 정밀도 (Max 10점)
+    let bestDistScore = 0;
+    const curPrice = latest?.current_price || latest?.entry_price || 0;
+    if (curPrice > 0) {
+      tfs.forEach(tf => {
+         if (tfSigs[tf] && tfSigs[tf].result_2) {
+            const diffPct = ((curPrice - tfSigs[tf].result_2) / tfSigs[tf].result_2) * 100;
+            if (diffPct >= 0 && diffPct <= 0.5) bestDistScore = Math.max(bestDistScore, 6);
+            else if (diffPct > 0.5 && diffPct <= 1.0) bestDistScore = Math.max(bestDistScore, 4);
+         }
+      });
     }
+    score += bestDistScore;
 
-    // 4️⃣ 다중 시간대(MTF) 매수 신호 가산점 - 30점
+    // 4️⃣ 다중 시간대(MTF) 프랙탈 매수 보너스 (Max 30점)
     if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 10;
     if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 10;
     if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 10;
