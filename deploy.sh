@@ -18,7 +18,9 @@ pip install -r requirements.txt
 cd ..
 
 echo "2.6. Prisma DB 스키마 갱신 (Anomaly/Score 반영)..."
-npx prisma db push --schema=platform/infra/db/schema.prisma
+npx prisma db push --schema=platform/infra/db/schema.prisma --skip-generate
+echo "2.6.1. 메인 Prisma DB 스키마 갱신 및 클라이언트 복구..."
+npx prisma db push --schema=prisma/schema.prisma
 
 echo "2.7. Python 가상환경 및 Sniper Engine 셋업..."
 cd sniper_engine
