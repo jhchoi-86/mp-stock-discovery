@@ -854,35 +854,27 @@ app.post('/api/auto-sync', async (req, res) => {
         return resampled;
     };
 
-    // Process in batches to avoid rate limits (KIS API strict limit: 20 req/sec)
-    // 3 stocks * 2 KIS APIs per 500ms = 12 req/s. Safe latency margin.
-    const BATCH_SIZE = 3;
-    for (let i = 0; i < stocks.length; i += BATCH_SIZE) {
-        const batch = stocks.slice(i, i + BATCH_SIZE);
-        const tasks = batch.map(async (stock) => {
-            try {
-                const history = await fetchHybridHistory(stock);
-                if (history && history.close && history.close.length > 50) {
-                    const signal = calculateSignals(history, tf);
-                    if (signal) {
-                        return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4(), kis_change_data: history.kis_change_data };
-                    }
+    // Process strictly sequentially (KIS API strict limit: 20 req/sec total burst capacity)
+    // 100ms interval guarantees a permanently safe sub-10 TPS environment regardless of packet latency sizes.
+    for (let i = 0; i < stocks.length; i++) {
+        const stock = stocks[i];
+        try {
+            const history = await fetchHybridHistory(stock);
+            if (history && history.close && history.close.length > 50) {
+                const signal = calculateSignals(history, tf);
+                if (signal) {
+                    syncResults.push({ ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4(), kis_change_data: history.kis_change_data });
                 }
-            } catch (e) {
-                console.error(`[Auto-Sync] Error for ${stock.code} (${stock.name}):`, e.message);
-                errorCount++;
             }
-            return null;
-        });
-
-        const results = await Promise.all(tasks);
-        syncResults.push(...results.filter(r => r !== null));
+        } catch (e) {
+            console.error(`[Auto-Sync] Error for ${stock.code} (${stock.name}):`, e.message);
+            errorCount++;
+        }
         
-        // Progress update every few batches
         if (i > 0 && i % 50 === 0) {
             console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
         }
-        await sleep(500); // 500ms delay for 5 items maintains safe ~10 TPS limit
+        await sleep(100); 
     }
 
     if (syncResults.length > 0) {

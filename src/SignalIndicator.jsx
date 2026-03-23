@@ -1,6 +1,6 @@
 import React from 'react';
 
-const SignalIndicator = ({ signal, totalScore }) => {
+const SignalIndicator = ({ signal, totalScore, kisData }) => {
   if (!signal) return null;
 
   const {
@@ -16,6 +16,8 @@ const SignalIndicator = ({ signal, totalScore }) => {
     category,
     kis_change_data
   } = signal;
+
+  const resolvedKisData = kisData || kis_change_data;
 
   // 1. 신호 강도 계산
   const getSignalStrength = () => {
@@ -101,7 +103,7 @@ const SignalIndicator = ({ signal, totalScore }) => {
         </div>
       </div>
 
-      {kis_change_data && (
+      {resolvedKisData && (
         <div style={{ 
           display: 'flex', 
           justifyContent: 'space-between', 
@@ -113,12 +115,12 @@ const SignalIndicator = ({ signal, totalScore }) => {
         }}>
           <div>
             <span style={{ marginRight: '12px' }}>
-              거래대금(백만): <strong>{kis_change_data.trade_amount ? Number(kis_change_data.trade_amount).toLocaleString() : '-'}</strong>
+              거래대금(백만): <strong>{resolvedKisData.trade_amount ? Number(resolvedKisData.trade_amount).toLocaleString() : '-'}</strong>
             </span>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span>외국인: <strong style={{ color: String(kis_change_data.foreign_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.foreign_buy}{kis_change_data.foreign_buy !== '-' ? '주' : ''}</strong></span>
-            <span>기관: <strong style={{ color: String(kis_change_data.inst_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.inst_buy}{kis_change_data.inst_buy !== '-' ? '주' : ''}</strong></span>
+            <span>외국인: <strong style={{ color: String(resolvedKisData.foreign_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.foreign_buy}{resolvedKisData.foreign_buy !== '-' ? '주' : ''}</strong></span>
+            <span>기관: <strong style={{ color: String(resolvedKisData.inst_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.inst_buy}{resolvedKisData.inst_buy !== '-' ? '주' : ''}</strong></span>
           </div>
         </div>
       )}
