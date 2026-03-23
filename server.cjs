@@ -814,8 +814,8 @@ app.post('/api/auto-sync', async (req, res) => {
     };
 
     // Process in batches to avoid rate limits (KIS API strict limit: 20 req/sec)
-    // 2 per 200ms = 10 req/s, extremely safe margin to prevent silent data loss
-    const BATCH_SIZE = 2;
+    // 5 stocks per 500ms = 10 req/s. Safely halves the total sync duration.
+    const BATCH_SIZE = 5;
     for (let i = 0; i < stocks.length; i += BATCH_SIZE) {
         const batch = stocks.slice(i, i + BATCH_SIZE);
         const tasks = batch.map(async (stock) => {
@@ -841,7 +841,7 @@ app.post('/api/auto-sync', async (req, res) => {
         if (i > 0 && i % 50 === 0) {
             console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
         }
-        await sleep(350); // Increased delay to 350ms (Batch size 2 = ~5 TPS limit) to absolutely guarantee KIS API survival
+        await sleep(500); // 500ms delay for 5 items maintains safe ~10 TPS limit
     }
 
     if (syncResults.length > 0) {
