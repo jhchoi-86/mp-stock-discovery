@@ -71,8 +71,11 @@ const SignalIndicator = ({ signal, totalScore }) => {
         <span className="badge" style={{ backgroundColor: badgeColor, color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
           {totalScore !== undefined ? (
             <>
-              <span style={{ color: '#FFD700', fontSize: '1.2rem', letterSpacing: '2px', textShadow: '0 0 2px rgba(0,0,0,0.8)' }}>
-                {'★'.repeat(Math.round(totalScore / 20))}{'☆'.repeat(5 - Math.round(totalScore / 20))}
+              <span style={{ display: 'inline-block', position: 'relative', fontSize: '1.2rem', letterSpacing: '2px', color: 'rgba(255,255,255,0.2)' }}>
+                ★★★★★
+                <span style={{ position: 'absolute', top: 0, left: 0, height: '100%', overflow: 'hidden', width: `${totalScore}%`, color: '#FFD700', whiteSpace: 'nowrap', textShadow: '0 0 2px rgba(0,0,0,0.8)' }}>
+                  ★★★★★
+                </span>
               </span>
               <span style={{ fontSize: '0.9rem' }}>({totalScore}점)</span>
             </>
@@ -114,8 +117,8 @@ const SignalIndicator = ({ signal, totalScore }) => {
             </span>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span>외국인: <strong style={{ color: String(kis_change_data.foreign_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.foreign_buy}</strong></span>
-            <span>기관: <strong style={{ color: String(kis_change_data.inst_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.inst_buy}</strong></span>
+            <span>외국인: <strong style={{ color: String(kis_change_data.foreign_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.foreign_buy}{kis_change_data.foreign_buy !== '-' ? '주' : ''}</strong></span>
+            <span>기관: <strong style={{ color: String(kis_change_data.inst_buy).includes('+') ? '#FF4D4D' : (String(kis_change_data.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{kis_change_data.inst_buy}{kis_change_data.inst_buy !== '-' ? '주' : ''}</strong></span>
           </div>
         </div>
       )}

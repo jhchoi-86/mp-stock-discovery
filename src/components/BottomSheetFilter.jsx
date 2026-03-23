@@ -49,11 +49,10 @@ const BottomSheetFilter = ({
             style={{ padding: '0.8rem 1rem', background: 'var(--glass)', border: '1px solid var(--glass-border)', color: '#fff', borderRadius: '8px', fontSize: '1rem' }}
           >
             <option value="ALL">모든 카테고리</option>
-            <option value="추천종목">⭐ 추천종목 (선택됨)</option>
             <option value="추세 지속형">추세 지속형</option>
-            <option value="박스권 횡보">박스권 횡보</option>
             <option value="바닥권 반등">바닥권 반등</option>
-            <option value="하락 추세">하락 추세</option>
+            <option value="박스권 횡보">박스권 횡보</option>
+            <option value="추천종목">⭐ 수동 관심종목</option>
           </select>
         </div>
 
@@ -65,7 +64,9 @@ const BottomSheetFilter = ({
             onChange={(e) => setShowAll(e.target.checked)}
             style={{ transform: 'scale(1.2)', accentColor: 'var(--primary)' }}
           />
-          <label htmlFor="showAllMobile" style={{ fontSize: '0.95rem', color: '#fff' }}>유니버스 필터링 해제 (전체 보기)</label>
+          <label htmlFor="showAllMobile" style={{ fontSize: '0.95rem', color: '#fff' }}>
+            {showAll ? '유니버스 전체보기 (점수정렬)' : '🌟 자동 추천 (점수별 Top 10)'}
+          </label>
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>

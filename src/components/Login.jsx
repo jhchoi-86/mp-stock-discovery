@@ -129,6 +129,9 @@ const Login = () => {
                 required
                 className="glass-input"
               />
+              <div style={{ padding: '0.8rem', backgroundColor: 'rgba(231, 76, 60, 0.1)', border: '1px solid rgba(231, 76, 60, 0.3)', borderRadius: '4px', color: '#ff6b6b', fontSize: '0.85rem', textAlign: 'center', fontWeight: 'bold' }}>
+                ⚠️ 회원가입 후 관리자의 승인이 완료되어야 로그인이 가능합니다.
+              </div>
             </>
           )}
           

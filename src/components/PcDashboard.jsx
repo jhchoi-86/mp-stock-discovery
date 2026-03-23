@@ -162,11 +162,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           onChange={(e) => setCategoryFilter(e.target.value)}
         >
           <option value="ALL">모든 카테고리</option>
-          <option value="추천종목">⭐ 추천종목 (선택됨)</option>
           <option value="추세 지속형">추세 지속형</option>
-          <option value="박스권 횡보">박스권 횡보</option>
           <option value="바닥권 반등">바닥권 반등</option>
-          <option value="하락 추세">하락 추세</option>
+          <option value="박스권 횡보">박스권 횡보</option>
+          <option value="추천종목">⭐ 수동 관심종목</option>
         </select>
         
 
@@ -179,7 +178,9 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             onChange={(e) => setShowAll(e.target.checked)}
             style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '16px', height: '16px' }}
           />
-          <label htmlFor="showAllToggle" style={{ cursor: 'pointer', userSelect: 'none' }}>유니버스 전체 보기</label>
+          <label htmlFor="showAllToggle" style={{ cursor: 'pointer', userSelect: 'none' }}>
+            {showAll ? '유니버스 전체보기 (점수정렬)' : '🌟 자동 추천 (점수별 Top 10)'}
+          </label>
         </div>
 
         <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)' }}>
@@ -196,14 +197,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   border: 'none',
                   background: uploadTimeframe === tf ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
                   color: '#fff',
-                  cursor: 'pointer'
-                }}
-              >
-                {tf}
-              </button>
-            ))}
+                    cursor: 'pointer'
+                  }}
+                >
+                  {tf}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
 
         <input 
           type="file" 
@@ -212,6 +213,20 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           style={{ display: 'none' }} 
           onChange={(e) => { handleCsvUpload(e.target.files[0]); if(fileInputRef.current) fileInputRef.current.value=""; }}
         />
+        
+        {/* === Control Panel === */}
+        {(user?.role === 'ADMIN' || user?.role === 'PAID') && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+            <button 
+              onClick={handleAutoSync}
+              disabled={isSyncing}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
+            </button>
+          </div>
+        )}
         
         {user?.role === 'ADMIN' && (
           <button 
@@ -223,14 +238,16 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           </button>
         )}
         
-        <button 
-          onClick={handleAutoSync}
-          disabled={isSyncing}
-          className="card" 
-          style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-        >
-          <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
-        </button>
+        {selectedStocks.size > 0 && (
+          <button 
+            onClick={() => setSelectedStocks(new Set())}
+            className="card" 
+            style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid rgba(255, 255, 255, 0.2)', color: '#fff', cursor: 'pointer', fontSize: '0.9rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            선택 전체 해제 ({selectedStocks.size})
+          </button>
+        )}
+        
         <button 
           onClick={handleDownloadReport}
           className="card" 
@@ -244,7 +261,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           style={{ padding: '0.75rem 1.5rem', background: '#2962FF', border: 'none', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           title="트레이딩뷰 Watchlist Import용 TXT 파일 다운로드 (50점 이상)"
         >
-          <ExternalLink size={18} /> TV 관심종목(50점+)
+          <ExternalLink size={18} /> 트래이딩뷰 추천 종목코드 다운로드
         </button>
         {user?.role === 'ADMIN' && (
           <button 
@@ -403,7 +420,16 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <span className="stock-name" style={{ fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{stock.name}</span>
-                          {stock.isTopSector && <span title="주도 섹터 프리미엄" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '1px 4px', borderRadius: '4px' }}>🔥</span>}
+                          {stock.latestSignal && stock.latestSignal.signal_HH && (
+                            <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                              HH 강력신호
+                            </span>
+                          )}
+                          {stock.isTopSector && (
+                            <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                              🔥 주도섹터
+                            </span>
+                          )}
                         </div>
                         <span className="stock-code" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                           {stock.market} | {stock.code} {stock.sector && stock.sector !== '기타' ? `| ${stock.sector}` : ''}
@@ -428,8 +454,11 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <div style={{ color: '#FFD700', fontSize: '1.1rem', letterSpacing: '1px', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
-                          {'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}
+                        <div style={{ display: 'inline-block', position: 'relative', fontSize: '1.1rem', letterSpacing: '1px', color: 'rgba(255,255,255,0.2)' }}>
+                          ★★★★★
+                          <div style={{ position: 'absolute', top: 0, left: 0, overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
+                            ★★★★★
+                          </div>
                         </div>
                         <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
                           {stock.total_score}점
@@ -483,7 +512,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                           })}
                         </div>
                         <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
-                          {["1H", "4H", "1D", "1W"].map(tf => {
+                          {["1H", "2H", "4H", "1D", "1W"].map(tf => {
                             const sig = stock.timeframeStatus[tf];
                             const hasSignal = sig && sig.DHH2;
                             const isHH = sig && sig.signal_HH;

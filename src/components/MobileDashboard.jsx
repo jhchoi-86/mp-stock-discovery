@@ -62,9 +62,17 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         <button onClick={() => setIsSubscriptionOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'linear-gradient(to right, var(--primary), var(--secondary))', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(236,72,153,0.3)' }}>
           👑 프리미엄
         </button>
-        <button onClick={() => handleAutoSync()} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-          <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '동기화'}
-        </button>
+        {['ADMIN', 'PAID'].includes(user?.role) && (
+          <button onClick={() => handleAutoSync()} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
+            <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '동기화'}
+          </button>
+        )}
+
+        {selectedStocks.size > 0 && (
+          <button onClick={() => setSelectedStocks(new Set())} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,100,100,0.15)', border: '1px solid rgba(255,100,100,0.3)', color: '#ffb3b3', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+            ✖️ 해제 ({selectedStocks.size})
+          </button>
+        )}
 
         {['ADMIN', 'PAID'].includes(user?.role) && (
           <button onClick={() => setIsReportArchiveOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(99, 102, 241, 0.15)', border: '1px solid rgba(99, 102, 241, 0.3)', color: '#818cf8', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>

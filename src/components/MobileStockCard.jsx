@@ -91,9 +91,18 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
         {/* Content */}
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#fff' }}>{stock.name}</span>
-              {stock.isTopSector && <span style={{ fontSize: '0.7rem' }}>🔥</span>}
+              {isHH && (
+                <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  HH 강력신호
+                </span>
+              )}
+              {stock.isTopSector && (
+                <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                  🔥 주도섹터
+                </span>
+              )}
             </div>
             <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#fff' }}>
               {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
@@ -112,7 +121,12 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
               {categoryLabel}
             </div>
             <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}>
-              점수: <span style={{ color: '#FFD700', letterSpacing: '1px', marginLeft: '4px', marginRight: '4px' }}>{'★'.repeat(Math.round((stock.total_score || 0) / 20))}{'☆'.repeat(5 - Math.round((stock.total_score || 0) / 20))}</span> ({stock.total_score}점)
+              점수: <span style={{ display: 'inline-block', position: 'relative', letterSpacing: '1px', marginLeft: '4px', marginRight: '4px', color: 'rgba(255,255,255,0.2)' }}>
+                ★★★★★
+                <span style={{ position: 'absolute', top: 0, left: 0, height: '100%', overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap' }}>
+                  ★★★★★
+                </span>
+              </span> ({stock.total_score}점)
             </div>
             <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
               세력: {Math.round(s?.adx || 0)}
