@@ -260,24 +260,15 @@ export const useStockManager = (isAuthenticated) => {
     setIsSyncing(true);
     setSelectedStocks(new Set());
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
-      const response = await fetch(`${API_URL}/api/auto-sync`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ timeframe: uploadTimeframe }),
-      });
-      if (response.ok) {
-        const result = await response.json();
-        alert(result.message);
-        fetchData();
-      } else {
-        const errResult = await response.json().catch(() => ({}));
-        alert(errResult.error || "동기화 중 오류가 발생했습니다.");
-      }
+      const { default: axiosClient } = await import('../api/axiosClient.js');
+      const response = await axiosClient.post('/api/auto-sync', { timeframe: uploadTimeframe }, { timeout: 120000 });
+      alert(response.data.message);
+      fetchData();
     } catch (error) {
       console.error("Auto-sync error:", error);
-      alert("서버 연결에 실패했습니다.");
+      if (error.response?.status !== 403 && error.response?.status !== 429) {
+        alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
+      }
     } finally {
       setIsSyncing(false);
     }

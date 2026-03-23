@@ -552,7 +552,8 @@ let isSyncMutexLocked = false;
 app.post('/api/auto-sync', async (req, res) => {
     // Phase 12: Admin & PRO guard for Auto-Sync DDOS prevention
     let isAllowed = false;
-    const token = req.cookies?.accessToken;
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.accessToken;
     let debugRole = 'NONE';
     if (token) {
         try {
