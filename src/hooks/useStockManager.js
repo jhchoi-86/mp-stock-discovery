@@ -261,7 +261,7 @@ export const useStockManager = (isAuthenticated) => {
     setSelectedStocks(new Set());
     try {
       const { default: axiosClient } = await import('../api/axiosClient.js');
-      const response = await axiosClient.post('/api/auto-sync', { timeframe: uploadTimeframe }, { timeout: 120000 });
+      const response = await axiosClient.post('/api/auto-sync', { timeframe: uploadTimeframe }, { timeout: 300000 });
       alert(response.data.message);
       fetchData();
     } catch (error) {
