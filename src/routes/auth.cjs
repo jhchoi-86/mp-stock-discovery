@@ -29,14 +29,14 @@ router.post('/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, saltRounds);
 
     // Create user
-    console.log('[Auth Registration] Attempting to create user in DB...', { email, role: 'FREE_TRIAL' });
+    console.log('[Auth Registration] Attempting to create user in DB...', { email, role: 'PENDING' });
     let newUser;
     try {
       newUser = await prisma.user.create({
         data: {
           email,
           passwordHash,
-          role: 'FREE_TRIAL'
+          role: 'PENDING'
         }
       });
       console.log('[Auth Registration] Prisma user created successfully:', newUser.id);
@@ -76,6 +76,11 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }
 
+    // Check Manual Approval Status (PENDING -> 403 Forbidden)
+    if (user.role === 'PENDING') {
+      return res.status(403).json({ error: '관리자의 가입 승인을 대기 중입니다. 승인 후 로그인해 주세요.' });
+    }
+
     // Generate Tokens
     const accessToken = jsonwebtoken.sign({ userId: user.id, role: user.role }, ACCESS_SECRET, { expiresIn: '1h' });
     const refreshToken = jsonwebtoken.sign({ userId: user.id }, REFRESH_SECRET, { expiresIn: '7d' });
@@ -90,6 +95,15 @@ router.post('/login', async (req, res) => {
       sameSite: 'lax', // Must be lax (not none) for non-Secure HTTP contexts
       path: '/api/auth', // Broaden path slightly so logout and refresh can both read it
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    // Set HttpOnly Cookie for Access Token (Enables SSE and native fetch APIs)
+    res.cookie('accessToken', accessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 1000 // 1 hour
     });
 
     res.json({
@@ -117,6 +131,13 @@ router.post('/logout', async (req, res) => {
       secure: true,
       sameSite: 'lax',
       path: '/api/auth'
+    });
+    
+    res.clearCookie('accessToken', {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/'
     });
     
     res.status(200).json({ message: 'Logout successful' });
@@ -164,6 +185,15 @@ router.post('/refresh', async (req, res) => {
       sameSite: 'lax',
       path: '/api/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
+    // Issuing Access Token via Cookie alongside the JSON response
+    res.cookie('accessToken', newAccessToken, {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/',
+      maxAge: 60 * 60 * 1000
     });
     
     // Respond with access token

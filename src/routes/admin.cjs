@@ -74,7 +74,7 @@ router.put('/users/:id/status', async (req, res) => {
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          userId: adminId,
+          adminId: adminId,
           action: 'UPDATE_USER_ROLE',
           details: { targetUserId, updatedRole: role }
         }
@@ -119,7 +119,7 @@ router.put('/users/:id/reset-password', async (req, res) => {
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          userId: adminId,
+          adminId: adminId,
           action: 'FORCE_PASSWORD_RESET',
           details: { targetUserId, message: `Admin forcefully reset password to default (${defaultPassword})` }
         }
@@ -160,7 +160,7 @@ router.delete('/users/:id', async (req, res) => {
       // 2. Insert Audit Log
       prisma.auditLog.create({
         data: {
-          userId: adminId,
+          adminId: adminId,
           action: 'DELETE_USER',
           details: { deletedUserId: targetUserId, email: targetUser.email }
         }

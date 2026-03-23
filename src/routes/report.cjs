@@ -54,17 +54,25 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (req, res) => {
+router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), async (req, res) => {
   try {
     const { reportText, recommendations } = req.body;
     if (!reportText) {
       return res.status(400).json({ success: false, error: 'reportText is required' });
     }
 
-    // Log the manual broadcast to AuditLog using the new schema
+    // 1. Save Report to DB for VIP Archive
+    await prisma.report.create({
+      data: {
+        content: reportText,
+        authorId: req.user.userId
+      }
+    });
+
+    // 2. Log Action
     await prisma.auditLog.create({
       data: {
-        userId: req.user.userId,
+        adminId: req.user.userId,
         action: 'MANUAL_TELEGRAM_BROADCAST',
         details: { textLength: reportText.length, recCount: recommendations?.length || 0 }
       }
@@ -73,16 +81,14 @@ router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (
     // Query targets based on User Role
     let targetUsers = [];
     if (req.user.role === 'ADMIN') {
-      // ADMIN: Broadcast to ALL active PRO and ADMIN users
       targetUsers = await prisma.user.findMany({
         where: {
-          role: { in: ['PAID', 'ADMIN'] },
+          role: { in: ['PRO_USER', 'ADMIN'] },
           telegramId: { not: null, not: '' }
         },
         select: { id: true, email: true, telegramId: true }
       });
     } else {
-      // PAID: Send to their personal registered Telegram ID
       const selfUser = await prisma.user.findUnique({
         where: { id: req.user.userId },
         select: { id: true, email: true, telegramId: true }
@@ -92,11 +98,13 @@ router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (
       }
     }
 
-    // ALWAYS broadcast to the Official Shared Group (Mp-members) if configured
-    const groupId = (process.env.TELEGRAM_GROUP_ID || '').trim();
-    if (groupId && !targetUsers.find(u => u.telegramId === groupId)) {
-      targetUsers.push({ id: 'GLOBAL_GROUP', email: 'MP 공유방 전체전송', telegramId: groupId });
-    }
+    // ALWAYS broadcast to the Official Shared Group and Admin Chats from .env
+    const envChatIds = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
+    envChatIds.forEach((grpId, idx) => {
+      if (!targetUsers.find(u => u.telegramId === grpId)) {
+        targetUsers.push({ id: `ENV_GROUP_${idx}`, email: `환경변수 그룹/채널 ${idx+1}`, telegramId: grpId });
+      }
+    });
 
     if (targetUsers.length === 0) {
       return res.status(200).json({ success: true, message: 'DB저장 성공. 단, 연동된 텔레그램 ID가 없습니다.', sentCount: 0 });
@@ -106,14 +114,12 @@ router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (
     const pushPromises = targetUsers.map(u => telegramService.sendMessage(u.telegramId, reportText));
     const results = await Promise.allSettled(pushPromises);
     
-    // Count successful requests based on the telegramService return (true/false boolean)
     const successCount = results.filter(r => r.status === 'fulfilled' && r.value === true).length;
 
-    // Log the Admin Broadcast Action (Only for admins to prevent cluttering AuditLog with personal sends, or log differently)
     if (req.user.role === 'ADMIN') {
       await prisma.auditLog.create({
         data: {
-          userId: req.user.userId,
+          adminId: req.user.userId,
           action: 'BROADCAST_REPORT_SUCCESS',
           details: { sentCount: successCount, totalTargeted: targetUsers.length }
         }
@@ -129,6 +135,22 @@ router.post('/', authMiddleware, guardMiddleware('PAID', 'SEND_REPORT'), async (
   } catch (error) {
     console.error('[Send Report API Error]', error);
     res.status(500).json({ success: false, error: 'Internal server error while sending report' });
+  }
+});
+
+router.get('/', authMiddleware, guardMiddleware('PRO_USER', 'VIEW_ARCHIVE'), async (req, res) => {
+  try {
+    const reports = await prisma.report.findMany({
+      orderBy: { sentAt: 'desc' },
+      take: 50,
+      include: {
+        author: { select: { name: true, role: true } }
+      }
+    });
+    res.json(reports);
+  } catch (error) {
+    console.error('[Fetch Reports API Error]', error);
+    res.status(500).json({ error: 'Failed to fetch reports' });
   }
 });
 

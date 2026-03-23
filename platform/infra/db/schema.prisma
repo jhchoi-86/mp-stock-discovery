@@ -105,6 +105,7 @@ model User {
 
 enum Role {
   @@schema("system_audit")
+  PENDING
   FREE_TRIAL
   FREE
   PAID

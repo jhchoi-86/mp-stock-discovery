@@ -3,13 +3,17 @@ const prisma = new PrismaClient();
 
 const ROLE_HIERARCHY = {
   FREE_TRIAL: 1,
+  FREE_USER: 1,
   FREE: 1,
+  PRO_USER: 2,
   PAID: 2,
   ADMIN: 3
 };
 
 const USAGE_LIMITS = {
   FREE_TRIAL: 5,
+  FREE_USER: 5,
+  PRO_USER: 50,
   PAID: 50
 };
 

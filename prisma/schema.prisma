@@ -10,9 +10,13 @@ datasource db {
 }
 
 enum Role {
+  PENDING
+  FREE_TRIAL
+  FREE
+  PAID
+  ADMIN
   FREE_USER
   PRO_USER
-  ADMIN
 }
 
 enum Status {
@@ -149,3 +153,28 @@ model SniperSignal {
   @@map("sniper_signals")
 }
 
+model SignalCandidate {
+  id           Int      @id @default(autoincrement())
+  instrumentId Int
+  timeframe    String
+  condUp7      Boolean
+  dhh2         Boolean
+  triggerRsi   Boolean
+  triggerVol   Boolean
+  entryApproved Boolean
+  isTrending   Boolean
+  signalHH     Boolean
+  displayScore Int
+  entryPrice1  Float
+  entryPrice2  Float?
+  entryPrice3  Float?
+  targetPrice  Float
+  stopLoss     Float
+  category     String
+  sourceHash   String
+  aiConfidenceScore Float?  @map("ai_confidence_score")
+  aiAnalyzedAt      DateTime? @map("ai_analyzed_at")
+  createdAt    DateTime @default(now())
+
+  @@map("signal_candidates")
+}
