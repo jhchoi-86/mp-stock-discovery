@@ -180,6 +180,9 @@ export const useStockManager = (isAuthenticated) => {
     if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 10;
     if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 10;
     
+    const bonus = latest?.kis_change_data?.bonus_score || 0;
+    score += bonus;
+
     return Math.min(score, 100);
   };
 

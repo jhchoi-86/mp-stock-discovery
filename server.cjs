@@ -673,16 +673,56 @@ app.post('/api/auto-sync', async (req, res) => {
                 
                 let foreignBuy = '-';
                 let instBuy = '-';
+                let frgnScore = 0;
+                let orgnScore = 0;
+                let ssangScore = 0;
+                
                 try {
-                    const naverUrl = `https://m.stock.naver.com/api/stock/${stock.code}/integration`;
-                    const naverRes = await axios.get(naverUrl, { timeout: 3000 });
-                    if (naverRes.data && naverRes.data.dealTrendInfos && naverRes.data.dealTrendInfos.length > 0) {
-                        const todayTrend = naverRes.data.dealTrendInfos[0];
-                        foreignBuy = todayTrend.foreignerPureBuyQuant || '-';
-                        instBuy = todayTrend.organPureBuyQuant || '-';
+                    const invUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor';
+                    const invRes = await axios.get(invUrl, {
+                        headers: {
+                            'authorization': 'Bearer ' + kisTokenGlobal,
+                            'appkey': KIS_APP_KEY,
+                            'appsecret': KIS_APP_SECRET,
+                            'tr_id': 'FHKST01010900'
+                        },
+                        params: {
+                            "FID_COND_MRKT_DIV_CODE": "J",
+                            "FID_INPUT_ISCD": stock.code
+                        },
+                        timeout: 5000
+                    });
+                    const out = invRes.data.output;
+                    if (out && out.length >= 3) {
+                        const frgn = out.map(o => parseInt(o.frgn_ntby_qty || '0'));
+                        const orgn = out.map(o => parseInt(o.orgn_ntby_qty || '0'));
+                        const prsn = out.map(o => parseInt(o.prsn_ntby_qty || '0'));
+                        
+                        foreignBuy = frgn[0] >= 0 ? `+${frgn[0].toLocaleString()}` : `${frgn[0].toLocaleString()}`;
+                        instBuy = orgn[0] >= 0 ? `+${orgn[0].toLocaleString()}` : `${orgn[0].toLocaleString()}`;
+                        
+                        if (frgn[0] > 0 && frgn[1] > 0 && frgn[2] > 0) frgnScore = 5;
+                        else if (frgn[0] > 0 && frgn[1] > 0) frgnScore = 4;
+                        else if (frgn[0] > 0) frgnScore = 3;
+                        
+                        if (orgn[0] > 0 && orgn[1] > 0 && orgn[2] > 0) orgnScore = 5;
+                        else if (orgn[0] > 0 && orgn[1] > 0) orgnScore = 4;
+                        else if (orgn[0] > 0) orgnScore = 3;
+                        
+                        const fg2 = (frgn[0] > 0 && frgn[1] > 0);
+                        const og2 = (orgn[0] > 0 && orgn[1] > 0);
+                        const pr2sell = (prsn[0] < 0 && prsn[1] < 0);
+                        const fg2sell = (frgn[0] < 0 && frgn[1] < 0);
+                        const og2sell = (orgn[0] < 0 && orgn[1] < 0);
+                        const pr2buy = (prsn[0] > 0 && prsn[1] > 0);
+                        
+                        if (fg2 && og2 && pr2sell) ssangScore = 5;
+                        else if (fg2sell && og2sell && pr2buy) ssangScore = -15;
                     }
                 } catch(e) {
-                    // silently fallback if Naver API fails to keep sync running
+                    if (e.response && e.response.status === 429) {
+                        console.error(`[KIS Investor API Rate Limit] ${stock.code}`);
+                    }
                 }
 
                 chartData.kis_change_data = {
@@ -691,7 +731,8 @@ app.post('/api/auto-sync', async (req, res) => {
                     rate: parseFloat(kisData.prdy_ctrt),
                     trade_amount: tradeAmount,
                     foreign_buy: foreignBuy,
-                    inst_buy: instBuy
+                    inst_buy: instBuy,
+                    bonus_score: (frgnScore + orgnScore + ssangScore)
                 };
 
                 const lastIdx = chartData.close.length - 1;
@@ -814,8 +855,8 @@ app.post('/api/auto-sync', async (req, res) => {
     };
 
     // Process in batches to avoid rate limits (KIS API strict limit: 20 req/sec)
-    // 5 stocks per 500ms = 10 req/s. Safely halves the total sync duration.
-    const BATCH_SIZE = 5;
+    // 3 stocks * 2 KIS APIs per 500ms = 12 req/s. Safe latency margin.
+    const BATCH_SIZE = 3;
     for (let i = 0; i < stocks.length; i += BATCH_SIZE) {
         const batch = stocks.slice(i, i + BATCH_SIZE);
         const tasks = batch.map(async (stock) => {
@@ -824,7 +865,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 if (history && history.close && history.close.length > 50) {
                     const signal = calculateSignals(history, tf);
                     if (signal) {
-                        return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4() };
+                        return { ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4(), kis_change_data: history.kis_change_data };
                     }
                 }
             } catch (e) {
@@ -958,6 +999,9 @@ if (isPrimaryWorker) {
               if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 10;
               if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 10;
 
+              const bonus = latest?.kis_change_data?.bonus_score || 0;
+              score += bonus;
+
               return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
             }).filter(s => s.latestSignal);
 
@@ -972,58 +1016,7 @@ if (isPrimaryWorker) {
             });
 
             const kisToken = await getKisAccessToken();
-            const axios = require('axios');
-            
-            for (let i = 0; i < candidates.length; i++) {
-              try {
-                const url = `https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor`;
-                const headers = {
-                    'content-type': 'application/json; charset=utf-8',
-                    'authorization': `Bearer ${kisToken}`,
-                    'appkey': process.env.KIS_APP_KEY,
-                    'appsecret': process.env.KIS_APP_SECRET,
-                    'tr_id': 'FHKST01010900'
-                };
-                const params = { 'FID_COND_MRKT_DIV_CODE': 'J', 'FID_INPUT_ISCD': candidates[i].code };
-                const resAPI = await axios.get(url, { headers, params });
-                const out = resAPI.data?.output?.slice(0, 3);
-                
-                if (out && out.length === 3) {
-                    const frgn = out.map(o => parseInt(o.frgn_ntby_qty || '0'));
-                    const orgn = out.map(o => parseInt(o.orgn_ntby_qty || '0'));
-                    const prsn = out.map(o => parseInt(o.prsn_ntby_qty || '0'));
-                    
-                    let frgnScore = 0;
-                    if (frgn[0] > 0 && frgn[1] > 0 && frgn[2] > 0) frgnScore = 5;
-                    else if (frgn[0] > 0 && frgn[1] > 0) frgnScore = 4;
-                    else if (frgn[0] > 0) frgnScore = 3;
-                    
-                    let orgnScore = 0;
-                    if (orgn[0] > 0 && orgn[1] > 0 && orgn[2] > 0) orgnScore = 5;
-                    else if (orgn[0] > 0 && orgn[1] > 0) orgnScore = 4;
-                    else if (orgn[0] > 0) orgnScore = 3;
-                    
-                    let ssangScore = 0;
-                    const fg2 = (frgn[0] > 0 && frgn[1] > 0);
-                    const og2 = (orgn[0] > 0 && orgn[1] > 0);
-                    const pr2sell = (prsn[0] < 0 && prsn[1] < 0);
-                    const fg2sell = (frgn[0] < 0 && frgn[1] < 0);
-                    const og2sell = (orgn[0] < 0 && orgn[1] < 0);
-                    const pr2buy = (prsn[0] > 0 && prsn[1] > 0);
-                    
-                    if (fg2 && og2 && pr2sell) ssangScore = 5;
-                    else if (fg2sell && og2sell && pr2buy) ssangScore = -15;
-                    
-                    candidates[i].total_score += (frgnScore + orgnScore + ssangScore);
-                }
-                await new Promise(r => setTimeout(r, 200)); 
-              } catch(e) {
-                console.error('[Score Supply] API Error:', e.message);
-              }
-            }
-
             candidates = candidates.sort((a, b) => b.total_score - a.total_score);
-            candidates.forEach(c => { c.total_score = Math.min(100, Math.max(0, c.total_score)); });
 
             if (candidates.length === 0) {
               console.log('[Cron] 조건에 맞는 종목이 없어 발송하지 않습니다.');
