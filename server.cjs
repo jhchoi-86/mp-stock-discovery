@@ -579,9 +579,16 @@ app.post('/api/auto-sync', async (req, res) => {
         return res.status(409).json({ error: '현재 다른 사용자에 의해 분석 갱신이 진행 중입니다. 잠시 후(1~2분 뒤) 다시 시도해주세요' });
     }
     isSyncMutexLocked = true;
+    const { timeframe } = req.body;
     
-    try {
-        const { timeframe } = req.body;
+    // Nginx 60s Timeout 방어: 즉시 200 응답 스풀링 (Fire-and-Forget)
+    res.status(200).json({ 
+        message: '동기화가 백그라운드에서 안전하게 시작되었습니다. 약 1~2분 후 완료 시 화면에 자동 반영됩니다!', 
+        count: 0 
+    });
+
+    (async () => {
+        try {
         const tf = timeframe || '1D';
     
     // Map internal timeframe to Yahoo Finance interval
@@ -890,15 +897,14 @@ app.post('/api/auto-sync', async (req, res) => {
     }
 
     console.log(`[Auto-Sync] Completed. Success: ${syncResults.length}, Errors: ${errorCount}`);
-    res.json({ 
-        message: `${syncResults.length}개 종목 동기화 성공 (${errorCount}개 실패)`, 
-        count: syncResults.length 
-    });
 
-    } finally {
-        // Drop the mutex lock regardless of success or crash
-        isSyncMutexLocked = false;
-    }
+        } catch (globalErr) {
+            console.error('[Auto-Sync Background Error]', globalErr);
+        } finally {
+            // Drop the mutex lock regardless of success or crash
+            isSyncMutexLocked = false;
+        }
+    })();
 });
 
 app.listen(PORT, '0.0.0.0', () => {
