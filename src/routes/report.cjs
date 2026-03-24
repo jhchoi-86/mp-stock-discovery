@@ -54,7 +54,7 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
   }
 });
 
-router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), async (req, res) => {
+router.post('/', authMiddleware, guardMiddleware('FREE_USER', 'SEND_REPORT'), async (req, res) => {
   try {
     const { reportText, recommendations } = req.body;
     if (!reportText) {
@@ -83,7 +83,7 @@ router.post('/', authMiddleware, guardMiddleware('PRO_USER', 'SEND_REPORT'), asy
     if (req.user.role === 'ADMIN') {
       targetUsers = await prisma.user.findMany({
         where: {
-          role: { in: ['PRO_USER', 'ADMIN'] },
+          role: { in: ['USER', 'FREE', 'FREE_USER', 'PRO_USER', 'PAID', 'ADMIN'] },
           telegramId: { not: null, not: '' }
         },
         select: { id: true, email: true, telegramId: true }

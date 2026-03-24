@@ -62,27 +62,28 @@ export const generateReportContent = (candidates) => {
   return header + rows + footer;
 };
 
-export const generateTelegramContent = (candidates, selectedStocksSet, aiCommentsMap = {}) => {
-  const sortedByScore = [...candidates].sort((a, b) => b.total_score - a.total_score);
-  const top10 = sortedByScore.slice(0, 10);
-  const top10Codes = new Set(top10.map(s => s.code));
-
-  const reportStocks = candidates.filter(stock => selectedStocksSet.has(stock.code) || top10Codes.has(stock.code));
-
-  if (reportStocks.length === 0) {
+export const generateTelegramContent = (reportStocks, selectedStocksSet, aiCommentsMap = {}) => {
+  if (!reportStocks || reportStocks.length === 0) {
     return null;
   }
 
-  const sortedReportStocks = reportStocks.sort((a, b) => b.total_score - a.total_score);
+  const sortedReportStocks = [...reportStocks].sort((a, b) => b.total_score - a.total_score);
 
   let content = `📈 MP KOSPI 200, KOSDAQ 150 매수 추천 리서치\n`;
   content += `생성 일시: ${new Date().toLocaleString()}\n`;
   content += `분석 종목 수: ${reportStocks.length}개\n\n`;
 
-  content += `🔥 [오늘의 탑 10 스나이퍼 감시 명단]\n`;
+  const isManual = selectedStocksSet && selectedStocksSet.size > 0;
+  content += isManual 
+    ? `🔥 [수동 관심 종목 감시 명단]\n` 
+    : `🔥 [오늘의 탑 ${sortedReportStocks.length} 스나이퍼 감시 명단]\n`;
+
   sortedReportStocks.forEach(s => {
     const tfSigs = s.timeframeStatus || {};
-    const sig2H = tfSigs['2H'];
+    const t1H = tfSigs['1H'];
+    const t2H = tfSigs['2H'];
+    const t4H = tfSigs['4H'];
+    const t1D = tfSigs['1D'];
     
     const curPrice = s.latestSignal?.current_price || s.latestSignal?.entry_price || 0;
     let curChange = 0;
@@ -95,7 +96,12 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
     const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
     
     let priceText = "-";
-    if (sig2H && sig2H.ema5 > 0) {
+    const target1H = t1H?.result_2 || 0;
+    const target2H = t2H?.result_2 || 0;
+    const target4H = t4H?.result_2 || 0;
+    const target1D = t1D?.bb_upper || 0;
+
+    if (target1H || target2H || target4H || target1D) {
       const formatGap = (target) => {
         if (!curPrice || typeof target !== 'number') return '';
         const diff = Math.round(target - curPrice);
@@ -106,17 +112,19 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
       const formatProfit = (target) => {
         if (!curPrice || typeof target !== 'number') return '';
         const diff = Math.round(target - curPrice);
-        const sign = diff >= 0 ? '▲' : '▼';
+        const sign = diff >= 0 ? '🔺' : '🔻';
         const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
         return `${sign} ${pct}%`;
       };
-      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '🔺' : '🔻'}${Math.abs(curChange).toFixed(2)}%)` : '';
       
-      priceText = `${curPriceStr}\n` +
-                  `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
-                  `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
-                  `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
-                  `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
+      let pLines = [curPriceStr];
+      if (target1H > 0) pLines.push(`1차 매수진입가(1H): ${Math.round(target1H).toLocaleString()}원 ${formatGap(target1H)}`);
+      if (target2H > 0) pLines.push(`2차 매수진입가(2H): ${Math.round(target2H).toLocaleString()}원 ${formatGap(target2H)}`);
+      if (target4H > 0) pLines.push(`3차 매수진입가(4H): ${Math.round(target4H).toLocaleString()}원 ${formatGap(target4H)}`);
+      if (target1D > 0) pLines.push(`1차 목표가(1D): ${Math.round(target1D).toLocaleString()}원 ${formatProfit(target1D)}`);
+      
+      priceText = pLines.filter(Boolean).join('\n');
     } else {
       const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
       priceText = `${curPriceStr ? curPriceStr + '\n' : ''}타점: ${Math.round(s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0).toLocaleString()}원`;

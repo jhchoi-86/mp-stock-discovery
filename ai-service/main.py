@@ -4,11 +4,13 @@ from sqlalchemy import text
 from database import get_db, engine
 from llm_router import router as llm_router
 from anomaly_router import router as anomaly_router
+from news_router import router as news_router
 
 app = FastAPI(title="MP Stock AI Microservice")
 
 app.include_router(llm_router, prefix="/api/v1")
 app.include_router(anomaly_router, prefix="/api/v1")
+app.include_router(news_router, prefix="/api/v1")
 
 @app.get("/health")
 def health_check(db: Session = Depends(get_db)):

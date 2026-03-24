@@ -134,38 +134,47 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
           </div>
 
           {/* Target Prices (Simplified for Mobile) */}
-          {(t2H && t2H.ema5 > 0) && (
+          {(t1H?.result_2 > 0 || t2H?.result_2 > 0 || t4H?.result_2 > 0 || t1D?.bb_upper > 0) && (
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>
-               <div style={{ display: 'flex', flexDirection: 'column' }}>
-                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                   돌파 매수타점: {Math.round(t2H.ema5).toLocaleString()}
-                   {stock.close > 0 && t2H.ema5 > 0 && (
-                     <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.ema5 >= stock.close ? '#ff6b6b' : '#339af0' }}>
-                       ({t2H.ema5 > stock.close ? '+' : ''}{(Math.round(t2H.ema5 - stock.close)).toLocaleString()}원, {((t2H.ema5 - stock.close) / stock.close * 100).toFixed(2)}%)
-                     </span>
-                   )}
-                 </span>
-                 <span style={{ color: 'var(--accent)', fontWeight: 'bold' }}>목표: {Math.round(t2H.bb_upper).toLocaleString()}</span>
-               </div>
-               <div style={{ display: 'flex', flexDirection: 'column', borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
-                 <span style={{ color: 'var(--success)' }}>
-                   1차 매수타점: {Math.round(t2H.result_2).toLocaleString()}
-                   {stock.close > 0 && t2H.result_2 > 0 && (
-                     <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
-                       ({t2H.result_2 > stock.close ? '+' : ''}{(Math.round(t2H.result_2 - stock.close)).toLocaleString()}원, {((t2H.result_2 - stock.close) / stock.close * 100).toFixed(2)}%)
-                     </span>
-                   )}
-                 </span>
-                 {t2H.result_3 > 0 && (
-                   <span style={{ color: 'var(--success)' }}>
-                     2차 매수타점: {Math.round(t2H.result_3).toLocaleString()}
-                     {stock.close > 0 && t2H.result_3 > 0 && (
-                       <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.result_3 >= stock.close ? '#ff6b6b' : '#339af0' }}>
-                         ({t2H.result_3 > stock.close ? '+' : ''}{(Math.round(t2H.result_3 - stock.close)).toLocaleString()}원, {((t2H.result_3 - stock.close) / stock.close * 100).toFixed(2)}%)
+               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                 {t1H?.result_2 > 0 && (
+                   <span style={{ color: '#FFD700', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                     1차 진입(1H): {Math.round(t1H.result_2).toLocaleString()}
+                     {stock.close > 0 && (
+                       <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t1H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
+                         ({((t1H.result_2 - stock.close) / stock.close * 100).toFixed(1)}%)
                        </span>
                      )}
                    </span>
-                 )}</div>
+                 )}
+                 {t1D?.bb_upper > 0 && (
+                   <span style={{ color: 'var(--accent)', fontWeight: 'bold', whiteSpace: 'nowrap', marginTop: '4px' }}>
+                     목표(1D): {Math.round(t1D.bb_upper).toLocaleString()}
+                   </span>
+                 )}
+               </div>
+               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
+                 {t2H?.result_2 > 0 && (
+                   <span style={{ color: 'var(--success)', whiteSpace: 'nowrap' }}>
+                     2차 진입(2H): {Math.round(t2H.result_2).toLocaleString()}
+                     {stock.close > 0 && (
+                       <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
+                         ({((t2H.result_2 - stock.close) / stock.close * 100).toFixed(1)}%)
+                       </span>
+                     )}
+                   </span>
+                 )}
+                 {t4H?.result_2 > 0 && (
+                   <span style={{ color: 'var(--success)', whiteSpace: 'nowrap', marginTop: '4px' }}>
+                     3차 진입(4H): {Math.round(t4H.result_2).toLocaleString()}
+                     {stock.close > 0 && (
+                       <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t4H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
+                         ({((t4H.result_2 - stock.close) / stock.close * 100).toFixed(1)}%)
+                       </span>
+                     )}
+                   </span>
+                 )}
+               </div>
             </div>
           )}
         </div>

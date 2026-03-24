@@ -214,8 +214,8 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       </div>
       )}
 
-      {/* 5. Floating Action Bar (FAB) - 관리자 전용 텔레그램 발송 */}
-      {selectedStocks.size > 0 && user?.role === 'ADMIN' && (
+      {/* 5. Floating Action Bar (FAB) - 전회원 텔레그램 발송 */}
+      {selectedStocks.size > 0 && user && (
         <div style={{
           position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)',
           width: '90%', maxWidth: '400px', background: 'rgba(0, 136, 204, 0.9)',

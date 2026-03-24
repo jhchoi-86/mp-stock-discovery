@@ -132,7 +132,7 @@ async function pollRealTimePrices(getKisAccessToken) {
                     const tvLink = `https://kr.tradingview.com/chart/?symbol=KRX:${rec.code}`;
                     
                     // Fire telegram alert
-                    const msg = `🚨 [단타/스윙 타점 도달]\n\n📌 종목: ${rec.name} (${rec.code})\n💰 현재가: ${currentPrice.toLocaleString()}원\n🎯 매수타점: ${rec.rec_price.toLocaleString()}원\n📊 오차율: ${(diffPerc * 100).toFixed(2)}%${limitNote}\n📈 차트보기: ${tvLink}\n\n⚠️ 법적 고지: 본 알람은 자동 매매가 아닌 우량 종목 발굴(추천) 및 단순 정보 제공용입니다. 실제 매매의 판단과 투자 결과에 대한 모든 법적 책임은 투자자 본인에게 있습니다.`;
+                    const msg = `🚨 [단타/스윙 타점 도달]\n\n📌 종목: ${rec.name} (${rec.code})\n💰 현재가: ${currentPrice.toLocaleString()}원\n🎯 매수진입가: ${rec.rec_price.toLocaleString()}원\n📊 오차율: ${(diffPerc * 100).toFixed(2)}%${limitNote}\n📈 차트보기: ${tvLink}\n\n⚠️ 법적 고지: 본 알람은 자동 매매가 아닌 우량 종목 발굴(추천) 및 단순 정보 제공용입니다. 실제 매매의 판단과 투자 결과에 대한 모든 법적 책임은 투자자 본인에게 있습니다.`;
 
                     for (const chatId of TELE_IDS) {
                         try {

@@ -220,7 +220,7 @@ export const useStockManager = (isAuthenticated) => {
 
   const candidates = showAll 
     ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
-    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 10);
+    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
 
   const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
 
@@ -309,6 +309,7 @@ export const useStockManager = (isAuthenticated) => {
     if (!window.confirm(`2H, 1D, 1W 시간대 데이터를 순차적으로 자동 동기화하시겠습니까?\n(이 작업은 약 3~4분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
+    setShowAll(false); // Top 5 노출 보장
     
     // 순차적 동기화 순서 (큰 시간대 -> 작은 시간대)
     const timeframes = ['1W', '1D', '2H'];
@@ -372,8 +373,21 @@ export const useStockManager = (isAuthenticated) => {
   const handleSendToTelegram = async () => {
     setIsSendingTg(true);
 
-    const reportStocks = (Array.isArray(candidates) ? candidates : []).filter(stock => selectedStocks.has(stock.code) || stock.total_score >= 75);
-    const approvedStocks = (Array.isArray(reportStocks) ? reportStocks : []).filter(s => s.latestSignal && s.latestSignal.entry_approved);
+    const allCandidates = Array.isArray(candidates) ? candidates : [];
+    let reportStocks = allCandidates.filter(stock => selectedStocks.has(stock.code));
+
+    // 체크된 종목이 없으면, 총점(total_score) 기준 상위 5개를 추출
+    if (reportStocks.length === 0) {
+      reportStocks = [...allCandidates]
+        .filter(stock => stock.total_score >= 50)  // 최소 50점 이상인 종목에 한하여
+        .sort((a, b) => b.total_score - a.total_score)
+        .slice(0, 5);
+    } else {
+      // 체크된 종목이 있어도 무조건 최대 5개로 잘라서 전송
+      reportStocks = reportStocks.slice(0, 5);
+    }
+
+    const approvedStocks = reportStocks.filter(s => s.latestSignal && s.latestSignal.entry_approved);
 
     let aiCommentsMap = {};
     try {
@@ -386,9 +400,9 @@ export const useStockManager = (isAuthenticated) => {
     }
 
     try {
-      const tgContent = generateTelegramContent(candidates, selectedStocks, aiCommentsMap);
+      const tgContent = generateTelegramContent(reportStocks, selectedStocks, aiCommentsMap);
       if (!tgContent) {
-        alert("텔레그램으로 발송할 종목을 체크박스로 선택하거나 총점이 75점 이상인 종목이 존재해야 합니다.");
+        alert("텔레그램으로 발송할 추천 종목이 존재하지 않습니다.");
         setIsSendingTg(false);
         return;
       }

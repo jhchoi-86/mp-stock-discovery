@@ -179,7 +179,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             style={{ accentColor: 'var(--accent)', cursor: 'pointer', width: '16px', height: '16px' }}
           />
           <label htmlFor="showAllToggle" style={{ cursor: 'pointer', userSelect: 'none' }}>
-            {showAll ? '유니버스 전체보기 (점수정렬)' : '🌟 자동 추천 (점수별 Top 10)'}
+            {showAll ? '유니버스 전체보기 (점수정렬)' : '🌟 자동 추천 (점수별 Top 5)'}
           </label>
         </div>
 
@@ -271,7 +271,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         >
           <ExternalLink size={18} /> 트래이딩뷰 추천 종목코드 다운로드
         </button>
-        {user?.role === 'ADMIN' && (
+        {user && (
           <button 
             onClick={handleSendToTelegram}
             disabled={isSendingTg}
@@ -561,12 +561,13 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const targetData = (t2H && t2H.ema5 > 0) ? t2H : (t1D && t1D.ema5 > 0 ? t1D : null);
-                          const tfLabel = (t2H && t2H.ema5 > 0) ? "2H" : "1D";
-                          const targetPrice = targetData && targetData.bb_upper > 0 ? targetData.bb_upper : 0;
+                          const target1H = t1H?.result_2 || 0;
+                          const target2H = t2H?.result_2 || 0;
+                          const target4H = t4H?.result_2 || 0;
+                          const target1D = t1D?.bb_upper || 0;
                           const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
                           
-                          if (targetData) {
+                          if (target1H || target2H || target4H || target1D) {
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -575,32 +576,32 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
                                 <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
-                                  돌파 매수타점: {Math.round(targetData.ema5).toLocaleString()}원
-                                  {curPrice > 0 && targetData.ema5 > 0 ? (
-                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.ema5 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({targetData.ema5 > curPrice ? '+' : ''}{(Math.round(targetData.ema5 - curPrice)).toLocaleString()}원, {((targetData.ema5 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                  1차 매수진입가 (1H): {target1H > 0 ? Math.round(target1H).toLocaleString() : '-'}원
+                                  {curPrice > 0 && target1H > 0 ? (
+                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target1H >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                                      ({target1H > curPrice ? '+' : ''}{(Math.round(target1H - curPrice)).toLocaleString()}원, {((target1H - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  1차 매수타점: {targetData.result_2 > 0 ? Math.round(targetData.result_2).toLocaleString() : '-'}원
-                                  {curPrice > 0 && targetData.result_2 > 0 ? (
-                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.result_2 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({targetData.result_2 > curPrice ? '+' : ''}{(Math.round(targetData.result_2 - curPrice)).toLocaleString()}원, {((targetData.result_2 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                  2차 매수진입가 (2H): {target2H > 0 ? Math.round(target2H).toLocaleString() : '-'}원
+                                  {curPrice > 0 && target2H > 0 ? (
+                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target2H >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                                      ({target2H > curPrice ? '+' : ''}{(Math.round(target2H - curPrice)).toLocaleString()}원, {((target2H - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
                                 <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  2차 매수타점: {targetData.result_3 > 0 ? Math.round(targetData.result_3).toLocaleString() : '-'}원
-                                  {curPrice > 0 && targetData.result_3 > 0 ? (
-                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: targetData.result_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({targetData.result_3 > curPrice ? '+' : ''}{(Math.round(targetData.result_3 - curPrice)).toLocaleString()}원, {((targetData.result_3 - curPrice) / curPrice * 100).toFixed(2)}%)
+                                  3차 매수진입가 (4H): {target4H > 0 ? Math.round(target4H).toLocaleString() : '-'}원
+                                  {curPrice > 0 && target4H > 0 ? (
+                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target4H >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                                      ({target4H > curPrice ? '+' : ''}{(Math.round(target4H - curPrice)).toLocaleString()}원, {((target4H - curPrice) / curPrice * 100).toFixed(2)}%)
                                     </span>
                                   ) : null}
                                 </span>
                                 <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
-                                  1차목표가({tfLabel}): {targetPrice > 0 ? Math.round(targetPrice).toLocaleString() : '-'}원
-                                  {targetPrice > 0 && dailyPrevClose > 0 ? renderChange(targetPrice, dailyPrevClose) : null}
+                                  1차 목표가 (1D): {target1D > 0 ? Math.round(target1D).toLocaleString() : '-'}원
+                                  {target1D > 0 && dailyPrevClose > 0 ? renderChange(target1D, dailyPrevClose) : null}
                                 </span>
                               </>
                             );
