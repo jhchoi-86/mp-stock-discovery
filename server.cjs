@@ -789,6 +789,9 @@ app.post('/api/auto-sync', async (req, res) => {
                         if (frgn > 0) frgnScore = 3;
                         if (orgn > 0) orgnScore = 3;
                         if (frgn > 0 && orgn > 0 && prsn < 0) ssangScore = 5;
+                        
+                        let penaltyScore = 0;
+                        if (frgn < 0 && orgn < 0 && prsn > 0) penaltyScore = -3;
                     }
                 } catch(e) {
                     if (e.response && e.response.status === 429) {
@@ -804,7 +807,7 @@ app.post('/api/auto-sync', async (req, res) => {
                     trade_amount: tradeAmount,
                     foreign_buy: foreignBuy,
                     inst_buy: instBuy,
-                    bonus_score: (frgnScore + orgnScore + ssangScore)
+                    bonus_score: (frgnScore + orgnScore + ssangScore + penaltyScore)
                 };
 
                 const lastIdx = chartData.close.length - 1;
