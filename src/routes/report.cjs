@@ -83,7 +83,7 @@ router.post('/', authMiddleware, guardMiddleware('FREE_USER', 'SEND_REPORT'), as
     if (req.user.role === 'ADMIN') {
       targetUsers = await prisma.user.findMany({
         where: {
-          role: { in: ['USER', 'FREE', 'FREE_USER', 'PRO_USER', 'PAID', 'ADMIN'] },
+          role: { in: ['FREE', 'FREE_USER', 'PRO_USER', 'PAID', 'ADMIN'] },
           telegramId: { not: null, not: '' }
         },
         select: { id: true, email: true, telegramId: true }

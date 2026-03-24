@@ -27,8 +27,7 @@ const sendMessage = async (chatId, message) => {
   try {
     const response = await axios.post(`${TELEGRAM_API_URL}/sendMessage`, {
       chat_id: chatId,
-      text: message,
-      parse_mode: 'HTML' // Allow simple bolding/links in messages
+      text: message
     }, {
       httpsAgent
     });

@@ -749,6 +749,9 @@ app.post('/api/auto-sync', async (req, res) => {
                     }
                 });
                 const kisData = kisRes.data.output;
+                if (!kisData || !kisData.stck_prpr) {
+                    throw new Error(`KIS API returned invalid output: ${JSON.stringify(kisRes.data)}`);
+                }
                 const currentPrice = parseInt(kisData.stck_prpr);
                 const currentHigh = parseInt(kisData.stck_hgpr);
                 const currentLow = parseInt(kisData.stck_lwpr);
@@ -853,6 +856,8 @@ app.post('/api/auto-sync', async (req, res) => {
                 // If it fails, silent fallback to yahoo's tail
                 if (e.response && e.response.status === 429) {
                     console.error(`[KIS API Rate Limit] ${stock.code} fell back to Yahoo`);
+                } else {
+                    console.error(`[KIS API Silent Crash] ${stock.code}:`, e.message, e.response?.data || '');
                 }
             }
         }

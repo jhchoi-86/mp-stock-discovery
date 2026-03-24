@@ -17,8 +17,7 @@ async function sendTelegramMessage(message, chatId = null) {
     try {
       await axios.post(url, {
         chat_id: id.trim(),
-        text: message,
-        parse_mode: 'HTML'
+        text: message
       });
       console.log(`[Telegram] Alert sent to ${id}`);
     } catch (e) {
