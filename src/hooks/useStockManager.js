@@ -290,13 +290,13 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleIntegratedSync = async () => {
-    if (!window.confirm(`1H, 4H 시간대 데이터를 순차적으로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
+    if (!window.confirm(`1H, 2H, 4H, 1D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
     setShowAll(false); // Top 5 노출 보장
     
-    // 순차적 동기화 순서 (1H -> 4H)
-    const timeframes = ['1H', '4H'];
+    // 순차적 동기화 순서 (1H -> 1W)
+    const timeframes = ['1H', '2H', '4H', '1D', '1W'];
     
     try {
       const { default: axiosClient } = await import('../api/axiosClient.js');
