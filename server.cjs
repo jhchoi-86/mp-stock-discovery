@@ -307,9 +307,11 @@ app.get('/api/stream', (req, res) => {
 
     res.userRole = role;
     clients.push(res);
+    console.log(`[SSE] Client connected (${role}). Total clients: ${clients.length}`);
 
     req.on('close', () => {
         clients = clients.filter(client => client !== res);
+        console.log(`[SSE] Client disconnected. Total clients remaining: ${clients.length}`);
     });
 });
 
@@ -606,7 +608,16 @@ app.post('/api/auto-sync', async (req, res) => {
     // Progress Emitter Helper
     const emitProgress = (cur, tot, t) => {
         const payload = `data: ${JSON.stringify({ type: 'sync_progress', current: cur, total: tot, timeframe: t })}\n\n`;
-        clients.forEach(c => { try { c.write(payload); } catch(e){} });
+        console.log(`[SSE] Emitting progress ${cur}/${tot} to ${clients.length} clients...`);
+        clients.forEach(c => { 
+            try { 
+                c.write(payload); 
+                // For Node.js res.write(), it sends immediately if compression isn't holding it
+                if(c.flush) c.flush(); // If compression middleware is used, force flush
+            } catch(e) {
+                console.error(`[SSE] Write error:`, e.message);
+            } 
+        });
     };
 
     emitProgress(0, stocks.length, tf);
