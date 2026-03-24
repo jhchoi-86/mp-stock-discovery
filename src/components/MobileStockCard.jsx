@@ -36,7 +36,10 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
   };
 
   const s = stock.latestSignal;
+  const t1H = stock.timeframeStatus?.['1H'];
   const t2H = stock.timeframeStatus?.['2H'];
+  const t4H = stock.timeframeStatus?.['4H'];
+  const t1D = stock.timeframeStatus?.['1D'];
   const isHH = s?.signal_HH;
   
   let categoryLabel = s ? s.category : '-';
