@@ -193,9 +193,15 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
       </div>
 
       {/* 3. Accordion Content (Signal Indicator) */}
-      {isExpanded && s && (
+      {isExpanded && stock.bestSignal && (
         <div style={{ padding: '1rem', borderTop: '1px solid rgba(255,255,255,0.05)', background: 'rgba(0,0,0,0.3)' }} onClick={(e) => e.stopPropagation()}>
-          <SignalIndicator signal={s} totalScore={stock.total_score} kisData={kisData} />
+          <SignalIndicator 
+            signal={stock.bestSignal} 
+            latestSignal={stock.latestSignal}
+            bestTfLabel={stock.bestTfLabel}
+            totalScore={stock.total_score} 
+            kisData={kisData} 
+          />
         </div>
       )}
     </div>

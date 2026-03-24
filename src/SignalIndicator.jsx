@@ -1,6 +1,6 @@
 import React from 'react';
 
-const SignalIndicator = ({ signal, totalScore, kisData }) => {
+const SignalIndicator = ({ signal, latestSignal, bestTfLabel, totalScore, kisData }) => {
   if (!signal) return null;
 
   const {
@@ -69,7 +69,10 @@ const SignalIndicator = ({ signal, totalScore, kisData }) => {
   return (
     <div style={{ marginTop: '0.8rem', padding: '0.8rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', borderLeft: `3px solid ${badgeColor}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
-        <span style={{ fontSize: '0.8rem', color: '#ccc' }}>PineScript 분석 데이터</span>
+        <span style={{ fontSize: '0.85rem', color: '#ccc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+          PineScript 분석 데이터 
+          {bestTfLabel && <strong style={{ color: '#FFD700', backgroundColor: 'rgba(255, 215, 0, 0.15)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(255,215,0,0.3)' }}>[{bestTfLabel} 기준]</strong>}
+        </span>
         <span className="badge" style={{ backgroundColor: badgeColor, color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
           {totalScore !== undefined ? (
             <>
@@ -98,8 +101,13 @@ const SignalIndicator = ({ signal, totalScore, kisData }) => {
           <span style={{ marginRight: '8px' }}><strong style={{color: progress > 0.3 ? '#fff' : 'inherit'}}>{(progress * 100).toFixed(1)}%</strong></span>
           <span><strong style={{color: adx >= 25 ? 'var(--accent)' : 'inherit'}}>{adx > 0 ? adx.toFixed(1) : '-'}</strong></span>
         </div>
-        <div>
+        <div style={{ textAlign: 'right' }}>
           <span>카테고리: <strong>{category}</strong></span>
+          {latestSignal && (!latestSignal.entry_approved || latestSignal.category === '하락 추세') && (
+            <div style={{ marginTop: '4px', color: '#FF6B35', fontSize: '0.7rem' }}>
+              ⚠️ 단기 전술 진입 대기 ({latestSignal.category})
+            </div>
+          )}
         </div>
       </div>
 

@@ -157,13 +157,17 @@ export const useStockManager = (isAuthenticated) => {
     
     // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
     let coreScore = 0;
+    let bestTf = '1D'; // default
     const tfs = ['2H', '1D', '1W'];
     
     tfs.forEach(tf => {
       let tfScore = 0;
       if (tfSigs[tf] && tfSigs[tf].cond_up7) tfScore += 25;
       if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) tfScore += 25;
-      if (tfScore > coreScore) coreScore = tfScore; 
+      if (tfScore >= coreScore) { // Use >= to prefer 1W/1D over 2H if tied
+        coreScore = tfScore; 
+        if (tfScore > 0) bestTf = tf;
+      }
     });
     score += coreScore;
     
@@ -193,19 +197,24 @@ export const useStockManager = (isAuthenticated) => {
     const bonus = latest?.kis_change_data?.bonus_score || 0;
     score += bonus;
 
-    return Math.min(score, 100);
+    return { score: Math.min(score, 100), bestTf };
   };
 
   const candidatesRaw = filteredStocks.map(stock => {
     const tfSigs = getSignalsForStock(stock.code);
     const latest = getLatestGlobal(stock.code);
     const isTopSector = topSectors.includes(stock.sector);
+    const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
+    const bestSignal = tfSigs[scoreData.bestTf] || latest;
+    
     return {
       ...stock,
       timeframeStatus: tfSigs,
       latestSignal: latest,
+      bestSignal: bestSignal,
+      bestTfLabel: scoreData.bestTf,
       isTopSector,
-      total_score: calculateTotalScore(tfSigs, latest, isTopSector)
+      total_score: scoreData.score
     };
   });
 

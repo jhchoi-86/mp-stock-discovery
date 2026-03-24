@@ -633,10 +633,16 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </a>
                     </td>
                   </tr>
-                  {stock.latestSignal && (
+                  {stock.bestSignal && (
                     <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
                       <td colSpan="9" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
-                        <SignalIndicator signal={stock.latestSignal} totalScore={stock.total_score} kisData={kisData} />
+                        <SignalIndicator 
+                          signal={stock.bestSignal} 
+                          latestSignal={stock.latestSignal}
+                          bestTfLabel={stock.bestTfLabel}
+                          totalScore={stock.total_score} 
+                          kisData={kisData} 
+                        />
                       </td>
                     </tr>
                   )}
