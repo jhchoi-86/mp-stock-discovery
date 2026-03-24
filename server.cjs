@@ -582,54 +582,46 @@ app.post('/api/auto-sync', async (req, res) => {
         return res.status(409).json({ error: '현재 다른 사용자에 의해 분석 갱신이 진행 중입니다. 잠시 후(1~2분 뒤) 다시 시도해주세요' });
     }
     isSyncMutexLocked = true;
-    const { timeframe } = req.body;
+    const { timeframe, timeframes } = req.body;
+    const tfList = Array.isArray(timeframes) && timeframes.length > 0 ? timeframes : [(timeframe || '1D')];
     
     // Nginx 60s Timeout 방어: 즉시 200 응답 스풀링 (Fire-and-Forget)
     res.status(200).json({ 
-        message: '동기화가 백그라운드에서 안전하게 시작되었습니다. 약 1~2분 후 완료 시 화면에 자동 반영됩니다!', 
+        message: '동기화가 백그라운드에서 안전하게 시작되었습니다. 약 3~4분 후 완료 시 화면에 자동 반영됩니다!', 
         count: 0 
     });
 
     (async () => {
         try {
-        const tf = timeframe || '1D';
-    
-    // Map internal timeframe to Yahoo Finance interval
-    // 1H -> 1h, 2H -> 1h, 4H -> 1h (4h not directly supported easily, will use 1h), 1D -> 1d, 1W -> 1wk
-    const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '1W': '1wk' };
-    const interval = intervalMap[tf] || '1d';
-
-    const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
-    let syncResults = [];
-    let errorCount = 0;
-
-    console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
-
-    // Progress Emitter Helper
-    const emitProgress = (cur, tot, t) => {
-        const payload = `data: ${JSON.stringify({ type: 'sync_progress', current: cur, total: tot, timeframe: t })}\n\n`;
-        console.log(`[SSE] Emitting progress ${cur}/${tot} to ${clients.length} clients...`);
-        clients.forEach(c => { 
-            try { 
-                c.write(payload); 
-                // For Node.js res.write(), it sends immediately if compression isn't holding it
-                if(c.flush) c.flush(); // If compression middleware is used, force flush
+            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+            let kisTokenGlobal = null;
+            try {
+                kisTokenGlobal = await getKisAccessToken();
             } catch(e) {
-                console.error(`[SSE] Write error:`, e.message);
-            } 
-        });
-    };
+                console.error("[Auto-Sync] KIS Token failed, falling back to pure Yahoo.");
+            }
+            
+            for (const tf of tfList) {
+                const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '1W': '1wk' };
+                const interval = intervalMap[tf] || '1d';
 
-    emitProgress(0, stocks.length, tf);
+                const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
+                let syncResults = [];
+                let errorCount = 0;
 
-    const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+                console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
 
-    let kisTokenGlobal = null;
-    try {
-        kisTokenGlobal = await getKisAccessToken();
-    } catch(e) {
-        console.error("[Auto-Sync] KIS Token failed, falling back to pure Yahoo.");
-    }
+                const emitProgress = (cur, tot, t) => {
+                    const payload = `data: ${JSON.stringify({ type: 'sync_progress', current: cur, total: tot, timeframe: t })}\n\n`;
+                    clients.forEach(c => { 
+                        try { 
+                            c.write(payload); 
+                            if(c.flush) c.flush();
+                        } catch(e) {} 
+                    });
+                };
+
+                emitProgress(0, stocks.length, tf);
 
     // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
     const fetchHybridHistory = async (stock) => {
@@ -922,8 +914,10 @@ app.post('/api/auto-sync', async (req, res) => {
         broadcastUpdate();
     }
 
-    console.log(`[Auto-Sync] Completed. Success: ${syncResults.length}, Errors: ${errorCount}`);
+    console.log(`[Auto-Sync] Completed timeframe ${tf}. Success: ${syncResults.length}, Errors: ${errorCount}`);
+            } // End of tfList loop
 
+            console.log(`[Auto-Sync] All requested timeframes completed.`);
         } catch (globalErr) {
             console.error('[Auto-Sync Background Error]', globalErr);
         } finally {

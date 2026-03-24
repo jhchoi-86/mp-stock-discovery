@@ -307,20 +307,19 @@ export const useStockManager = (isAuthenticated) => {
     try {
       const { default: axiosClient } = await import('../api/axiosClient.js');
       
-      for (const tf of timeframes) {
-        setSyncProgress({ current: 0, total: 348, timeframe: tf });
-        // Request sync for current timeframe
-        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 300000 });
-      }
+      setSyncProgress({ current: 0, total: 348, timeframe: timeframes[0] });
+      // 백엔드에서 배열 처리를 지원하므로 한 번만 요청 (Mutex Lock 우회 및 순차 처리 보장)
+      const response = await axiosClient.post('/api/auto-sync', { timeframes: timeframes }, { timeout: 300000 });
       
-      alert('통합 동기화(1W, 1D, 2H)가 모두 완료되었습니다.');
+      alert(response.data.message);
+      // fetchData()는 SSE의 `current === total` 완료 이벤트 수신 시점(useStockManager)에서 자동 실행되므로 여기선 생략해도 무방하나,
+      // immediate fallback 보장 차원에서 호출
       fetchData();
     } catch (error) {
       console.error("Integrated auto-sync error:", error);
       if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
-    } finally {
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 348, timeframe: '완료' });
     }
