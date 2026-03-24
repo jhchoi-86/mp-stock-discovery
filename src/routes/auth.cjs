@@ -6,8 +6,8 @@ const prisma = new PrismaClient();
 
 const router = express.Router();
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'fallback_access_secret';
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'fallback_refresh_secret';
+const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
+const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET;
 
 // POST /api/auth/register
 router.post('/register', async (req, res) => {
