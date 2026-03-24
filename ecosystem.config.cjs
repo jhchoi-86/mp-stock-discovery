@@ -3,8 +3,8 @@ module.exports = {
     {
       name: 'mp-stock-discovery',
       script: './server.cjs',
-      instances: 'max',               // CPU 코어 수만큼 프로세스 다중화 생성
-      exec_mode: 'cluster',           // 클러스터 모드 실행
+      instances: 1,                   // 단일 인스턴스 (SSE 로컬 환경 일치)
+      exec_mode: 'fork',              // Fork 모드 실행 (Cluster 모드는 SSE 통신 불일치 유발)
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
@@ -59,6 +59,18 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
+      env_production: {
+        NODE_ENV: 'production'
+      }
+    },
+    {
+      name: 'mp-coin-nightly-monitor',
+      script: './src/utils/coinNightlyMonitor.cjs',
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '500M',
       env_production: {
         NODE_ENV: 'production'
       }
