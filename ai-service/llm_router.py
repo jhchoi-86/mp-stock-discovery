@@ -90,8 +90,14 @@ async def generate_comments(request: CommentRequest):
     prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱(```json)은 절대 추가하지 마.\n"
     prompt += '[{"symbol": "종목코드", "ai_comment": "코멘트 내용"}]\n\n'
     
-    news_tasks = [fetch_kis_news(stock.symbol) for stock in request.stocks]
-    news_results = await asyncio.gather(*news_tasks, return_exceptions=True)
+    news_results = []
+    for stock in request.stocks:
+        try:
+            res = await fetch_kis_news(stock.symbol)
+            news_results.append(res)
+        except Exception:
+            news_results.append("최근 뉴스 확인 불가")
+        await asyncio.sleep(0.3)  # Prevent KIS EGW00201 (Transactions Per Second Exceeded)
 
     for i, stock in enumerate(request.stocks):
         prompt += f"종목명: {stock.name} ({stock.symbol}), 분류: {stock.category}, 현재가: {stock.price}\n"
