@@ -15,7 +15,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       categoryFilter, setCategoryFilter,
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
-      isSyncing, isSendingTg,
+      isSyncing, syncProgress, isSendingTg,
       candidates, topSectors, activeCount, signals, selectedStocks,
       handleAutoSync, handleSendToTelegram,
       toggleSelectStock, toggleSelectAll
@@ -110,7 +110,13 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>수신 신호</div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>{signals.length}</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+              {isSyncing && syncProgress.total > 0 ? (
+                <span>{syncProgress.current} / {syncProgress.total}</span>
+              ) : (
+                signals.length
+              )}
+            </div>
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>강력 신호</div>

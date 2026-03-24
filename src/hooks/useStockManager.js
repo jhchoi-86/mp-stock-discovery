@@ -18,6 +18,7 @@ export const useStockManager = (isAuthenticated) => {
   const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
   
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, timeframe: '' });
   const [isSendingTg, setIsSendingTg] = useState(false);
 
   // Selections
@@ -81,12 +82,10 @@ export const useStockManager = (isAuthenticated) => {
         }
       } else if (data.type === 'sync_progress') {
         const { current, total, timeframe } = data.payload || data;
-        const toastId = 'sync-progress-toast';
+        setSyncProgress({ current, total, timeframe });
+        
         if (current === total) {
-          toast.success(`[${timeframe}] 동기화 완료! (${total}/${total}) 화면을 갱신합니다.`, { id: toastId, duration: 4000 });
           fetchData();
-        } else {
-          toast.loading(`[${timeframe}] 백그라운드 동기화 진행 중... (${current} / ${total})`, { id: toastId });
         }
       }
     };
@@ -282,6 +281,7 @@ export const useStockManager = (isAuthenticated) => {
   const handleAutoSync = async () => {
     if (!window.confirm(`${uploadTimeframe} 시간대 데이터를 자동으로 동기화하시겠습니까? (이 작업은 약 1-2분 정도 소요될 수 있습니다.)`)) return;
     setIsSyncing(true);
+    setSyncProgress({ current: 0, total: 348, timeframe: uploadTimeframe });
     setSelectedStocks(new Set());
     try {
       const { default: axiosClient } = await import('../api/axiosClient.js');
@@ -392,7 +392,7 @@ export const useStockManager = (isAuthenticated) => {
     showAll, setShowAll,
     uploadTimeframe, setUploadTimeframe,
     selectedStocks, setSelectedStocks,
-    isSyncing, isSendingTg,
+    isSyncing, syncProgress, isSendingTg,
     
     // Derived
     candidates, topSectors, activeCount,

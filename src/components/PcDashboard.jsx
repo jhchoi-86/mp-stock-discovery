@@ -22,7 +22,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
       selectedStocks, toggleSelectAll, toggleSelectStock,
-      isSyncing, isSendingTg, 
+      isSyncing, syncProgress, isSendingTg, 
       candidates, topSectors, activeCount, 
       handleCsvUpload, handleReset, handleAutoSync,
       handleDownloadReport, handleDownloadTVList, handleSendToTelegram
@@ -48,7 +48,15 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           </div>
           <div className="stat-item">
             <div className="stat-label">수신 신호</div>
-            <div className="stat-value">{signals.length}</div>
+            <div className="stat-value">
+              {isSyncing && syncProgress.total > 0 ? (
+                <span style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
+                  {syncProgress.current} / {syncProgress.total}
+                </span>
+              ) : (
+                signals.length
+              )}
+            </div>
           </div>
           <div className="stat-item">
             <div className="stat-label">강력 신호 (HH)</div>
@@ -60,14 +68,6 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               {topSectors.length > 0 ? topSectors.join(' · ') : '분석중'}
             </div>
           </div>
-          {isSyncing && (
-            <div className="stat-item" style={{ borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '1rem' }}>
-              <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>진행중</div>
-              <div className="stat-value" style={{ color: 'var(--primary)', fontSize: '0.8rem', whiteSpace: 'nowrap' }}>
-                전종목 분석중...
-              </div>
-            </div>
-          )}
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', paddingLeft: '1.5rem', borderLeft: '1px solid rgba(255,255,255,0.1)', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'center' }}>
           <button 
