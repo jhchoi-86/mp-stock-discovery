@@ -33,7 +33,7 @@ async def fetch_kis_news(code: str) -> str:
     if not token:
         return "최근 뉴스 정보 없음"
     
-    url = "https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-news-title"
+    url = "https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/news-title"
     headers = {
         "authorization": f"Bearer {token}",
         "appkey": os.getenv("KIS_APP_KEY"),
