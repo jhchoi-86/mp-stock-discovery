@@ -6,6 +6,8 @@ from pydantic import BaseModel
 from typing import List, Dict, Any
 from openai import AsyncOpenAI
 import asyncio
+import aiohttp
+from news_router import kis_auth
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -25,6 +27,40 @@ try:
 except Exception as e:
     logger.error(f"Failed to initialize AI client: {e}")
     client = None
+
+async def fetch_kis_news(code: str) -> str:
+    token = await kis_auth.get_token()
+    if not token:
+        return "최근 뉴스 정보 없음"
+    
+    url = "https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-news-title"
+    headers = {
+        "authorization": f"Bearer {token}",
+        "appkey": os.getenv("KIS_APP_KEY"),
+        "appsecret": os.getenv("KIS_APP_SECRET"),
+        "tr_id": "FHKST01011800"
+    }
+    params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": code,
+        "FID_TITL_CNTT": ""
+    }
+    
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(url, headers=headers, params=params, timeout=3.5) as resp:
+                if resp.status == 200:
+                    data = await resp.json()
+                    output = data.get("output", [])
+                    if output:
+                        titles = []
+                        for item in output[:3]:
+                            titl = item.get("data_titl_name") or item.get("data_titl") or item.get("news_titl") or item.get("titl") or str(item)
+                            titles.append(f"- {titl}")
+                        return "최근 KIS 뉴스/공시:\n" + "\n".join(titles)
+    except Exception as e:
+        logger.error(f"Failed to fetch KIS news for {code}: {e}")
+    return "최근 KIS 뉴스/공시 정보 없음"
 
 class StockData(BaseModel):
     symbol: str
@@ -46,16 +82,22 @@ async def generate_comments(request: CommentRequest):
     if not client:
         raise HTTPException(status_code=500, detail="OpenAI client not initialized")
 
-    prompt = "주식 종목들의 기술적 지표 데이터를 줄 테니, 각 종목마다 100자 이내의 핵심 요약 코멘트를 작성해줘.\n"
+    prompt = "주식 종목들의 기술적 지표 데이터와 KIS 최근 뉴스/공시를 줄 테니, 각 종목마다 120자 이내의 종합 요약 코멘트를 작성해줘.\n"
     prompt += "[지표 해석 기준]\n"
     prompt += "- ADX는 '주가 추세 강도'를 의미해. 코멘트를 작성할 때 무조건 '추세강도 [ADX수치]으로' 라는 표현으로 시작하도록 형태를 고정해줘. 'ADX'라는 단어를 그대로 쓰지 마. (예: '추세강도 64.86으로 강한 상승 추세이며...')\n"
-    prompt += "- Score는 'MP Stock 종합분석 지수'야. 0~100점 범위를 가지며, 점수가 높을수록 매수 관점으로 타점에서 대기하다가 진입 시 기계적인 목표가에 이익 실현할 가능성이 매우 높은 지수야.\n\n"
+    prompt += "- Score는 'MP Stock 종합분석 지수'야. 0~100점 범위를 가지며, 점수가 높을수록 매수 관점으로 타점에서 대기하다가 진입 시 기계적인 목표가에 이익 실현할 가능성이 매우 높은 지수야.\n"
+    prompt += "- 제공되는 '최고 KIS 뉴스/공시' 내용을 바탕으로 해당 주식이 오를 재료(모멘텀)를 브리핑에 반드시 포함시켜줘.\n\n"
     prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱(```json)은 절대 추가하지 마.\n"
     prompt += '[{"symbol": "종목코드", "ai_comment": "코멘트 내용"}]\n\n'
     
-    for stock in request.stocks:
+    news_tasks = [fetch_kis_news(stock.symbol) for stock in request.stocks]
+    news_results = await asyncio.gather(*news_tasks, return_exceptions=True)
+
+    for i, stock in enumerate(request.stocks):
         prompt += f"종목명: {stock.name} ({stock.symbol}), 분류: {stock.category}, 현재가: {stock.price}\n"
-        prompt += f"지표: {json.dumps(stock.indicators, ensure_ascii=False)}\n\n"
+        prompt += f"지표: {json.dumps(stock.indicators, ensure_ascii=False)}\n"
+        news_val = news_results[i] if not isinstance(news_results[i], Exception) else "뉴스 확인 불가"
+        prompt += f"{news_val}\n\n"
 
     try:
         # LLM API 타임아웃(5초 초과 방어 로직)
