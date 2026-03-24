@@ -118,11 +118,15 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
                   `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
                   `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
     } else {
-      priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2).toLocaleString()}원`;
+      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
+      priceText = `${curPriceStr ? curPriceStr + '\n' : ''}타점: ${Math.round(s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0).toLocaleString()}원`;
     }
     
     content += `🔹 ${s.name} (${s.code})\n`;
-    content += `분류: ${s.latestSignal.category} | 총점: ${stars} (${score}점)\n`;
+    content += `분류: ${s.latestSignal?.category || '-'} | 총점: ${stars} (${score}점)\n`;
+    const adx = s.latestSignal ? Math.round(s.latestSignal.adx) : "-";
+    const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관망" : "-");
+    content += `주가 추세 강도: ${adx} | 추세 판별: ${trend}\n`;
     content += `${priceText}\n`;
     if (aiCommentsMap[s.code]) {
       content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
