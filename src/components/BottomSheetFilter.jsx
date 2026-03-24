@@ -8,9 +8,7 @@ const BottomSheetFilter = ({
   categoryFilter,
   setCategoryFilter,
   showAll,
-  setShowAll,
-  uploadTimeframe,
-  setUploadTimeframe
+  setShowAll
 }) => {
   if (!isOpen) return null;
 
@@ -52,7 +50,7 @@ const BottomSheetFilter = ({
             <option value="추세 지속형">추세 지속형</option>
             <option value="바닥권 반등">바닥권 반등</option>
             <option value="박스권 횡보">박스권 횡보</option>
-            <option value="추천종목">⭐ 수동 관심종목</option>
+            <option value="추천종목">⭐ 진입가 추천</option>
           </select>
         </div>
 
@@ -69,25 +67,7 @@ const BottomSheetFilter = ({
           </label>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem' }}>
-          <label style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>가져올 시간대 기준</label>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', width: '100%' }}>
-            {["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"].map(tf => (
-              <button
-                key={tf}
-                onClick={() => setUploadTimeframe(tf)}
-                style={{
-                  flex: '1 1 20%', padding: '0.6rem 0', fontSize: '0.85rem', fontWeight: 'bold',
-                  borderRadius: '6px', border: '1px solid var(--glass-border)',
-                  background: uploadTimeframe === tf ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                  color: '#fff', cursor: 'pointer'
-                }}
-              >
-                {tf}
-              </button>
-            ))}
-        </div>
-        </div>
+
 
         <button 
           onClick={onClose}

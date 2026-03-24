@@ -165,7 +165,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           <option value="추세 지속형">추세 지속형</option>
           <option value="바닥권 반등">바닥권 반등</option>
           <option value="박스권 횡보">박스권 횡보</option>
-          <option value="추천종목">⭐ 수동 관심종목</option>
+          <option value="추천종목">⭐ 진입가 추천</option>
         </select>
         
 
@@ -183,28 +183,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           </label>
         </div>
 
-        <div className="card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '0.5rem', padding: '0.75rem 1.25rem', background: 'var(--glass)', border: '1px solid var(--glass-border)' }}>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>가져올 시간대:</span>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', width: '100%' }}>
-            {["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"].map(tf => (
-              <button
-                key={tf}
-                onClick={() => setUploadTimeframe(tf)}
-                style={{
-                  padding: '0.3rem 0.6rem',
-                  fontSize: '0.75rem',
-                  borderRadius: '4px',
-                  border: 'none',
-                  background: uploadTimeframe === tf ? 'var(--primary)' : 'rgba(255,255,255,0.1)',
-                  color: '#fff',
-                    cursor: 'pointer'
-                  }}
-                >
-                  {tf}
-                </button>
-              ))}
-            </div>
-          </div>
+
 
         <input 
           type="file" 
@@ -218,20 +197,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         {(user?.role === 'ADMIN' || user?.role === 'PAID') && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
             <button 
-              onClick={handleAutoSync}
-              disabled={isSyncing}
-              className="card" 
-              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
-            </button>
-            <button 
               onClick={handleIntegratedSync}
               disabled={isSyncing}
               className="card" 
               style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "통합 자동 동기화 (1W,1D,2H)"}
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "통합 자동 동기화: 1H, 4H"}
             </button>
           </div>
         )}
@@ -294,7 +265,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <th style={{ minWidth: '60px', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>종목명</th>
                 <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>세력강도</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>점수</th>
-                <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }} title="추천 보호를 위한 권장 손절 기준: -10% 미만 이탈 시 즉각 대응">지지저항대 💡</th>
+                <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }} title="데일리(1D) 기준 이동평균선 가격">이평선 주가 💡</th>
                 <th style={{ minWidth: '70px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>매수신호<br/>발생</th>
                 <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추세</th>
 
@@ -307,7 +278,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <tr>
                   <td colSpan="9" style={{ textAlign: 'center', padding: '5rem 2rem' }}>
                     <div style={{ fontSize: '1.2rem', marginBottom: '1rem', color: '#fff' }}>
-                      {searchQuery ? "검색 결과가 없습니다." : "사용 방법: 1. 가져올 시간대를 선택 👉 2. 전종목 자동 동기화 실행"}
+                      {searchQuery ? "검색 결과가 없습니다." : "우측 상단의 통합 자동 동기화 버튼을 눌러주세요."}
                     </div>
                     {!searchQuery && (
                       <div style={{ fontSize: '0.95rem', lineHeight: '1.6', color: 'var(--text-muted)' }}>
@@ -475,16 +446,11 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
-                      {stock.latestSignal ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
-                          <span className="badge badge-primary" style={{ fontSize: '0.65rem' }} title="2시간봉(2H) RSI 패턴 기준 1차 지지선">
-                            1차지지: {t2H && t2H.result_2 > 0 ? `${Math.round(t2H.result_2).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && t2H && t2H.result_2 > 0 ? renderChange(t2H.result_2, curPrice) : null}
-                          </span>
-                          <span className="badge badge-warning" style={{ fontSize: '0.65rem' }} title="2시간봉(2H) RSI 패턴 기준 2차 지지선">
-                            2차지지: {t2H && t2H.result_3 > 0 ? `${Math.round(t2H.result_3).toLocaleString()}원` : '-'}
-                            {curPrice > 0 && t2H && t2H.result_3 > 0 ? renderChange(t2H.result_3, curPrice) : null}
-                          </span>
+                      {stock.latestSignal && t1D ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
+                          <span style={{ color: '#fff' }}>20일: {t1D.sma20 > 0 ? `${t1D.sma20.toLocaleString()}원` : '-'}</span>
+                          <span style={{ color: '#fff' }}>60일: {t1D.sma60 > 0 ? `${t1D.sma60.toLocaleString()}원` : '-'}</span>
+                          <span style={{ color: '#fff' }}>120일: {t1D.sma120 > 0 ? `${t1D.sma120.toLocaleString()}원` : '-'}</span>
                         </div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>데이터 대기중</span>

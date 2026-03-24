@@ -398,6 +398,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     
     // Bollinger Bands (20, 2)
     const sma20 = sma(close, 20);
+    const sma60 = sma(close, 60);
+    const sma120 = sma(close, 120);
     const stdev20 = stdev(close, 20);
     const bb_lower = sma20[last_idx] !== null ? sma20[last_idx] - 2 * stdev20[last_idx] : null;
     const bb_upper = sma20[last_idx] !== null ? sma20[last_idx] + 2 * stdev20[last_idx] : null;
@@ -443,6 +445,9 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         ema10: ema10_val ? Math.round(ema10_val) : 0,
         ema20: ema20_val ? Math.round(ema20_val) : 0,
         ema60: ema60_val ? Math.round(ema60_val) : 0,
+        sma20: sma20[last_idx] ? Math.round(sma20[last_idx]) : 0,
+        sma60: sma60[last_idx] ? Math.round(sma60[last_idx]) : 0,
+        sma120: sma120[last_idx] ? Math.round(sma120[last_idx]) : 0,
         bb_upper: bb_upper ? Math.round(bb_upper) : 0,
         current_price: close[last_idx] ? Math.round(close[last_idx]) : 0,
         open_price: open[last_idx] ? Math.round(open[last_idx]) : 0,

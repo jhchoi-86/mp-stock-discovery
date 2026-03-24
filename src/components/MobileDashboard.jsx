@@ -17,7 +17,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       uploadTimeframe, setUploadTimeframe,
       isSyncing, syncProgress, isSendingTg,
       candidates, topSectors, activeCount, signals, selectedStocks,
-      handleAutoSync, handleIntegratedSync, handleSendToTelegram,
+      handleIntegratedSync, handleSendToTelegram,
       toggleSelectStock, toggleSelectAll
   } = manager;
 
@@ -64,9 +64,6 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         </button>
         {['ADMIN', 'PAID'].includes(user?.role) && (
           <>
-            <button onClick={() => handleAutoSync()} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: 'pointer' }}>
-              <RotateCcw size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '동기화 중...' : '개별동기화'}
-            </button>
             <button onClick={() => handleIntegratedSync()} disabled={isSyncing} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer', boxShadow: isSyncing ? 'none' : '0 4px 12px rgba(16,185,129,0.3)' }}>
               <Activity size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '진행중...' : '통합동기화'}
             </button>

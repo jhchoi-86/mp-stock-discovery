@@ -289,30 +289,14 @@ export const useStockManager = (isAuthenticated) => {
     }
   };
 
-  const handleAutoSync = async () => {
-    if (!window.confirm(`${uploadTimeframe} 시간대 데이터를 자동으로 동기화하시겠습니까? (이 작업은 약 1-2분 정도 소요될 수 있습니다.)`)) return;
-    setIsSyncing(true);
-    setSyncProgress({ current: 0, total: 348, timeframe: uploadTimeframe });
-    setSelectedStocks(new Set());
-    try {
-      const { default: axiosClient } = await import('../api/axiosClient.js');
-      const response = await axiosClient.post('/api/auto-sync', { timeframe: uploadTimeframe }, { timeout: 300000 });
-      alert(response.data.message);
-      fetchData();
-    } catch (error) {
-      console.error("Auto-sync error:", error);
-      setIsSyncing(false);
-    }
-  };
-
   const handleIntegratedSync = async () => {
-    if (!window.confirm(`2H, 1D, 1W 시간대 데이터를 순차적으로 자동 동기화하시겠습니까?\n(이 작업은 약 3~4분 정도 소요됩니다.)`)) return;
+    if (!window.confirm(`1H, 4H 시간대 데이터를 순차적으로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
     setShowAll(false); // Top 5 노출 보장
     
-    // 순차적 동기화 순서 (큰 시간대 -> 작은 시간대)
-    const timeframes = ['1W', '1D', '2H'];
+    // 순차적 동기화 순서 (1H -> 4H)
+    const timeframes = ['1H', '4H'];
     
     try {
       const { default: axiosClient } = await import('../api/axiosClient.js');
@@ -450,7 +434,7 @@ export const useStockManager = (isAuthenticated) => {
     // Actions
     fetchData,
     toggleSelectAll, toggleSelectStock,
-    handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
+    handleCsvUpload, handleReset, handleIntegratedSync,
     handleDownloadReport, handleDownloadTVList, handleSendToTelegram
   };
 };

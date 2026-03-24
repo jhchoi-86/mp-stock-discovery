@@ -136,6 +136,18 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             </div>
           </div>
 
+          {/* Moving Averages (1D) */}
+          {t1D && (
+            <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: '#fff', background: 'rgba(255,193,7,0.1)', padding: '6px 8px', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,193,7,0.3)', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ fontWeight: 'bold', color: '#ffc107', marginRight: '4px' }}>이평선 주가💡</span>
+              <span style={{ fontSize: '0.7rem' }}>20일: {t1D.sma20 > 0 ? `${t1D.sma20.toLocaleString()}원` : '-'}</span>
+              <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
+              <span style={{ fontSize: '0.7rem' }}>60일: {t1D.sma60 > 0 ? `${t1D.sma60.toLocaleString()}원` : '-'}</span>
+              <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
+              <span style={{ fontSize: '0.7rem' }}>120일: {t1D.sma120 > 0 ? `${t1D.sma120.toLocaleString()}원` : '-'}</span>
+            </div>
+          )}
+
           {/* Target Prices (Simplified for Mobile) */}
           {(t1H?.result_2 > 0 || t2H?.result_2 > 0 || t4H?.result_2 > 0 || t1D?.bb_upper > 0) && (
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>

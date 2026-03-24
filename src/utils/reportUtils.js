@@ -135,7 +135,16 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
     const adx = (s.latestSignal && typeof s.latestSignal.adx === 'number') ? Math.round(s.latestSignal.adx) : "-";
     const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관망" : "-");
     content += `주가 추세 강도: ${adx} | 추세 판별: ${trend}\n`;
-    content += `${priceText}\n`;
+    
+    let kisVolumeText = '';
+    if (s.latestSignal?.kis_change_data) {
+      const kd = s.latestSignal.kis_change_data;
+      if (kd.trade_amount !== undefined) {
+        kisVolumeText = `\n📊 거래대금(백만): ${Number(kd.trade_amount).toLocaleString()}, 외국인수급: ${kd.foreign_buy}, 기관수급: ${kd.inst_buy}`;
+      }
+    }
+    
+    content += `${priceText}${kisVolumeText}\n`;
     if (aiCommentsMap[s.code]) {
       content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
     }
