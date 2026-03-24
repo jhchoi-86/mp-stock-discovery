@@ -64,6 +64,8 @@ async function pollRealTimePrices(getKisAccessToken) {
         if (Date.now() - alertStatus.lastAlert < 5 * 60 * 1000) continue;
 
             let currentPrice = null;
+            let currentOpenPrice = null;
+            let currentVolumeRate = null;
             try {
                 const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
                 const kisRes = await axios.get(kisUrl, {
@@ -80,6 +82,8 @@ async function pollRealTimePrices(getKisAccessToken) {
                 });
                 if (kisRes.data && kisRes.data.output && kisRes.data.output.stck_prpr) {
                     currentPrice = parseInt(kisRes.data.output.stck_prpr);
+                    currentOpenPrice = parseInt(kisRes.data.output.stck_oprc || "0");
+                    currentVolumeRate = parseFloat(kisRes.data.output.prdy_vrss_vol_rate || "0");
                 }
             } catch (e) {
                 console.error(`[NightlyMonitor KIS Fetch Error for ${rec.code}]:`, e.response?.data || e.message);
@@ -94,6 +98,29 @@ async function pollRealTimePrices(getKisAccessToken) {
                 
                 if (diffPerc <= 0.001) {
                     
+                    // --- [Volume Spike Down Circuit Breaker] ---
+                    if (currentOpenPrice > 0 && currentVolumeRate >= 150) {
+                        const dropFromOpenPerc = (currentOpenPrice - currentPrice) / currentOpenPrice;
+                        if (dropFromOpenPerc >= 0.02) {
+                            alertStatus.count = 3; 
+                            alertStatus.lastAlert = Date.now();
+                            alertCache.set(alertKey, alertStatus);
+                            
+                            const tvLink = `https://kr.tradingview.com/chart/?symbol=KRX:${rec.code}`;
+                            const msg = `⚠️ [서킷 브레이커 발동 - 스나이퍼 매수 차단]\n\n📌 종목: ${rec.name} (${rec.code})\n🚨 사유: 쏟아지는 악재성 투매 감지\n(전일비 거래량 ${currentVolumeRate}% 터지며 시가대비 -${(dropFromOpenPerc*100).toFixed(2)}% 장대음봉 진행중)\n\n알고리즘이 거대한 위험을 감지하여 자동 매수 타겟에서 당일 영구 제외(Block) 처리했습니다.\n📈 차트보기: ${tvLink}`;
+                            
+                            for (const chatId of TELE_IDS) {
+                                try {
+                                    const url = `https://api.telegram.org/bot${TELE_TOKEN}/sendMessage`;
+                                    await axios.post(url, { chat_id: chatId, text: msg }, { httpsAgent: new https.Agent({ family: 4 }) });
+                                } catch (e) { console.error('[Telegram CB Error]:', e.message); }
+                            }
+                            console.log(`[NightlyMonitor] Circuit Breaker activated for ${rec.name} (Vol: ${currentVolumeRate}%, Drop: ${(dropFromOpenPerc*100).toFixed(2)}%)`);
+                            continue;
+                        }
+                    }
+                    // --- [End Circuit Breaker] ---
+
                     // Update cache state
                     alertStatus.count += 1;
                     alertStatus.lastAlert = Date.now();
