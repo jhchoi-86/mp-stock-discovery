@@ -298,24 +298,34 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     // --- Signal Evaluation ---
     const last_idx = len - 1;
     
-    // Pine: cond_up7 = (BBMacd > banda_supe) and (BBMacd_mtf > banda_supe_mtf) and ( BBMacd > Avg_mtf) and BBMacd_mtf> 0
+    // Red Team Hotfix: cond_up7 Apple-to-Orange comparison fix (Avg_mtf -> Avg)
     const cond_up7_series = Array(len).fill(false);
     for (let i = 0; i < len; i++) {
         cond_up7_series[i] = (BBMacd[i] > banda_supe[i]) && 
                              (BBMacd_mtf[i] > banda_supe_mtf[i]) && 
-                             (BBMacd[i] > Avg_mtf[i]) && 
+                             (BBMacd[i] > Avg[i]) && 
                              (BBMacd_mtf[i] > 0);
     }
     const cond_up7 = cond_up7_series[last_idx];
 
-    // Pine: DHH2 = (result_2 > result_3) and (result_2[1]!=result_2) and (open >result_2) and cond_up7
-    const checkDHH2At = (i) => {
-        if (i < 1) return false;
-        return (result_2_series[i] > result_3_series[i]) && 
-               (result_2_series[i-1] !== result_2_series[i]) && 
-               (open[i] > result_2_series[i]) && 
-               cond_up7_series[i];
+    // Red Team Hotfix: DHH2 Separation (Pullback formed earlier, then breakout occurs within 5 bars)
+    const pullback_formed_series = Array(len).fill(false);
+    for (let i = 1; i < len; i++) {
+        pullback_formed_series[i] = (result_2_series[i] > result_3_series[i]) && 
+                                    (result_2_series[i-1] !== result_2_series[i]) && 
+                                    (open[i] > result_2_series[i]);
     }
+
+    const checkDHH2At = (idx) => {
+        if (idx < 1) return false;
+        if (!cond_up7_series[idx] || open[idx] <= result_2_series[idx]) return false;
+        
+        // Look back up to 5 bars from idx for pullback confirmation
+        for (let k = idx; k >= Math.max(1, idx - 5); k--) {
+            if (pullback_formed_series[k]) return true;
+        }
+        return false;
+    };
 
     let isSignalActive = false;
     // To accommodate dashboard visibility, check if DHH2 fired in the recent 3 candles

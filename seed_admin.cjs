@@ -10,7 +10,8 @@ async function main() {
       data: {
         email: 'admin@mpstock.co.kr',
         passwordHash: hash,
-        role: 'ADMIN' // Enum from schema.prisma
+        role: 'ADMIN', // Enum from schema.prisma
+        name: '슈퍼관리자'
       }
     });
     console.log('Successfully seeded admin user:', admin.email);

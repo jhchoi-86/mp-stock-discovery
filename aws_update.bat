@@ -28,7 +28,7 @@ echo.
 echo ========================================================
 echo     [SUCCESS] Deployment completed successfully!
 echo     Please refresh (F5) your browser window now.
-echo     Access URL: http://mp-stock.duckdns.org
+echo     Access URL: https://mpstock.co.kr
 echo ========================================================
 echo.
 pause

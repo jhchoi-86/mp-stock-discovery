@@ -3,17 +3,17 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const users = await prisma.user.findMany();
-    console.log('Current Users in DB:');
-    users.forEach(u => console.log(`ID: ${u.id}, Email: ${u.email}, Role: ${u.role}`));
-    
-    // Also, if you need to reset the PM password, we can do it here:
-    // We'll just list them for now.
+    const publicUsers = await prisma.$queryRawUnsafe(`SELECT COUNT(*) FROM public.users`);
+    const auditUsers = await prisma.$queryRawUnsafe(`SELECT COUNT(*) FROM system_audit."User"`);
+    console.log("public.users count:", publicUsers);
+    console.log("system_audit.User count:", auditUsers);
+
+    const sample = await prisma.$queryRawUnsafe(`SELECT * FROM system_audit."User" LIMIT 5`);
+    console.log("Sample backup data:", sample);
   } catch (e) {
-    console.error('DB Error:', e);
+    console.error(e);
   } finally {
     await prisma.$disconnect();
   }
 }
-
 main();

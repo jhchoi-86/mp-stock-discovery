@@ -159,7 +159,7 @@ app.set('trust proxy', 1);
 
 const CLIENT_URL = process.env.CLIENT_URL || 'https://mpstock.co.kr';
 app.use(cors({
-  origin: [CLIENT_URL, 'https://mpstock.co.kr', 'https://www.mpstock.co.kr', 'http://localhost:5173', 'https://mp-stock.duckdns.org', 'http://mp-stock.duckdns.org'], // Allow client domains
+  origin: [CLIENT_URL, 'https://mpstock.co.kr', 'https://www.mpstock.co.kr', 'http://localhost:5173'], // Allow client domains
   credentials: true
 }));
 
@@ -290,7 +290,7 @@ app.get('/api/stream', (req, res) => {
     let role = 'GUEST';
     if (token) {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_SECRET || 'fallback_secret');
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
             role = decoded.role;
         } catch(e) {}
     }

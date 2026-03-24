@@ -11,6 +11,6 @@ export const options = {
 
 export default function () {
   // Mock endpoint for load testing
-  const res = http.get('https://mp-stock.duckdns.org/user-api/health'); // Fallback to health since /signals might require JWT
+  const res = http.get('https://mpstock.co.kr/user-api/health'); // Fallback to health since /signals might require JWT
   check(res, { 'status 200': (r) => r.status === 200 });
 }

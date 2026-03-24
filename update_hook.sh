@@ -2,12 +2,7 @@
 CONF="/etc/letsencrypt/renewal/mpstock.co.kr.conf"
 if [ ! -f "$CONF" ]; then
     echo "File not found: $CONF"
-    # Fallback to duckdns if they used it
-    CONF="/etc/letsencrypt/renewal/mp-stock.duckdns.org.conf"
-    if [ ! -f "$CONF" ]; then
-        echo "No valid conf found."
-        exit 1
-    fi
+    exit 1
 fi
 
 if ! sudo grep -q "renew_hook" "$CONF"; then

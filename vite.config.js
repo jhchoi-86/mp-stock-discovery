@@ -5,10 +5,7 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   build: {
-    sourcemap: false
-  },
-  esbuild: {
-    drop: ['console', 'debugger']
+    sourcemap: true
   },
   server: {
     host: '0.0.0.0',
