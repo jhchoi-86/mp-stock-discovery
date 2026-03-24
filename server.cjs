@@ -712,31 +712,17 @@ app.post('/api/auto-sync', async (req, res) => {
                         timeout: 5000
                     });
                     const out = invRes.data.output;
-                    if (out && out.length >= 3) {
-                        const frgn = out.map(o => parseInt(o.frgn_ntby_qty || '0'));
-                        const orgn = out.map(o => parseInt(o.orgn_ntby_qty || '0'));
-                        const prsn = out.map(o => parseInt(o.prsn_ntby_qty || '0'));
+                    if (out && out.length > 0) {
+                        const frgn = parseInt(out[0].frgn_ntby_qty || '0');
+                        const orgn = parseInt(out[0].orgn_ntby_qty || '0');
+                        const prsn = parseInt(out[0].prsn_ntby_qty || '0');
                         
-                        foreignBuy = frgn[0] >= 0 ? `+${frgn[0].toLocaleString()}` : `${frgn[0].toLocaleString()}`;
-                        instBuy = orgn[0] >= 0 ? `+${orgn[0].toLocaleString()}` : `${orgn[0].toLocaleString()}`;
+                        foreignBuy = frgn >= 0 ? `+${frgn.toLocaleString()}` : `${frgn.toLocaleString()}`;
+                        instBuy = orgn >= 0 ? `+${orgn.toLocaleString()}` : `${orgn.toLocaleString()}`;
                         
-                        if (frgn[0] > 0 && frgn[1] > 0 && frgn[2] > 0) frgnScore = 5;
-                        else if (frgn[0] > 0 && frgn[1] > 0) frgnScore = 4;
-                        else if (frgn[0] > 0) frgnScore = 3;
-                        
-                        if (orgn[0] > 0 && orgn[1] > 0 && orgn[2] > 0) orgnScore = 5;
-                        else if (orgn[0] > 0 && orgn[1] > 0) orgnScore = 4;
-                        else if (orgn[0] > 0) orgnScore = 3;
-                        
-                        const fg2 = (frgn[0] > 0 && frgn[1] > 0);
-                        const og2 = (orgn[0] > 0 && orgn[1] > 0);
-                        const pr2sell = (prsn[0] < 0 && prsn[1] < 0);
-                        const fg2sell = (frgn[0] < 0 && frgn[1] < 0);
-                        const og2sell = (orgn[0] < 0 && orgn[1] < 0);
-                        const pr2buy = (prsn[0] > 0 && prsn[1] > 0);
-                        
-                        if (fg2 && og2 && pr2sell) ssangScore = 5;
-                        else if (fg2sell && og2sell && pr2buy) ssangScore = -15;
+                        if (frgn > 0) frgnScore = 3;
+                        if (orgn > 0) orgnScore = 3;
+                        if (frgn > 0 && orgn > 0 && prsn < 0) ssangScore = 5;
                     }
                 } catch(e) {
                     if (e.response && e.response.status === 429) {
@@ -897,7 +883,7 @@ app.post('/api/auto-sync', async (req, res) => {
         // Emit progress to clients every 10 stocks
         if ((i + 1) % 10 === 0) emitProgress(i + 1, stocks.length, tf);
 
-        await sleep(100); 
+        await sleep(250); 
     }
 
     emitProgress(stocks.length, stocks.length, tf);
