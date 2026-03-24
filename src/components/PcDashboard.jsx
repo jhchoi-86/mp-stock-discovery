@@ -458,34 +458,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }}>
-                        <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
-                          {["5M", "15M", "30M"].map(tf => {
-                            const sig = stock.timeframeStatus[tf];
-                            const hasSignal = sig && sig.DHH2;
-                            const isHH = sig && sig.signal_HH;
-                            return (
-                              <div 
-                                key={tf}
-                                style={{
-                                  width: '26px',
-                                  height: '20px',
-                                  borderRadius: '3px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.55rem',
-                                  fontWeight: 'bold',
-                                  background: isHH ? '#FF1744' : (hasSignal ? '#00E676' : 'rgba(255,255,255,0.1)'),
-                                  border: hasSignal ? `1px solid ${isHH ? '#FF1744' : '#00E676'}` : '1px solid rgba(255,255,255,0.15)',
-                                  color: hasSignal ? (hasSignal && !isHH ? '#000' : '#fff') : 'rgba(255,255,255,0.5)'
-                                }}
-                                title={sig ? `${tf} 신호 - 진행률: ${(sig.progress * 100).toFixed(1)}%` : `${tf} 데이터 없음`}
-                              >
-                                {tf}
-                              </div>
-                            );
-                          })}
-                        </div>
+
                         <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
                           {["1H", "2H", "4H", "1D", "1W"].map(tf => {
                             const sig = stock.timeframeStatus[tf];
