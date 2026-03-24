@@ -1039,8 +1039,8 @@ if (isPrimaryWorker) {
               return;
             }
 
-            // Sniper & Telegram target is now strictly the Top 15 scored stocks
-            const approvedStocks = candidates.slice(0, 15);
+            // Sniper & Telegram target is now strictly the Top 10 scored stocks
+            const approvedStocks = candidates.slice(0, 10);
             const reviewText = await evaluatePastRecommendations(kisToken, KIS_APP_KEY, KIS_APP_SECRET);
 
             const now = new Date();
@@ -1100,7 +1100,7 @@ if (isPrimaryWorker) {
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
               }
 
-              content += `🔥 [오늘의 탑 15 스나이퍼 감시 명단]\n`;
+              content += `🔥 [오늘의 탑 10 스나이퍼 감시 명단]\n`;
               approvedStocks.forEach(s => {
                 const tfSigs = s.timeframeStatus || {};
                 const sig2H = tfSigs['2H'];
