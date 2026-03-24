@@ -1047,7 +1047,8 @@ if (isPrimaryWorker) {
               return;
             }
 
-            const approvedStocks = candidates.filter(s => s.latestSignal && s.latestSignal.entry_approved);
+            // Sniper & Telegram target is now strictly the Top 15 scored stocks
+            const approvedStocks = candidates.slice(0, 15);
             const reviewText = await evaluatePastRecommendations(kisToken, KIS_APP_KEY, KIS_APP_SECRET);
 
             const now = new Date();
@@ -1107,7 +1108,7 @@ if (isPrimaryWorker) {
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
               }
 
-              content += `🔥 [강력 추천] 매수 진입 승인 종목\n`;
+              content += `🔥 [오늘의 탑 15 스나이퍼 감시 명단]\n`;
               approvedStocks.forEach(s => {
                 const tfSigs = s.timeframeStatus || {};
                 const sig2H = tfSigs['2H'];
@@ -1177,61 +1178,6 @@ if (isPrimaryWorker) {
               });
               content += `---\n\n`;
             }
-
-            content += `📋 전체 모니터링 리스트 (HH 신호 발생)\n\n`;
-
-            content += candidates.slice(0, 15).map(stock => {
-              const tfSigs = stock.timeframeStatus || {};
-              const getStat = tf => tfSigs[tf] ? (tfSigs[tf].signal_HH ? "수(HH)" : (tfSigs[tf].DHH2 ? "수" : "-")) : "-";
-              
-              const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관찰" : "-");
-              const prog = tfSigs['1D'] ? `${(tfSigs['1D'].progress * 100).toFixed(0)}%` : "-";
-              let category = stock.latestSignal ? stock.latestSignal.category : '-';
-              if (stock.total_score >= 80 && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
-              
-              const curPrice = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
-              let curChange = 0;
-              if (stock.latestSignal?.kis_change_data) {
-                const kd = stock.latestSignal.kis_change_data;
-                const isUp = ['1', '2', '3'].includes(String(kd.sign));
-                curChange = isUp ? Math.abs(parseFloat(kd.rate)||0) : -Math.abs(parseFloat(kd.rate)||0);
-              }
-              const score = stock.total_score || 0;
-              const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
-
-              const sig2H = tfSigs['2H'];
-              let priceText = "-";
-              if (sig2H && sig2H.ema5 > 0) {
-                const formatGap = (target) => {
-                  if (!curPrice || typeof target !== 'number') return '';
-                  const diff = Math.round(target - curPrice);
-                  const sign = diff > 0 ? '+' : '';
-                  const pct = ((target - curPrice) / curPrice * 100).toFixed(2);
-                  return `(${sign}${diff.toLocaleString()}원, ${pct}%)`;
-                };
-                const formatProfit = (target) => {
-                  if (!curPrice || typeof target !== 'number') return '';
-                  const diff = Math.round(target - curPrice);
-                  const sign = diff >= 0 ? '▲' : '▼';
-                  const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
-                  return `${sign} ${pct}%`;
-                };
-                const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '▲' : '▼'}${Math.abs(curChange).toFixed(2)}%)` : '';
-                
-                priceText = `${curPriceStr}\n` +
-                            `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +
-                            `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원 ${formatGap(sig2H.result_2)}\n` +
-                            `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원 ${formatGap(sig2H.result_3)}\n` +
-                            `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원 ${formatProfit(sig2H.bb_upper)}`;
-              }
-              const adx = stock.latestSignal ? Math.round(stock.latestSignal.adx) : "-";
-
-              return `🔹 ${stock.name} (${stock.code})\n` +
-                     `분류: ${category} | 총점: ${stars} (${score}점)\n` +
-                     `세력강도: ${adx} | 1D:${getStat('1D')} | 1W:${getStat('1W')} | 추세:${trend}(${prog})\n` +
-                     `${priceText}\n` +
-                     `차트: https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}\n`;
-            }).join('\n');
 
             content += `\n* 본 리포트는 21:00 배치 스케줄러에 의해 자동 생성되었습니다.\n`;
             content += `⚠️ 본 리포트는 알고리즘에 의한 자동 분석 결과일 뿐이며, 투자 매수/매도 리딩이 아닙니다. 투자 결과에 대한 법적 책임을 지지 않으며, 모든 투자의 최종 판단과 책임은 투자자 본인에게 있습니다.`;

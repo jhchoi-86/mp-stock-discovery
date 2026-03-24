@@ -358,8 +358,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     // 3. Price Action Confirmation: Bullish Candle (Close > Open)
     const bullish_candle = close[last_idx] > open[last_idx];
 
-    // Entry Approved: RSI hook, volume participation, and bullish closing
-    const entry_approved = trigger_rsi && trigger_vol && bullish_candle;
+    // Entry Approved: Removed strict conditions per user request. Sniper uses Top 15 Telegram score filter instead.
+    const entry_approved = true;
 
     // --- Progress & Final Signal Logic ---
     const timeframeMsMap = {
