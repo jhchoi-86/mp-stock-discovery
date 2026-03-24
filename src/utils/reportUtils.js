@@ -124,7 +124,7 @@ export const generateTelegramContent = (candidates, selectedStocksSet, aiComment
     
     content += `🔹 ${s.name} (${s.code})\n`;
     content += `분류: ${s.latestSignal?.category || '-'} | 총점: ${stars} (${score}점)\n`;
-    const adx = s.latestSignal ? Math.round(s.latestSignal.adx) : "-";
+    const adx = (s.latestSignal && typeof s.latestSignal.adx === 'number') ? Math.round(s.latestSignal.adx) : "-";
     const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관망" : "-");
     content += `주가 추세 강도: ${adx} | 추세 판별: ${trend}\n`;
     content += `${priceText}\n`;
