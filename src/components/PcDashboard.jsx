@@ -24,7 +24,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       selectedStocks, toggleSelectAll, toggleSelectStock,
       isSyncing, syncProgress, isSendingTg, 
       candidates, topSectors, activeCount, 
-      handleCsvUpload, handleReset, handleAutoSync,
+      handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
       handleDownloadReport, handleDownloadTVList, handleSendToTelegram
   } = manager;
 
@@ -224,6 +224,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #6366f1, #a855f7)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
               <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "전종목 자동 동기화"}
+            </button>
+            <button 
+              onClick={handleIntegratedSync}
+              disabled={isSyncing}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "통합 자동 동기화 (1W,1D,2H)"}
             </button>
           </div>
         )}

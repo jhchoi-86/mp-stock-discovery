@@ -292,10 +292,37 @@ export const useStockManager = (isAuthenticated) => {
       fetchData();
     } catch (error) {
       console.error("Auto-sync error:", error);
+      setIsSyncing(false);
+    }
+  };
+
+  const handleIntegratedSync = async () => {
+    if (!window.confirm(`2H, 1D, 1W 시간대 데이터를 순차적으로 자동 동기화하시겠습니까?\n(이 작업은 약 3~4분 정도 소요됩니다.)`)) return;
+    setIsSyncing(true);
+    setSelectedStocks(new Set());
+    
+    // 순차적 동기화 순서 (큰 시간대 -> 작은 시간대)
+    const timeframes = ['1W', '1D', '2H'];
+    
+    try {
+      const { default: axiosClient } = await import('../api/axiosClient.js');
+      
+      for (const tf of timeframes) {
+        setSyncProgress({ current: 0, total: 348, timeframe: tf });
+        // Request sync for current timeframe
+        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 300000 });
+      }
+      
+      alert('통합 동기화(1W, 1D, 2H)가 모두 완료되었습니다.');
+      fetchData();
+    } catch (error) {
+      console.error("Integrated auto-sync error:", error);
       if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
+    } finally {
       setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 348, timeframe: '완료' });
     }
   };
 
@@ -401,7 +428,7 @@ export const useStockManager = (isAuthenticated) => {
     // Actions
     fetchData,
     toggleSelectAll, toggleSelectStock,
-    handleCsvUpload, handleReset, handleAutoSync,
+    handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
     handleDownloadReport, handleDownloadTVList, handleSendToTelegram
   };
 };
