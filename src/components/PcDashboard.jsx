@@ -341,9 +341,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   }
 
                   const s = stock.latestSignal;
-                  const t1H = stock.timeframeStatus['1H'];
-                  const t2H = stock.timeframeStatus['2H'];
-                  const t1D = stock.timeframeStatus['1D'];
+                  const t1H = stock.timeframeStatus?.['1H'];
+                  const t2H = stock.timeframeStatus?.['2H'];
+                  const t4H = stock.timeframeStatus?.['4H'];
+                  const t1D = stock.timeframeStatus?.['1D'];
                   
                   const curPrice = s?.current_price || s?.entry_price || 0;
                   
