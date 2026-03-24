@@ -97,7 +97,7 @@ const KIS_TOKEN_FILE = path.join(TOKEN_DIR, 'kis_token.json');
 
 // 🔴 [Red Team 방어 - R3] KIS API 429 서킷브레이커 비동기 영속화(Debounce)
 let kisCircuit = { bypass: false, bypassUntil: 0 };
-const CIRCUIT_FILE = path.join(DATA_DIR, 'kis_circuit_breaker.json');
+const CIRCUIT_FILE = path.join(TOKEN_DIR, 'kis_circuit_breaker.json');
 
 // 기동 시 서킷브레이커 상태 복원
 try {
