@@ -114,7 +114,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>수신 신호</div>
             <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>
               {isSyncing && syncProgress.total > 0 ? (
-                <span>{syncProgress.current} / {syncProgress.total}</span>
+                <span>{syncProgress.timeframe ? `[${syncProgress.timeframe}] ` : ''}{syncProgress.current} / {syncProgress.total}</span>
               ) : (
                 signals.length
               )}

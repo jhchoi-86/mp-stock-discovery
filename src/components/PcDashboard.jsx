@@ -51,7 +51,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             <div className="stat-value">
               {isSyncing && syncProgress.total > 0 ? (
                 <span style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
-                  {syncProgress.current} / {syncProgress.total}
+                  {syncProgress.timeframe ? `[${syncProgress.timeframe}] ` : ''}{syncProgress.current} / {syncProgress.total}
                 </span>
               ) : (
                 signals.length
