@@ -154,7 +154,7 @@ async def background_worker(raw_data: list[StockDataRaw]):
             "📈 *\[MP KOSPI 200, KOSDAQ 150 매수 추천 리서치\]* 🚨\n",
             f"🗓 생성 일시: {escape_markdown_v2(current_time)}\n",
             f"🔥 분석 종목 수: {len(raw_data)}개\n\n",
-            "🔥 *\[오늘의 탑 5 스나이퍼 감시 명단\]*\n\n"
+            "🔥 *\\[추천 종목 감시 명단\\]*\n\n"
         ]
 
         # 3. 본문 작성

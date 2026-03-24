@@ -73,10 +73,7 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
   content += `생성 일시: ${new Date().toLocaleString()}\n`;
   content += `분석 종목 수: ${reportStocks.length}개\n\n`;
 
-  const isManual = selectedStocksSet && selectedStocksSet.size > 0;
-  content += isManual 
-    ? `🔥 [수동 관심 종목 감시 명단]\n` 
-    : `🔥 [오늘의 탑 ${sortedReportStocks.length} 스나이퍼 감시 명단]\n`;
+  content += `🔥 [추천 종목 감시 명단]\n`;
 
   sortedReportStocks.forEach(s => {
     const tfSigs = s.timeframeStatus || {};

@@ -1156,7 +1156,7 @@ if (isPrimaryWorker) {
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
               }
 
-              content += `🔥 [오늘의 탑 10 스나이퍼 감시 명단]\n`;
+              content += `🔥 [추천 종목 감시 명단]\n`;
               approvedStocks.forEach(s => {
                 const tfSigs = s.timeframeStatus || {};
                 const sig2H = tfSigs['2H'];
