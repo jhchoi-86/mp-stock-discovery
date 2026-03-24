@@ -1029,15 +1029,7 @@ if (isPrimaryWorker) {
               return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
             }).filter(s => s.latestSignal);
 
-            candidates = candidates.filter(stock => {
-              const tfSigs = stock.timeframeStatus || {};
-              const hasSuSignal = Object.values(tfSigs).some(s => s && (s.signal_HH || s.DHH2));
-              const hasHighAdx = stock.latestSignal && stock.latestSignal.adx >= 30;
-              const isUpwardTrend = tfSigs['1D'] && tfSigs['1D'].cond_up7;
-              const isExcludedCategory = stock.latestSignal && (stock.latestSignal.category === "하락 추세" || stock.latestSignal.category === "바닥권 반등");
-              if (stock.latestSignal?.entry_approved) return true;
-              return (hasSuSignal && hasHighAdx && isUpwardTrend && !isExcludedCategory);
-            });
+            // All candidates are allowed without ADX and strict trend filters, relying only on final AI total_score sorting
 
             const kisToken = await getKisAccessToken();
             candidates = candidates.sort((a, b) => b.total_score - a.total_score);
