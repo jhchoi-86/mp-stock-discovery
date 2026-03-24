@@ -764,6 +764,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 let frgnScore = 0;
                 let orgnScore = 0;
                 let ssangScore = 0;
+                let penaltyScore = 0;
                 
                 try {
                     const invUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor';
@@ -793,7 +794,6 @@ app.post('/api/auto-sync', async (req, res) => {
                         if (orgn > 0) orgnScore = 3;
                         if (frgn > 0 && orgn > 0 && prsn < 0) ssangScore = 5;
                         
-                        let penaltyScore = 0;
                         if (frgn < 0 && orgn < 0 && prsn > 0) penaltyScore = -3;
                     }
                 } catch(e) {
