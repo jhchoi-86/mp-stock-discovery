@@ -83,8 +83,10 @@ export const useStockManager = (isAuthenticated) => {
       } else if (data.type === 'sync_progress') {
         const { current, total, timeframe } = data.payload || data;
         setSyncProgress({ current, total, timeframe });
+        setIsSyncing(true);
         
         if (current === total) {
+          setIsSyncing(false);
           fetchData();
         }
       }
@@ -293,7 +295,6 @@ export const useStockManager = (isAuthenticated) => {
       if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
-    } finally {
       setIsSyncing(false);
     }
   };
