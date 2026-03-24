@@ -603,6 +603,14 @@ app.post('/api/auto-sync', async (req, res) => {
 
     console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
 
+    // Progress Emitter Helper
+    const emitProgress = (cur, tot, t) => {
+        const payload = `data: ${JSON.stringify({ type: 'sync_progress', current: cur, total: tot, timeframe: t })}\n\n`;
+        clients.forEach(c => { try { c.write(payload); } catch(e){} });
+    };
+
+    emitProgress(0, stocks.length, tf);
+
     const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
     let kisTokenGlobal = null;
@@ -882,8 +890,14 @@ app.post('/api/auto-sync', async (req, res) => {
         if (i > 0 && i % 50 === 0) {
             console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
         }
+        
+        // Emit progress to clients every 10 stocks
+        if ((i + 1) % 10 === 0) emitProgress(i + 1, stocks.length, tf);
+
         await sleep(100); 
     }
+
+    emitProgress(stocks.length, stocks.length, tf);
 
     if (syncResults.length > 0) {
         let currentSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE));

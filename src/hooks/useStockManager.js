@@ -79,6 +79,15 @@ export const useStockManager = (isAuthenticated) => {
                 style: { background: '#2d1a1a', color: '#ffb86c', border: '1px solid #ff5555' }
             });
         }
+      } else if (data.type === 'sync_progress') {
+        const { current, total, timeframe } = data.payload || data;
+        const toastId = 'sync-progress-toast';
+        if (current === total) {
+          toast.success(`[${timeframe}] 동기화 완료! (${total}/${total}) 화면을 갱신합니다.`, { id: toastId, duration: 4000 });
+          fetchData();
+        } else {
+          toast.loading(`[${timeframe}] 백그라운드 동기화 진행 중... (${current} / ${total})`, { id: toastId });
+        }
       }
     };
 
