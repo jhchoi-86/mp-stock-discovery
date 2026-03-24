@@ -74,8 +74,6 @@ async function sendTelegramAlert(signal, stockName) {
     
     // Save Realtime webhook alert to DB
     try {
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
         const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
         if (adminUser) {
             await prisma.report.create({
@@ -96,6 +94,29 @@ let kisTokenExpiry = 0;
 
 const TOKEN_DIR = path.join(__dirname, 'data');
 const KIS_TOKEN_FILE = path.join(TOKEN_DIR, 'kis_token.json');
+
+// 🔴 [Red Team 방어 - R3] KIS API 429 서킷브레이커 비동기 영속화(Debounce)
+let kisCircuit = { bypass: false, bypassUntil: 0 };
+const CIRCUIT_FILE = path.join(DATA_DIR, 'kis_circuit_breaker.json');
+
+// 기동 시 서킷브레이커 상태 복원
+try {
+    if (fs.existsSync(CIRCUIT_FILE)) {
+        kisCircuit = JSON.parse(fs.readFileSync(CIRCUIT_FILE, 'utf8'));
+        if (kisCircuit.bypass && Date.now() > kisCircuit.bypassUntil) {
+            kisCircuit.bypass = false; // 쿨다운 만료
+        }
+    }
+} catch (e) {}
+
+let circuitSaveTimer = null;
+const saveCircuitState = () => {
+    if (circuitSaveTimer) clearTimeout(circuitSaveTimer);
+    circuitSaveTimer = setTimeout(() => {
+        fs.promises.writeFile(CIRCUIT_FILE, JSON.stringify(kisCircuit, null, 2))
+            .catch(err => console.error('[CircuitSave Error]', err));
+    }, 1000); // 1초 디바운스 (이벤트 루프 블로킹 100% 방지)
+};
 
 async function getKisAccessToken() {
     if (!KIS_APP_KEY || !KIS_APP_SECRET) {
@@ -147,6 +168,9 @@ async function getKisAccessToken() {
         throw new Error("Failed to get KIS Access Token");
     }
 }
+// 🔴 [Red Team 방어 - R8-B] 전역 DB 커넥션 풀 싱글턴 패턴 적용
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const cookieParser = require('cookie-parser');
 const authRouter = require('./src/routes/auth.cjs');
@@ -175,6 +199,33 @@ app.use('/api/send-report', reportRouter);
 const DATA_DIR = path.join(__dirname, 'data');
 const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
 const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
+
+// 🔴 [Red Team 방어 - R2] signals.json 원자적(Atomic) 락 시스템
+let isSignalFileLocked = false;
+const signalWriteQueue = [];
+
+async function withSignalLock(fn) {
+    return new Promise((resolve, reject) => {
+        const execute = async () => {
+            if (isSignalFileLocked) {
+                signalWriteQueue.push(execute);
+                return;
+            }
+            isSignalFileLocked = true;
+            try {
+                resolve(await fn());
+            } catch (e) {
+                reject(e);
+            } finally {
+                isSignalFileLocked = false;
+                if (signalWriteQueue.length > 0) {
+                    signalWriteQueue.shift()();
+                }
+            }
+        };
+        execute();
+    });
+}
 
 // Ensure data directory exists
 if (!fs.existsSync(DATA_DIR)) {
@@ -260,7 +311,7 @@ const requireProAuth = (req, res, next) => {
     if (!token) return res.status(401).json({ error: '인증이 필요합니다.' });
     try {
         const jwt = require('jsonwebtoken');
-        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
+        const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
         if (decoded.role === 'GUEST' || decoded.role === 'PENDING') {
             return res.status(403).json({ error: '결제/승인된 회원만 접근 가능합니다.' });
         }
@@ -290,7 +341,7 @@ app.get('/api/stream', (req, res) => {
     let role = 'GUEST';
     if (token) {
         try {
-            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
             role = decoded.role;
         } catch(e) {}
     }
@@ -320,7 +371,15 @@ const broadcastUpdate = () => {
 };
 
 // Webhook Receiver
-app.post('/api/webhook', (req, res) => {
+app.post('/api/webhook', async (req, res) => {
+    // 🔴 [Red Team 방어 - R8-C] Webhook 무단 주입 방어 (Bearer 인증)
+    const authHeader = req.headers['authorization'];
+    const expectedSecret = process.env.CORE_INTEGRITY_HASH;
+    if (!expectedSecret || authHeader !== `Bearer ${expectedSecret}`) {
+        console.warn(`[SECURITY] 무단 일반 Webhook 접근 차단 (IP: ${req.ip})`);
+        return res.status(401).json({ error: 'Unauthorized Webhook Access' });
+    }
+
     const { code, result_2, result_3, cond_up7, DHH2, progress, signal_HH } = req.body;
 
     if (!code) {
@@ -370,9 +429,12 @@ app.post('/api/webhook', (req, res) => {
         }
     }
 
-    const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE));
-    signals.push(newSignal);
-    fs.writeFileSync(SIGNALS_FILE, JSON.stringify(signals, null, 2));
+    // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
+    await withSignalLock(async () => {
+        const signals = JSON.parse(await fs.promises.readFile(SIGNALS_FILE, 'utf8'));
+        signals.push(newSignal);
+        await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify(signals, null, 2));
+    });
 
     console.log(`[PRD Signal] ${code}: DHH2=${newSignal.DHH2}, Progress=${newSignal.progress.toFixed(2)}, HH=${newSignal.signal_HH}`);
     
@@ -396,9 +458,6 @@ app.post('/api/webhook', (req, res) => {
 });
 
 // ✅ Phase 8: Sniper Engine Webhook Receiver
-const { PrismaClient } = require('@prisma/client');
-const prisma = new PrismaClient();
-
 app.post('/api/sniper/webhook', async (req, res) => {
     // 🔴 [Red Team 방어] Webhook 인증 검사 (Bearer Token)
     const authHeader = req.headers['authorization'];
@@ -456,7 +515,7 @@ app.post('/api/sniper/webhook', async (req, res) => {
 });
 
 // CSV Batch Import
-app.post('/api/import-csv', (req, res) => {
+app.post('/api/import-csv', requireProAuth, async (req, res) => {
     const { csv, timeframe } = req.body;
     if (!csv) {
         return res.status(400).json({ error: 'CSV data is required' });
@@ -522,9 +581,12 @@ app.post('/api/import-csv', (req, res) => {
             return res.status(400).json({ error: '유효한 종목 데이터가 없습니다.' });
         }
 
-        const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE));
-        const merged = [...signals, ...newSignals];
-        fs.writeFileSync(SIGNALS_FILE, JSON.stringify(merged, null, 2));
+        // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
+        await withSignalLock(async () => {
+            const signals = JSON.parse(await fs.promises.readFile(SIGNALS_FILE, 'utf8'));
+            const merged = [...signals, ...newSignals];
+            await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify(merged, null, 2));
+        });
 
         console.log(`[Batch Import] ${newSignals.length} signals imported via CSV.`);
         broadcastUpdate();
@@ -537,9 +599,12 @@ app.post('/api/import-csv', (req, res) => {
 });
 
 // Reset all tracking data
-app.post('/api/reset', (req, res) => {
+app.post('/api/reset', requireProAuth, async (req, res) => {
     try {
-        fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
+        // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
+        await withSignalLock(async () => {
+            await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify([], null, 2));
+        });
         alertCache.clear();
         res.json({ message: '모든 분석 데이터가 초기화되었습니다.' });
     } catch (error) {
@@ -560,7 +625,7 @@ app.post('/api/auto-sync', async (req, res) => {
     let debugRole = 'NONE';
     if (token) {
         try {
-            const decoded = require('jsonwebtoken').verify(token, process.env.JWT_ACCESS_SECRET || 'fallback_access_secret');
+            const decoded = require('jsonwebtoken').verify(token, process.env.JWT_ACCESS_SECRET);
             debugRole = decoded.role;
             if (decoded.role === 'ADMIN' || decoded.role === 'PAID' || decoded.role === 'PRO_USER') isAllowed = true;
         } catch(e) {
@@ -569,8 +634,8 @@ app.post('/api/auto-sync', async (req, res) => {
     } else {
         console.error('[Auto-Sync] Missing accessToken cookie in req.cookies!');
     }
-    // Allow if requested by localhost cron, otherwise require ADMIN/PRO
-    const isLocalCron = req.ip === '127.0.0.1' || req.ip === '::1' || req.ip === '::ffff:127.0.0.1';
+    // 🔴 [Red Team 방어 - V3 패치] X-Forwarded-For IP Spoofing 방어 (커스텀 헤더 인증)
+    const isLocalCron = process.env.CRON_SECRET && req.headers['x-internal-cron-secret'] === process.env.CRON_SECRET;
     
     if (!isAllowed && !isLocalCron) {
         console.error(`[Auto-Sync] Rejected sync origin: ${req.ip}, Role: ${debugRole}, TokenExists: ${!!token}`);
@@ -667,7 +732,8 @@ app.post('/api/auto-sync', async (req, res) => {
         };
 
         // KIS Real-Time Overlay
-        if (kisTokenGlobal) {
+        if (kisTokenGlobal && (!kisCircuit.bypass || Date.now() > kisCircuit.bypassUntil)) {
+            kisCircuit.bypass = false; // 쿨다운 통과 시 해제
             try {
                 const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
                 const kisRes = await axios.get(kisUrl, {
@@ -726,7 +792,8 @@ app.post('/api/auto-sync', async (req, res) => {
                     }
                 } catch(e) {
                     if (e.response && e.response.status === 429) {
-                        console.error(`[KIS Investor API Rate Limit] ${stock.code}`);
+                        console.error(`[KIS Investor API 429] 10분간 KIS 통신 차단 (서킷브레이커 작동)`);
+                        kisCircuit.bypass = true;kisCircuit.bypassUntil = Date.now() + (10 * 60 * 1000);saveCircuitState();
                     }
                 }
 
@@ -889,14 +956,17 @@ app.post('/api/auto-sync', async (req, res) => {
     emitProgress(stocks.length, stocks.length, tf);
 
     if (syncResults.length > 0) {
-        let currentSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE));
-        
-        // Remove old signals for the matching code and timeframe
-        const syncCodes = new Set(syncResults.map(s => s.code));
-        currentSignals = currentSignals.filter(s => !(syncCodes.has(s.code) && s.timeframe === tf));
+        // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
+        await withSignalLock(async () => {
+            let currentSignals = JSON.parse(await fs.promises.readFile(SIGNALS_FILE, 'utf8'));
+            
+            // Remove old signals for the matching code and timeframe
+            const syncCodes = new Set(syncResults.map(s => s.code));
+            currentSignals = currentSignals.filter(s => !(syncCodes.has(s.code) && s.timeframe === tf));
 
-        const merged = [...currentSignals, ...syncResults];
-        fs.writeFileSync(SIGNALS_FILE, JSON.stringify(merged, null, 2));
+            const merged = [...currentSignals, ...syncResults];
+            await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify(merged, null, 2));
+        });
         broadcastUpdate();
     }
 
@@ -913,14 +983,17 @@ app.post('/api/auto-sync', async (req, res) => {
     })();
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on http://0.0.0.0:${PORT}`);
-    // PM2 워커 준비 완료 신호 전송 (무중단 배포를 위한 listen_timeout 대기 해제)
-    if (process.send) {
-        process.send('ready');
-        console.log(`[PM2] Sent 'ready' signal from worker ${process.env.NODE_APP_INSTANCE || 'unknown'}`);
-    }
+// 🔴 [Red Team 방어 - R6] AWS PM2 롤백 스크립트를 위한 헬스체크 도입
+app.get('/api/health', (req, res) => {
+    res.status(200).send('OK');
 });
+
+// 🔴 [Red Team 방어 - R4] AI 엔진 지연시간 해소 (Cron 루프 외부 1회성 로드)
+const pingAIService = () => {
+    axios.get('http://127.0.0.1:8000/api/v1/health', { timeout: 3000 })
+        .then(() => console.log('[AI Engine] Successfully connected to FastAPI!'))
+        .catch(e => console.error('[AI Engine] Not accessible on boot:', e.message));
+};
 
 // --- [Background Tasks / Scheduler Guard] ---
 // PM2 클러스터 모드(instances: 'max') 적용 시 코어 수만큼 백그라운드 스케줄러가
@@ -941,10 +1014,10 @@ if (isPrimaryWorker) {
         console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
         try {
             const localApi = `http://127.0.0.1:${PORT}/api/auto-sync`;
-            console.log('[Cron] 1D 동기화 시작...');
-            await axios.post(localApi, { timeframe: '1D' });
-            console.log('[Cron] 2H 동기화 시작...');
-            await axios.post(localApi, { timeframe: '2H' });
+            console.log('[Cron] 1D 및 2H 일괄 동기화 시작...');
+            await axios.post(localApi, { timeframes: ['1D', '2H'] }, {
+                headers: { 'x-internal-cron-secret': process.env.CRON_SECRET }
+            });
 
             const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
             const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
@@ -1059,7 +1132,7 @@ if (isPrimaryWorker) {
                   }
                 }));
                 
-                // 2. 5초 Timeout Fallback 방어 로직 적용
+                // 2. 15초 Timeout Fallback 방어 로직 적용 (V5 패치)
                 const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
                   { stocks: aiPayload }, 
                   { timeout: 15000 }
@@ -1168,8 +1241,6 @@ if (isPrimaryWorker) {
             
             // Save Nightly cron alert to DB
             try {
-              const { PrismaClient } = require('@prisma/client');
-              const prisma = new PrismaClient();
               const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
               if (adminUser) {
                   await prisma.report.create({
@@ -1197,4 +1268,6 @@ app.listen(PORT, '0.0.0.0', () => {
         process.send('ready');
         console.log(`[PM2] Sent 'ready' signal for zero-downtime deployment.`);
     }
+    // R4: 백그라운드 AI 엔진 웜업 핑 (1회성)
+    setTimeout(pingAIService, 5000);
 });
