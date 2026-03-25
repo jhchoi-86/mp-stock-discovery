@@ -120,7 +120,7 @@ async def generate_comments(request: CommentRequest):
             client.chat.completions.create(
                 model="gemini-2.0-flash",
                 messages=[
-                    {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 객관적이고 단호한 전문가형 어투로 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
+                    {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 분석 결과는 반드시 유효한 JSON 배열 형식으로만 대답해. 마크다운 백틱(```)이나 설명, 인사말을 절대 포함하지 마. 오직 JSON 배열만 출력해."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.3,
@@ -130,9 +130,19 @@ async def generate_comments(request: CommentRequest):
         )
         logger.info(f"LLM completion completed in {time.time() - llm_start:.2f}s")
         
-        import re
-        reply_content = response.choices[0].message.content.strip()
+        if not response.choices:
+            logger.error("LLM returned empty choices (possibly safety filter).")
+            raise HTTPException(status_code=500, detail="LLM returned empty choices")
+            
+        reply_content = response.choices[0].message.content
+        if not reply_content:
+            logger.error("LLM returned empty message content.")
+            raise HTTPException(status_code=500, detail="LLM returned empty message content")
+            
+        reply_content = reply_content.strip()
+        logger.info(f"Raw LLM Content: {reply_content[:200]}...")
         
+        import re
         # 🔴 [Red Team JSON Fix] 100% Robust JSON Extraction (Regex based)
         # Find first '[' and last ']' to extract the JSON array
         match = re.search(r'\[.*\]', reply_content, re.DOTALL)
@@ -142,7 +152,7 @@ async def generate_comments(request: CommentRequest):
             # Fallback to previous logic if no brackets found
             clean_json = reply_content
             
-        logger.info(f"Extracted JSON: {clean_json}")
+        logger.info(f"Extracted JSON: {clean_json[:200]}...")
         parsed_json = json.loads(clean_json)
         
         # 🔴 [Red Team Fix] Force list format if LLM returned a single object
@@ -158,6 +168,7 @@ async def generate_comments(request: CommentRequest):
                 # but also keep the field for new logic.
                 item["ai_comment"] = item.get("ai_comment", "") + news_text
         
+        logger.info(f"Returning {len(parsed_json)} processed comments.")
         return parsed_json
         
     except asyncio.TimeoutError:
@@ -167,5 +178,5 @@ async def generate_comments(request: CommentRequest):
         logger.error(f"LLM returned invalid JSON format: {jde}\nContent: {reply_content}")
         raise HTTPException(status_code=500, detail="LLM returned invalid JSON format")
     except Exception as e:
-        logger.error(f"LLM Request failed: {str(e)}", exc_info=True)
+        logger.error(f"CRITICAL ERROR in generate_comments: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
