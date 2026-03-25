@@ -1053,7 +1053,7 @@ app.get('/api/health', (req, res) => {
 
 // 🔴 [Red Team 방어 - R4] AI 엔진 지연시간 해소 (Cron 루프 외부 1회성 로드)
 const pingAIService = () => {
-    axios.get('http://127.0.0.1:8000/api/v1/health', { timeout: 3000 })
+    axios.get('http://127.0.0.1:8000/health', { timeout: 3000 })
         .then(() => console.log('[AI Engine] Successfully connected to FastAPI!'))
         .catch(e => console.error('[AI Engine] Not accessible on boot:', e.message));
 };
