@@ -679,3 +679,100 @@ option {
     gap: 1rem;
   }
 }
+
+/* Task 11: Performance Table (Vanilla CSS) */
+.lp-report-card {
+  background: #111;
+  border: 1px solid var(--glass-border);
+  border-radius: 24px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+  width: 100%;
+}
+
+.lp-report-header {
+  padding: 1.5rem;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(to right, rgba(255,255,255,0.02), transparent);
+}
+
+.lp-report-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.lp-report-indicator {
+  width: 4px;
+  height: 20px;
+  background: var(--primary);
+  border-radius: 10px;
+}
+
+.lp-report-table-wrapper {
+  overflow-x: auto;
+}
+
+.lp-report-table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.lp-report-table th {
+  padding: 1rem 1.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(255,255,255,0.02);
+}
+
+.lp-report-table td {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+}
+
+.lp-report-table tr:hover td {
+  background: rgba(255,255,255,0.02);
+}
+
+.lp-badge {
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  border: 1px solid transparent;
+}
+
+.lp-badge-executed {
+  color: #ff4d4d;
+  background: rgba(255, 77, 77, 0.1);
+  border-color: rgba(255, 77, 77, 0.2);
+}
+
+.lp-badge-pending {
+  color: #4da6ff;
+  background: rgba(77, 166, 255, 0.1);
+  border-color: rgba(77, 166, 255, 0.2);
+}
+
+.lp-profit-up { color: #ff4d4d; font-weight: 900; }
+.lp-profit-down { color: #4da6ff; font-weight: 900; }
+
+.lp-report-footer {
+  padding: 0.75rem 1.5rem;
+  background: rgba(255,255,255,0.01);
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.65rem;
+  color: #555;
+  display: flex;
+  justify-content: space-between;
+}

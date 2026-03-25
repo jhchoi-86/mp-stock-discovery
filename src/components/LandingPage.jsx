@@ -48,16 +48,13 @@ const LandingPage = ({ onLoginClick }) => {
   const isFallback = !data && !isLoading; 
 
   const stats = React.useMemo(() => {
-    if (!data || !data.report) return { hitRate: '92', avgReturn: '+4.8', totalSignals: '24' };
-    const signals = data.report.signals || [];
-    const hits = signals.filter(s => s.status === '익절' || s.status === '상승').length;
-    const hitRate = signals.length > 0 ? ((hits / signals.length) * 100).toFixed(0) : '0';
-    const returns = signals.map(s => {
-        const match = (s.profit_loss || '').match(/[\d.]+/);
-        return match ? parseFloat(match[0]) : 0;
-    });
+    if (!data || !data.stocks) return { hitRate: '92', avgReturn: '+4.8', totalSignals: '24' };
+    const stocks = data.stocks || [];
+    const hits = stocks.filter(s => s.status === 'EXECUTED' || s.yield_pct > 0).length;
+    const hitRate = stocks.length > 0 ? ((hits / stocks.length) * 100).toFixed(0) : '0';
+    const returns = stocks.map(s => s.yield_pct || 0);
     const avgReturn = returns.length > 0 ? (returns.reduce((a, b) => a + b, 0) / returns.length).toFixed(1) : '0.0';
-    return { hitRate, avgReturn: hitRate === '0' ? '0.0' : `+${avgReturn}`, totalSignals: signals.length };
+    return { hitRate, avgReturn: hitRate === '0' ? '0.0' : `+${avgReturn}`, totalSignals: stocks.length };
   }, [data]);
 
   const handleSubscribe = async (e) => {
