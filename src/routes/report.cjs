@@ -32,7 +32,7 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
     const aiCommentsMap = {};
     const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
       { stocks: aiPayload }, 
-      { timeout: 15000 }
+      { timeout: 30000 }
     );
     console.log('[AI Proxy] Raw API response:', JSON.stringify(aiRes.data));
 
