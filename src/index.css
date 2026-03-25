@@ -625,3 +625,57 @@ option {
 .lp-input:focus {
   border-color: var(--primary);
 }
+
+/* Task 7: Hero Stats Dashboard */
+.lp-hero-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 3rem;
+  margin-bottom: 3rem;
+  max-width: 900px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.lp-stat-card {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.1) 0%, rgba(10, 10, 10, 0.8) 100%);
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  padding: 1.5rem;
+  border-radius: 20px;
+  text-align: center;
+  transition: transform 0.3s;
+}
+
+.lp-stat-card:hover {
+  transform: translateY(-5px);
+  border-color: var(--primary);
+  box-shadow: 0 10px 30px rgba(212, 175, 55, 0.1);
+}
+
+.lp-stat-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.lp-stat-value {
+  font-size: 2rem;
+  font-weight: 900;
+  color: var(--primary);
+  line-height: 1;
+}
+
+.lp-stat-unit {
+  font-size: 1rem;
+  margin-left: 0.1rem;
+}
+
+@media (max-width: 640px) {
+  .lp-hero-stats-grid {
+    grid-template-columns: 1fr;
+    gap: 1rem;
+  }
+}
