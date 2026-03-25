@@ -48,8 +48,8 @@ async def fetch_google_news_rss(stock_name: str) -> List[Dict[str, str]]:
                 items = root.findall('.//item')
                 
                 news_list = []
-                # Fetch up to 3 most recent related articles
-                for item in items[:3]:
+                # Fetch up to 5 articles to give Gemini more choices for impact assessment
+                for item in items[:5]:
                     title = item.find('title').text if item.find('title') is not None else ""
                     link = item.find('link').text if item.find('link') is not None else ""
                     if title and link:
@@ -80,13 +80,13 @@ async def generate_comments(request: CommentRequest):
     if not client:
         raise HTTPException(status_code=500, detail="OpenAI client not initialized")
 
-    prompt = "주식 종목들의 기술적 지표 데이터와 네이버 최근 뉴스를 줄 테니, 각 종목마다 120자 이내의 종합 요약 코멘트를 작성해줘.\n"
+    prompt = "주식 종목들의 기술적 지표 데이터와 구글 뉴스 RSS 데이터를 줄 테니, 각 종목마다 120자 이내의 종합 요약 코멘트를 작성해줘.\n"
     prompt += "[지표 해석 기준]\n"
-    prompt += "- ADX는 '주가 추세 강도'를 의미해. 코멘트를 작성할 때 무조건 '추세강도 [ADX수치]으로' 라는 표현으로 시작하도록 형태를 고정해줘. 'ADX'라는 단어를 그대로 쓰지 마. (예: '추세강도 64.86으로 강한 상승 추세이며...')\n"
-    prompt += "- Score는 'MP Stock 종합분석 지수'야. 0~100점 범위를 가지며, 점수가 높을수록 매수 관점으로 타점에서 대기하다가 진입 시 기계적인 목표가에 이익 실현할 가능성이 매우 높은 지수야.\n"
-    prompt += "- 제공되는 '최고 네이버 뉴스' 내용을 바탕으로 해당 주식이 오를 재료(모멘텀)를 브리핑에 반드시 포함시켜줘.\n\n"
-    prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱(```json)은 절대 추가하지 마.\n"
-    prompt += '[{"symbol": "종목코드", "ai_comment": "코멘트 내용"}]\n\n'
+    prompt += "- ADX는 '주가 추세 강도'를 의미해. 코멘트를 작성할 때 무조건 '추세강도 [ADX수치]으로' 라는 표현으로 시작하도록 형태를 고정해줘. 'ADX'라는 단어를 그대로 쓰지 마.\n"
+    prompt += "- Score는 'MP Stock 종합분석 지수'야. 점수가 높을수록 매수 관점으로 유리해.\n"
+    prompt += "- [중요] 제공되는 여러 뉴스 중에서 해당 종목의 주가에 가장 큰 영향을 줄 수 있는 '단 1개'의 뉴스만 선택해서 브리핑에 녹여내고, 그 뉴스의 제목과 URL을 결과 JSON에 포함해줘.\n\n"
+    prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱은 절대 추가하지 마.\n"
+    prompt += '[{"symbol": "종목코드", "ai_comment": "요약 코멘트", "selected_news": {"title": "뉴스제목", "url": "URL"}}]\n\n'
     
     # 🔴 [Red Team 방어] 네이버 봇 탐지 회피를 위해 동시 스크래핑(gather) 대신 순차 스크래핑 도입
     telegram_links_list = []
@@ -101,19 +101,12 @@ async def generate_comments(request: CommentRequest):
         telegram_news_links = []
         
         if news_data:
-            for article in news_data:
-                llm_news_text.append(f"- {article['title']}")
-                telegram_news_links.append(f"▪️ {article['title']}\n  🔗 {article['url']}")
-            
-            news_val = "관련 뉴스:\n" + "\n".join(llm_news_text)
-            links_val = "\n\n📰 [최신 뉴스 모멘텀]\n" + "\n".join(telegram_news_links)
+            news_val = "후보 뉴스 목록 (이 중 가장 중요한 1개 선택):\n" + "\n".join([f"- {n['title']} (URL: {n['url']})" for n in news_data])
         else:
             news_val = "최근 뉴스 검색 결과 없음"
-            links_val = ""
             
-        telegram_links_list.append(links_val)
         prompt += f"{news_val}\n\n"
-        await asyncio.sleep(0.4) # 네이버 IP 차단 방어 (0.4s 딜레이)
+        await asyncio.sleep(0.3) 
 
     try:
         # LLM API 타임아웃(5초 초과 방어 로직)
@@ -142,15 +135,13 @@ async def generate_comments(request: CommentRequest):
         
         parsed_json = json.loads(reply_content)
         
-        # 🔴 [Red Team] AI 환각 방지: AI가 포맷팅하는 대신 파이썬이 네이버 URL을 메세지 뒤에 하드코딩으로 직접 용접
-        for i, item in enumerate(parsed_json):
-            symbol = item.get("symbol")
-            for j, req_stock in enumerate(request.stocks):
-                if req_stock.symbol == symbol:
-                    if j < len(telegram_links_list) and telegram_links_list[j]:
-                        item["ai_comment"] = item.get("ai_comment", "") + telegram_links_list[j]
-                    break
-
+        # 🔴 [Updated] AI가 선택한 단 하나의 뉴스를 메세지 뒤에 붙임
+        for item in parsed_json:
+            news = item.get("selected_news")
+            if news and news.get("title") and news.get("url"):
+                news_text = f"\n\n📰 [최신 뉴스 모멘텀]\n▪️ {news['title']}\n  🔗 {news['url']}"
+                item["ai_comment"] = item.get("ai_comment", "") + news_text
+        
         return parsed_json
         
     except asyncio.TimeoutError:
