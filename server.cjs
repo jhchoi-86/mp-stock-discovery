@@ -1188,11 +1188,11 @@ if (isPrimaryWorker) {
                   const formatProfit = (target) => {
                     if (!curPrice || typeof target !== 'number') return '';
                     const diff = Math.round(target - curPrice);
-                    const sign = diff >= 0 ? '🔺' : '🔽';
+                    const sign = diff >= 0 ? '⬆️' : '⬇️';
                     const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
                     return `${sign} ${pct}%`;
                   };
-                  const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '🔺' : '🔽'}${Math.abs(curChange).toFixed(2)}%)` : '';
+                  const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '⬆️' : '⬇️'}${Math.abs(curChange).toFixed(2)}%)` : '';
                   
                   priceText = `${curPriceStr}\n` +
                               `돌파 매수타점: ${Math.round(sig2H.ema5).toLocaleString()}원 ${formatGap(sig2H.ema5)}\n` +

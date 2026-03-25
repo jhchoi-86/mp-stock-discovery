@@ -109,11 +109,11 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
       const formatProfit = (target) => {
         if (!curPrice || typeof target !== 'number') return '';
         const diff = Math.round(target - curPrice);
-        const sign = diff >= 0 ? '🔺' : '🔽';
+        const sign = diff >= 0 ? '⬆️' : '⬇️';
         const pct = Math.abs((target - curPrice) / curPrice * 100).toFixed(2);
         return `${sign} ${pct}%`;
       };
-      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '🔺' : '🔽'}${Math.abs(curChange).toFixed(2)}%)` : '';
+      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '⬆️' : '⬇️'}${Math.abs(curChange).toFixed(2)}%)` : '';
       
       let pLines = [curPriceStr];
       if (target1H > 0) pLines.push(`1차 매수진입가(1H): ${Math.round(target1H).toLocaleString()}원 ${formatGap(target1H)}`);
@@ -123,7 +123,7 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
       
       priceText = pLines.filter(Boolean).join('\n');
     } else {
-      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '🔺' : '🔽'}${Math.abs(curChange).toFixed(2)}%)` : '';
+      const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '⬆️' : '⬇️'}${Math.abs(curChange).toFixed(2)}%)` : '';
       priceText = `${curPriceStr ? curPriceStr + '\n' : ''}타점: ${Math.round(s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0).toLocaleString()}원`;
     }
     
