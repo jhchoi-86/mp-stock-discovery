@@ -101,7 +101,7 @@ async def generate_comments(request: CommentRequest):
         telegram_news_links = []
         
         if news_data:
-            news_val = "후보 뉴스 목록 (이 중 가장 중요한 1개 선택):\n" + "\n".join([f"- {n['title']} (URL: {n['url']})" for n in news_data])
+            news_val = "후보 뉴스 목록 (이 중 가장 임팩트 있는 1개만 골라서 요약에 반영하고 JSON fields에 채워줘):\n" + "\n".join([f"- {n['title']} (URL: {n['url']})" for n in news_data])
         else:
             news_val = "최근 뉴스 검색 결과 없음"
             
@@ -140,6 +140,8 @@ async def generate_comments(request: CommentRequest):
             news = item.get("selected_news")
             if news and news.get("title") and news.get("url"):
                 news_text = f"\n\n📰 [최신 뉴스 모멘텀]\n▪️ {news['title']}\n  🔗 {news['url']}"
+                # Append to ai_comment so older backend logic still sees it, 
+                # but also keep the field for new logic.
                 item["ai_comment"] = item.get("ai_comment", "") + news_text
         
         return parsed_json
