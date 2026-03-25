@@ -88,17 +88,16 @@ async def generate_comments(request: CommentRequest):
     prompt += "반드시 아래 JSON 배열 형식으로만 응답해야 해. 다른 말이나 마크다운 백틱은 절대 추가하지 마.\n"
     prompt += '[{"symbol": "종목코드", "ai_comment": "요약 코멘트", "selected_news": {"title": "뉴스제목", "url": "URL"}}]\n\n'
     
-    # 🔴 [Red Team 방어] 네이버 봇 탐지 회피를 위해 동시 스크래핑(gather) 대신 순차 스크래핑 도입
-    telegram_links_list = []
+    # 🔴 [Red Team Performance Patch] Parallelize News Fetching to prevent timeouts
+    logger.info(f"Fetching news for {len(request.stocks)} stocks in parallel...")
+    news_tasks = [fetch_google_news_rss(stock.name) for stock in request.stocks]
+    all_news_data = await asyncio.gather(*news_tasks)
     
     for i, stock in enumerate(request.stocks):
         prompt += f"종목명: {stock.name} ({stock.symbol}), 분류: {stock.category}, 현재가: {stock.price}\n"
         prompt += f"지표: {json.dumps(stock.indicators, ensure_ascii=False)}\n"
         
-        news_data = await fetch_google_news_rss(stock.name)
-        
-        llm_news_text = []
-        telegram_news_links = []
+        news_data = all_news_data[i]
         
         if news_data:
             news_val = "후보 뉴스 목록 (이 중 가장 임팩트 있는 1개만 골라서 요약에 반영하고 JSON fields에 채워줘):\n" + "\n".join([f"- {n['title']} (URL: {n['url']})" for n in news_data])
@@ -106,14 +105,13 @@ async def generate_comments(request: CommentRequest):
             news_val = "최근 뉴스 검색 결과 없음"
             
         prompt += f"{news_val}\n\n"
-        await asyncio.sleep(0.3) 
 
     try:
-        # LLM API 타임아웃(5초 초과 방어 로직)
+        # LLM API 타임아웃 (Increased to 24s to match backend's 25s window)
         logger.info(f"Requesting OpenAI completion for {len(request.stocks)} stocks...")
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gemini-2.5-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
+                model="gemini-2.0-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 객관적이고 단호한 전문가형 어투로 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
                     {"role": "user", "content": prompt}
@@ -121,7 +119,7 @@ async def generate_comments(request: CommentRequest):
                 temperature=0.3,
                 max_tokens=4000
             ),
-            timeout=14.5  # Increased timeout to 14.5s to prevent disconnecting early
+            timeout=24.0 
         )
         
         reply_content = response.choices[0].message.content.strip()
@@ -147,7 +145,7 @@ async def generate_comments(request: CommentRequest):
         return parsed_json
         
     except asyncio.TimeoutError:
-        logger.error("LLM Request Timeout (exceeded 4.5s)")
+        logger.error("LLM Request Timeout (exceeded 24.0s)")
         raise HTTPException(status_code=504, detail="LLM Request Timeout")
     except json.JSONDecodeError as jde:
         logger.error(f"LLM returned invalid JSON format: {jde}\nContent: {reply_content}")
