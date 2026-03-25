@@ -339,10 +339,12 @@ const jwt = require('jsonwebtoken');
 app.get('/api/stream', (req, res) => {
     const token = req.cookies?.accessToken;
     let role = 'GUEST';
+    let userId = null;
     if (token) {
         try {
             const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
             role = decoded.role;
+            userId = decoded.userId;
         } catch(e) {}
     }
 
@@ -357,13 +359,30 @@ app.get('/api/stream', (req, res) => {
     res.flushHeaders();
 
     res.userRole = role;
+    res.userId = userId;
     clients.push(res);
-    console.log(`[SSE] Client connected (${role}). Total clients: ${clients.length}`);
+    console.log(`[SSE] Client connected (${role}, ID: ${userId}). Total clients: ${clients.length}`);
 
     req.on('close', () => {
         clients = clients.filter(client => client !== res);
         console.log(`[SSE] Client disconnected. Total clients remaining: ${clients.length}`);
     });
+});
+
+app.get('/api/admin/online-users', (req, res) => {
+    const token = req.cookies?.accessToken;
+    let isAdmin = false;
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+            if (decoded.role === 'ADMIN') isAdmin = true;
+        } catch(e) {}
+    }
+    if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
+    
+    // Extract unique userIds from active SSE clients
+    const onlineIds = [...new Set(clients.map(c => c.userId).filter(Boolean))];
+    res.json(onlineIds);
 });
 
 const broadcastUpdate = () => {

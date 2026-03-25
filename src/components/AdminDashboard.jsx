@@ -12,6 +12,20 @@ const AdminDashboard = () => {
 
   const [searchQuery, setSearchQuery] = useState('');
   const [pendingRequests, setPendingRequests] = useState([]);
+  const [onlineUsers, setOnlineUsers] = useState(new Set());
+
+  // Fetch online users periodically
+  useEffect(() => {
+    const fetchOnline = async () => {
+      try {
+        const res = await axiosClient.get('/api/admin/online-users');
+        setOnlineUsers(new Set(res.data));
+      } catch (err) {}
+    };
+    fetchOnline();
+    const iv = setInterval(fetchOnline, 10000);
+    return () => clearInterval(iv);
+  }, []);
 
   // Fetch users on mount
   useEffect(() => {
@@ -222,7 +236,20 @@ const AdminDashboard = () => {
 
                 return (
                   <tr key={u.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
-                    <td style={tdStyle}>{u.name || '미입력'}</td>
+                    <td style={tdStyle}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div 
+                          title={onlineUsers.has(u.id) ? "온라인 (접속 중)" : "오프라인"}
+                          style={{
+                            width: '10px', height: '10px', borderRadius: '50%',
+                            backgroundColor: onlineUsers.has(u.id) ? '#10B981' : 'rgba(255,255,255,0.2)',
+                            boxShadow: onlineUsers.has(u.id) ? '0 0 8px rgba(16, 185, 129, 0.6)' : 'none',
+                            transition: 'all 0.3s ease'
+                          }} 
+                        />
+                        {u.name || '미입력'}
+                      </div>
+                    </td>
                     <td style={tdStyle}>{u.email}</td>
                     <td style={tdStyle}>{u.phone || '미등록'}</td>
                     <td style={tdStyle}>{new Date(u.createdAt).toLocaleDateString()}</td>
