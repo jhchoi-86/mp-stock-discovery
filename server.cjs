@@ -1349,6 +1349,20 @@ if (isPrimaryWorker) {
 // ==========================================
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`[REST API] Server is successfully running on port ${PORT}`);
+
+    // --- Task 9: Automated Daily Report Generation ---
+    const { exec } = require('child_process');
+    const path = require('path');
+    const runReportGenerator = () => {
+        const scriptPath = path.join(__dirname, 'scripts', 'generateReport.cjs');
+        exec(`node "${scriptPath}"`, (error, stdout) => {
+            if (error) console.error(`[Cron Error] ${error.message}`);
+            else console.log(`[ReportGen Output] ${stdout}`);
+        });
+    };
+    runReportGenerator(); // Initial run
+    setInterval(runReportGenerator, 3600000); // 1-hour interval
+
     // PM2 배포 무중단 리로드를 위해 반드시 필요한 신호방출 코드
     if (process.send) {
         process.send('ready');
