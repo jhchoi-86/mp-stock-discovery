@@ -142,8 +142,12 @@ async def generate_comments(request: CommentRequest):
             # Fallback to previous logic if no brackets found
             clean_json = reply_content
             
-        logger.info(f"Extracted JSON length: {len(clean_json)}")
+        logger.info(f"Extracted JSON: {clean_json}")
         parsed_json = json.loads(clean_json)
+        
+        # 🔴 [Red Team Fix] Force list format if LLM returned a single object
+        if isinstance(parsed_json, dict):
+            parsed_json = [parsed_json]
         
         # 🔴 [Updated] AI가 선택한 단 하나의 뉴스를 메세지 뒤에 붙임
         for item in parsed_json:
@@ -163,5 +167,5 @@ async def generate_comments(request: CommentRequest):
         logger.error(f"LLM returned invalid JSON format: {jde}\nContent: {reply_content}")
         raise HTTPException(status_code=500, detail="LLM returned invalid JSON format")
     except Exception as e:
-        logger.error(f"LLM Request failed: {str(e)}")
+        logger.error(f"LLM Request failed: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
