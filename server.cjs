@@ -263,6 +263,21 @@ let CACHED_SIGNALS = '[]';
 let lastStocksMtimeMs = 0;
 let lastSignalsMtimeMs = 0;
 
+// 🔴 [Stability Patch] Immediate startup cache loading to prevent 5s empty window
+try {
+    if (fs.existsSync(STOCK_MASTER_FILE)) {
+        CACHED_STOCKS = fs.readFileSync(STOCK_MASTER_FILE, 'utf8');
+        lastStocksMtimeMs = fs.statSync(STOCK_MASTER_FILE).mtimeMs;
+    }
+    if (fs.existsSync(SIGNALS_FILE)) {
+        CACHED_SIGNALS = fs.readFileSync(SIGNALS_FILE, 'utf8');
+        lastSignalsMtimeMs = fs.statSync(SIGNALS_FILE).mtimeMs;
+    }
+    console.log('[Startup] Memory cache pre-loaded successfully.');
+} catch(e) {
+    console.error('[Startup] Cache pre-load failed:', e.message);
+}
+
 setInterval(async () => {
     try {
         const stocksStat = await fs.promises.stat(STOCK_MASTER_FILE);
@@ -780,7 +795,8 @@ app.post('/api/auto-sync', async (req, res) => {
                     params: {
                         "FID_COND_MRKT_DIV_CODE": "J",
                         "FID_INPUT_ISCD": stock.code
-                    }
+                    },
+                    timeout: 5000 // 🔴 [Red Team 방어] 5초 타임아웃 강제 (Network Hang 방지)
                 });
                 const kisData = kisRes.data.output;
                 if (!kisData || !kisData.stck_prpr) {
