@@ -48,9 +48,14 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
     });
 
     return res.json({ success: true, aiCommentsMap });
-  } catch (error) {
-    console.error('[AI Service LLM Proxy Fallback] Failed to fetch LLM comments:', error.message);
-    return res.json({ success: true, aiCommentsMap: {} }); // Silent fallback, return empty map
+    } catch (error) {
+    if (error.response) {
+      console.error('[AI Service LLM Proxy Fallback] Error status:', error.response.status);
+      console.error('[AI Service LLM Proxy Fallback] Error data:', JSON.stringify(error.response.data));
+    } else {
+      console.error('[AI Service LLM Proxy Fallback] Failed to fetch LLM comments:', error.message);
+    }
+    return res.json({ success: true, aiCommentsMap: {} }); 
   }
 });
 

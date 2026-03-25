@@ -130,16 +130,20 @@ async def generate_comments(request: CommentRequest):
         )
         logger.info(f"LLM completion completed in {time.time() - llm_start:.2f}s")
         
+        import re
         reply_content = response.choices[0].message.content.strip()
         
-        # Ensure it's valid JSON (Remove markdown blocks if AI ignored instruction)
-        if reply_content.startswith("```json"):
-            reply_content = reply_content.replace("```json", "", 1)
-        if reply_content.endswith("```"):
-            reply_content = reply_content[:-3]
-        reply_content = reply_content.strip()
-        
-        parsed_json = json.loads(reply_content)
+        # 🔴 [Red Team JSON Fix] 100% Robust JSON Extraction (Regex based)
+        # Find first '[' and last ']' to extract the JSON array
+        match = re.search(r'\[.*\]', reply_content, re.DOTALL)
+        if match:
+            clean_json = match.group(0)
+        else:
+            # Fallback to previous logic if no brackets found
+            clean_json = reply_content
+            
+        logger.info(f"Extracted JSON length: {len(clean_json)}")
+        parsed_json = json.loads(clean_json)
         
         # 🔴 [Updated] AI가 선택한 단 하나의 뉴스를 메세지 뒤에 붙임
         for item in parsed_json:
