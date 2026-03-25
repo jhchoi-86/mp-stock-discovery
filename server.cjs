@@ -238,50 +238,8 @@ if (!fs.existsSync(STOCK_MASTER_FILE)) {
     fs.writeFileSync(STOCK_MASTER_FILE, JSON.stringify([], null, 2));
 }
 
-// Startup Archiving Logic (Date-Aware Persistent Session)
-if (fs.existsSync(SIGNALS_FILE)) {
-    try {
-        const existingData = fs.readFileSync(SIGNALS_FILE, 'utf8');
-        const signals = JSON.parse(existingData);
-        if (signals.length > 0) {
-            // 🔴 [Hotfix] Only archive if the data is from a PREVIOUS day (KST)
-            const lastSignal = signals[0]; // Check the first one
-            const signalDate = new Date(lastSignal.timestamp);
-            signalDate.setUTCHours(signalDate.getUTCHours() + 9);
-            const signalDay = signalDate.getUTCDate();
-            
-            const nowKST = new Date();
-            nowKST.setUTCHours(nowKST.getUTCHours() + 9);
-            const today = nowKST.getUTCDate();
-
-            if (signalDay !== today) {
-                // Create a timestamped backup file
-                const timestamp = nowKST.getFullYear().toString() +
-                                  (nowKST.getMonth() + 1).toString().padStart(2, '0') +
-                                  nowKST.getDate().toString().padStart(2, '0') + '_' +
-                                  nowKST.getHours().toString().padStart(2, '0') +
-                                  nowKST.getMinutes().toString().padStart(2, '0') +
-                                  nowKST.getSeconds().toString().padStart(2, '0');
-                const ARCHIVE_FILE = path.join(DATA_DIR, `signals_${timestamp}.json`);
-                
-                fs.renameSync(SIGNALS_FILE, ARCHIVE_FILE);
-                console.log(`[Archive] Past-day signals archived to ${ARCHIVE_FILE}`);
-                
-                // Only write fresh empty file if we actually archived
-                fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
-                console.log(`[Init] Created fresh signals.json for new day.`);
-            } else {
-                console.log(`[Persistence] Today's signals (${signals.length} items) preserved across boot.`);
-            }
-        } else {
-            // File is empty, just ensure it exists
-            fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
-        }
-    } catch (e) {
-        console.error("Error reading or archiving signals file:", e);
-        if (!fs.existsSync(SIGNALS_FILE)) fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
-    }
-} else {
+// Ensure signals.json exists
+if (!fs.existsSync(SIGNALS_FILE)) {
     fs.writeFileSync(SIGNALS_FILE, JSON.stringify([], null, 2));
 }
 
