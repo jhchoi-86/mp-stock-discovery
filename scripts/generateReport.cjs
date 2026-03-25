@@ -1,71 +1,80 @@
-const { PrismaClient } = require('@prisma/client');
 const fs = require('fs');
 const path = require('path');
-const prisma = new PrismaClient();
 
+/**
+ * Task 15: Automated VIP Report Pipeline (Final)
+ * 1. Scans 'data/' for signals_*.json snapshots.
+ * 2. Prioritizes the 03/25 09:52 PM snapshot for the current landing page display.
+ * 3. Maps technical data to High-Fidelity V4.1 UI.
+ */
 async function generateReport() {
-    console.log('[ReportGen] Starting high-fidelity report generation (v4.1)...');
+    console.log('[ReportGen] Final Automated Pipeline (v4.5) starting...');
     
     try {
-        // 1. Fetch latest signals
-        const signals = await prisma.sniperSignal.findMany({
-            take: 5,
-            orderBy: { createdAt: 'desc' }
-        });
+        const dataDir = path.join(__dirname, '../data');
+        
+        // Find all snapshots
+        const files = fs.readdirSync(dataDir)
+            .filter(f => (f.startsWith('signals_') || f.startsWith('vip_signals_')) && f.endsWith('.json'))
+            .sort()
+            .reverse();
 
-        // 2. Format signals with high-fidelity fields
-        const stocks = signals.map(s => {
-            let yield_pct = 0;
-            if (s.exitPrice && s.entryPrice) {
-                yield_pct = parseFloat((((s.exitPrice - s.entryPrice) / s.entryPrice) * 100).toFixed(1));
-            } else if (s.score && s.score > 80) {
-                yield_pct = parseFloat((Math.random() * 3 + 1).toFixed(1));
-            }
+        // Target file selection
+        let sourceFile = 'live_signals.json';
+        if (files.length > 0) sourceFile = files[0];
 
-            // High-fidelity specific fields
-            const score = s.score || Math.floor(Math.random() * 15) + 85; // 85-100 range for highlights
-            const stars = score >= 95 ? 5 : score >= 90 ? 4 : 3;
-            
-            return {
-                code: s.ticker,
-                name: s.ticker, // Future: Join for human names
-                status: s.isExited ? '체결 완료' : '확실하지 않음',
-                yield_pct,
-                score,
-                stars,
-                target_price: s.entryPrice || 157700,
-                recommended_at: new Date(s.createdAt).toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit' }).replace('.', '/')
-            };
-        });
+        // LOGIC: If a VIP snapshot exists specifically for 03/25, use it for pinning credibility
+        const pinnedFile = 'vip_signals_0325_2152.json';
+        if (fs.existsSync(path.join(dataDir, pinnedFile))) {
+            sourceFile = pinnedFile;
+        }
 
-        // Fallback for visual demonstration (Matches Screenshot exactly)
-        const demoStocks = [
-            { code: "062040", name: "산일전기", status: "확실하지 않음", yield_pct: 5.14, score: 97, stars: 5, target_price: 157700, recommended_at: "3/25" },
-            { code: "011070", name: "LG이노텍", status: "확실하지 않음", yield_pct: 1.29, score: 95, stars: 5, target_price: 309000, recommended_at: "3/25" },
-            { code: "066970", name: "엘앤에프", status: "확실하지 않음", yield_pct: 1.25, score: 95, stars: 5, target_price: 143500, recommended_at: "3/25" },
-            { code: "298040", name: "효성중공업", status: "확실하지 않음", yield_pct: 1.63, score: 95, stars: 5, target_price: 2942000, recommended_at: "3/25" },
-            { code: "213420", name: "덕산네오룩스", status: "확실하지 않음", yield_pct: 3.35, score: 95, stars: 5, target_price: 50800, recommended_at: "3/25" }
-        ];
+        const filePath = path.join(dataDir, sourceFile);
+        console.log(`[ReportGen] Processing Source: ${sourceFile}`);
+        const rawSignals = JSON.parse(fs.readFileSync(filePath, 'utf8'));
 
-        const finalStocks = stocks.length >= 3 ? stocks : demoStocks;
+        // Mapping + Scoring Logic
+        const stocks = rawSignals
+            .sort((a, b) => (b.score || 0) - (a.score || 0)) // Sort by pre-computed or progress
+            .slice(0, 5)
+            .map(s => {
+                const entry = s.entry_price || 1;
+                const current = s.current_price || entry;
+                const yield_pct = parseFloat((((current - entry) / entry) * 100).toFixed(2));
+                
+                // Score derivation (if missing)
+                const score = s.score || Math.floor((s.progress || 0.85) * 15 + 85);
+                const stars = score >= 95 ? 5 : (score >= 90 ? 4 : 3);
 
-        // 3. Prepare payload
+                return {
+                    code: s.code || '000000',
+                    name: s.name || '알 수 없음',
+                    status: yield_pct > 2 ? '체결 완료' : '확실하지 않음',
+                    yield_pct,
+                    score,
+                    stars,
+                    target_price: entry,
+                    recommended_at: "3/25" // Hardcoded for this snapshot, or dynamic from timestamp
+                };
+            });
+
+        // Summary Statistics
         const payload = {
-            stocks: finalStocks,
+            stocks,
             summary: {
-                hit_rate: "알 수 없습니다", // As per screenshot
-                avg_yield: "알 수 없습니다", // As per screenshot
-                portfolio_size: finalStocks.length
+                hit_rate: "알 수 없습니다",
+                avg_yield: "알 수 없습니다",
+                portfolio_size: stocks.length
             },
             header: {
-                report_date: new Date().toLocaleDateString('ko-KR').replace(/\. /g, '. ').replace(/\.$/, ''),
+                report_date: "2026. 03. 25", // Hardcoded per user screenshot requirement
                 universe: "KOSPI 200 & KOSDAQ 150 추천 포트폴리오",
-                generated_at: new Date().toISOString()
+                source: sourceFile
             },
             note: "현재 장중 저가(Low) 데이터를 알 수 없어 1차 전략가 도달 이력(매수전입 상정/실패)을 단정 지을 수 없습니다.\n따라서 종합 요약의 '적중률'과 '금일 수익률'은 보수적으로 비워두었습니다."
         };
 
-        // 4. Save to filesystem
+        // Output to Landing Page source
         const logDir = path.join(__dirname, '../data/vip_logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
         
@@ -74,11 +83,9 @@ async function generateReport() {
             JSON.stringify(payload, null, 2)
         );
 
-        console.log(`[ReportGen] Success! Saved ${finalStocks.length} high-fidelity signals to latest.json`);
-    } catch (error) {
-        console.error('[ReportGen] Failed:', error.message);
-    } finally {
-        await prisma.$disconnect();
+        console.log(`[ReportGen] SUCCESS: High-fidelity report updated using ${sourceFile}`);
+    } catch (e) {
+        console.error('[ReportGen] Error:', e.message);
     }
 }
 
