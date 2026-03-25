@@ -1,16 +1,12 @@
 :root {
-  --primary: #00d2ff;
-  --secondary: #9d50bb;
-  --accent: #ff00c1;
-  --bg: #0f172a;
-  --panel: rgba(30, 41, 59, 0.7);
-  --text: #f1f5f9;
-  --text-muted: #94a3b8;
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --glass: rgba(255, 255, 255, 0.05);
-  --glass-border: rgba(255, 255, 255, 0.1);
+  --primary: #D4AF37; /* Gold */
+  --secondary: #b5952f;
+  --bg-deep: #0a0a0a;
+  --bg-card: #141414;
+  --text-primary: #ffffff;
+  --text-secondary: #94a3b8;
+  --glass-bg: rgba(10, 10, 10, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.08);
 }
 
 * {
@@ -445,4 +441,187 @@ option {
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: var(--primary);
   box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+/* ========================================== */
+/* Task 6: Premium Landing Page Styles (Vanilla) */
+/* ========================================== */
+
+.lp-container {
+  min-height: 100vh;
+  background-color: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+}
+
+.lp-nav {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  height: 80px;
+  display: flex;
+  align-items: center;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  background-color: var(--glass-bg);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.lp-nav-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lp-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-weight: 900;
+  font-size: 1.5rem;
+  letter-spacing: -0.05em;
+  cursor: pointer;
+}
+
+.lp-logo-icon {
+  width: 40px;
+  height: 40px;
+  background-color: var(--primary);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 20px rgba(212, 175, 55, 0.3);
+}
+
+.lp-nav-links {
+  display: flex;
+  gap: 2rem;
+  align-items: center;
+}
+
+.lp-nav-link {
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.lp-nav-link:hover {
+  color: var(--primary);
+}
+
+.lp-btn-gold {
+  background-color: var(--primary);
+  color: #000;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s, background-color 0.2s;
+}
+
+.lp-btn-gold:hover {
+  background-color: var(--secondary);
+  transform: translateY(-2px);
+}
+
+.lp-hero {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 5rem 1.5rem;
+  text-align: center;
+}
+
+.lp-hero-title {
+  font-size: 4rem;
+  font-weight: 900;
+  line-height: 1.1;
+  margin-bottom: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.lp-hero-subtitle {
+  color: var(--text-secondary);
+  font-size: 1.25rem;
+  max-width: 700px;
+  margin: 0 auto 3rem auto;
+  line-height: 1.6;
+}
+
+.lp-section {
+  padding: 6rem 0;
+  border-top: 1px solid var(--glass-border);
+}
+
+.lp-section-dark {
+  background-color: var(--bg-card);
+}
+
+.lp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.lp-card {
+  background-color: var(--bg-deep);
+  padding: 2.5rem;
+  border-radius: 24px;
+  border: 1px solid var(--glass-border);
+  transition: border-color 0.3s;
+}
+
+.lp-card:hover {
+  border-color: rgba(212, 175, 55, 0.3);
+}
+
+.lp-footer {
+  padding: 4rem 1.5rem;
+  border-top: 1px solid var(--glass-border);
+  background-color: #050505;
+}
+
+.lp-footer-inner {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 3rem;
+}
+
+@media (max-width: 768px) {
+  .lp-hero-title { font-size: 2.5rem; }
+  .lp-nav-links { display: none; }
+}
+
+.lp-input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.lp-input {
+  background-color: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--glass-border);
+  padding: 1rem 1.25rem;
+  border-radius: 12px;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.lp-input:focus {
+  border-color: var(--primary);
 }
