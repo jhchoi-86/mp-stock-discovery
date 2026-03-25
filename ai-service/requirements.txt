@@ -6,3 +6,5 @@ python-dotenv
 bullmq
 redis
 openai
+aiohttp
+beautifulsoup4
