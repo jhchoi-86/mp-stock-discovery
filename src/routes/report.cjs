@@ -27,15 +27,22 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
         trend: s.timeframeStatus?.['1D']?.cond_up7 ? "상승" : "관망"
       }
     }));
-    console.log('[AI Proxy] payload:', JSON.stringify(aiPayload));
+    console.log('🔴 [RED-TEAM] PREVIEW-AI PAYLOAD RECEIVED:', JSON.stringify(aiPayload));
+    
+    let aiRes;
+    try {
+      aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
+        { stocks: aiPayload }, 
+        { timeout: 45000 } // massive timeout
+      );
+      console.log('🟢 [RED-TEAM] AI SERVICE RAW RESPONSE:', JSON.stringify(aiRes.data));
+    } catch (e) {
+      console.error('❌ [RED-TEAM] AI SERVICE CALL FAILED:', e.message);
+      if (e.response) console.error('❌ [RED-TEAM] AI SERVICE ERROR DATA:', JSON.stringify(e.response.data));
+      return res.json({ success: true, aiCommentsMap: {} });
+    }
 
     const aiCommentsMap = {};
-    const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
-      { stocks: aiPayload }, 
-      { timeout: 30000 }
-    );
-    console.log('[AI Proxy] Raw API response:', JSON.stringify(aiRes.data));
-
     let commentsArray = [];
     if (aiRes.data && Array.isArray(aiRes.data)) {
       commentsArray = aiRes.data;
@@ -44,9 +51,13 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
     }
 
     commentsArray.forEach(item => {
-      if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
+      if (item.symbol) {
+        console.log(`🎯 [RED-TEAM] Mapped Symbol: ${item.symbol}, Comment Length: ${item.ai_comment?.length || 0}`);
+        aiCommentsMap[item.symbol] = item.ai_comment;
+      }
     });
 
+    console.log('🏁 [RED-TEAM] FINAL MAP SENT TO FRONTEND:', JSON.stringify(aiCommentsMap));
     return res.json({ success: true, aiCommentsMap });
     } catch (error) {
     if (error.response) {

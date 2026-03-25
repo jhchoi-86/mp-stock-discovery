@@ -392,12 +392,16 @@ export const useStockManager = (isAuthenticated) => {
 
     let aiCommentsMap = {};
     try {
+      console.log('🚀 [RED-TEAM] FETCHING AI COMMENTS FOR:', reportStocks.map(s => s.code));
       const aiRes = await axiosClient.post('/api/send-report/preview-ai', { reportStocks });
       if (aiRes.data?.success) {
         aiCommentsMap = aiRes.data.aiCommentsMap || {};
+        console.log('✅ [RED-TEAM] AI COMMENTS MAP RECEIVED:', JSON.stringify(aiCommentsMap));
+      } else {
+        console.error('❌ [RED-TEAM] AI COMMENTS FETCH SUCCESS FALSE:', aiRes.data);
       }
     } catch (e) {
-      console.warn("AI comments fetch failed", e);
+      console.error("❌ [RED-TEAM] AI comments fetch failed", e);
     }
 
     try {
