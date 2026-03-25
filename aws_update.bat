@@ -66,4 +66,4 @@ echo     Access URL: https://mpstock.co.kr
 echo ========================================================
 echo.
 endlocal
-pause
+exit /b 0

@@ -177,6 +177,8 @@ const authRouter = require('./src/routes/auth.cjs');
 const adminRouter = require('./src/routes/admin.cjs');
 const usersRouter = require('./src/routes/users.cjs');
 const reportRouter = require('./src/routes/report.cjs');
+const leadsRouter = require('./src/routes/leads.cjs');
+const publicReportsRouter = require('./src/routes/publicReports.cjs');
 
 // Trust proxies if behind AWS ELB/NGINX
 app.set('trust proxy', 1);
@@ -195,6 +197,8 @@ app.use('/api/auth', authRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/send-report', reportRouter);
+app.use('/api/v1/leads', leadsRouter);
+app.use('/api/reports/daily', publicReportsRouter);
 
 const DATA_DIR = path.join(__dirname, 'data');
 const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');

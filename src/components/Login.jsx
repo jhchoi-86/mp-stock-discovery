@@ -3,7 +3,7 @@ import authService from '../api/authService';
 import useAuthStore from '../store/authStore';
 import { Bot, Zap, Target } from 'lucide-react';
 
-const Login = () => {
+const Login = ({ onBack }) => {
   const setAuth = useAuthStore(state => state.setAuth);
   
   const [isRegisterMode, setIsRegisterMode] = useState(false);
@@ -67,6 +67,17 @@ const Login = () => {
 
   return (
     <div className="login-split-container fade-in">
+      {/* Go Back to Landing (New) */}
+      {onBack && (
+        <button 
+          onClick={onBack}
+          style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 100, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', background: 'none', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px', borderRadius: '4px', fontSize: '0.8rem' }}
+          className="hover:text-white transition-colors"
+        >
+          ← 홈으로 돌아가기
+        </button>
+      )}
+
       {/* Left Branding Panel */}
       <div className="login-left-panel">
         <span className="brand-title">MP STOCK DISCOVERY</span>

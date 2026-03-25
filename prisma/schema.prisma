@@ -178,3 +178,12 @@ model SignalCandidate {
 
   @@map("signal_candidates")
 }
+
+model Lead {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @db.VarChar(255)
+  source    String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
+}

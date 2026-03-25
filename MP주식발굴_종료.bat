@@ -10,6 +10,4 @@ powershell -NoProfile -Command "$pids = Get-NetTCPConnection -LocalPort 3001, 51
 
 echo.
 echo All systems have been shut down safely.
-echo Press any key to continue...
-pause >nul
 exit

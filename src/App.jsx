@@ -8,6 +8,7 @@ import MobileDashboard from './components/MobileDashboard.jsx';
 import { useStockManager } from './hooks/useStockManager.js';
 import useIsMobile from './hooks/useIsMobile.js';
 import useSecurityShield from './hooks/useSecurityShield.js';
+import LandingPage from './components/LandingPage.jsx';
 
 const App = () => {
   const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
@@ -32,6 +33,8 @@ const App = () => {
     );
   }, [initAuth]);
 
+  const [showLogin, setShowLogin] = React.useState(false);
+
   if (!isInitialized) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-default)', color: 'white' }}>
@@ -42,7 +45,10 @@ const App = () => {
   }
 
   if (!isAuthenticated) {
-    return <Login />;
+    if (showLogin) {
+      return <Login onBack={() => setShowLogin(false)} />;
+    }
+    return <LandingPage onLoginClick={() => setShowLogin(true)} />;
   }
 
   return (
