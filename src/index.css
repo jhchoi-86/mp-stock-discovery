@@ -776,3 +776,67 @@ option {
   display: flex;
   justify-content: space-between;
 }
+
+/* Task 12: High-Fidelity Report V4.1 */
+.lp-report-v41-title {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: var(--primary);
+  margin-bottom: 0.5rem;
+}
+
+.lp-summary-grid-v41 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.lp-summary-card-v41 {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  padding: 1.25rem;
+  border-radius: 12px;
+  text-align: center;
+}
+
+.lp-summary-card-v41 h4 {
+  font-size: 0.75rem;
+  color: #ccc;
+  margin-bottom: 0.5rem;
+}
+
+.lp-summary-card-v41 .value {
+  font-size: 1.75rem;
+  font-weight: 900;
+  color: #fff;
+}
+
+.lp-badge-v41-uncertain {
+  background: #4a2c14;
+  color: #f6993f;
+  border: 1px solid #6b3f1a;
+  padding: 0.2rem 0.6rem;
+  border-radius: 20px;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+.lp-note-box {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid #222;
+  padding: 1rem 1.5rem;
+  border-radius: 12px;
+  margin-top: 2rem;
+  font-size: 0.75rem;
+  color: #888;
+  line-height: 1.6;
+}
+
+.lp-stars { color: #f1c40f; font-size: 0.8rem; margin-left: 0.5rem; }
+
+@media (max-width: 768px) {
+  .lp-summary-grid-v41 {
+    grid-template-columns: 1fr;
+  }
+}
