@@ -127,8 +127,8 @@ const SignalIndicator = ({ signal, latestSignal, bestTfLabel, totalScore, kisDat
             </span>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span>외국인: <strong style={{ color: String(resolvedKisData.foreign_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.foreign_buy}{resolvedKisData.foreign_buy !== '-' ? '주' : ''}</strong></span>
-            <span>기관: <strong style={{ color: String(resolvedKisData.inst_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.inst_buy}{resolvedKisData.inst_buy !== '-' ? '주' : ''}</strong></span>
+            <span>외국인: <strong style={{ color: String(resolvedKisData.foreign_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.foreign_buy}</strong></span>
+            <span>기관: <strong style={{ color: String(resolvedKisData.inst_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.inst_buy}</strong></span>
           </div>
         </div>
       )}

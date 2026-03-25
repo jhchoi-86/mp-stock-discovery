@@ -787,8 +787,13 @@ app.post('/api/auto-sync', async (req, res) => {
                         const orgn = parseInt(out[0].orgn_ntby_qty || '0');
                         const prsn = parseInt(out[0].prsn_ntby_qty || '0');
                         
-                        foreignBuy = frgn >= 0 ? `+${frgn.toLocaleString()}` : `${frgn.toLocaleString()}`;
-                        instBuy = orgn >= 0 ? `+${orgn.toLocaleString()}` : `${orgn.toLocaleString()}`;
+                        if (frgn === 0 && orgn === 0 && prsn === 0) {
+                            foreignBuy = '장마감 후 집계';
+                            instBuy = '장마감 후 집계';
+                        } else {
+                            foreignBuy = frgn >= 0 ? `+${frgn.toLocaleString()}주` : `${frgn.toLocaleString()}주`;
+                            instBuy = orgn >= 0 ? `+${orgn.toLocaleString()}주` : `${orgn.toLocaleString()}주`;
+                        }
                         
                         if (frgn > 0) frgnScore = 3;
                         if (orgn > 0) orgnScore = 3;
