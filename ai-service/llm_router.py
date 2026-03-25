@@ -10,29 +10,44 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import aiohttp
 import xml.etree.ElementTree as ET
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 try:
     from openai import AsyncOpenAI
 except ImportError:
     logger.error("openai package not found or AsyncOpenAI not available. Please run pip install openai.")
     AsyncOpenAI = None
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+class StockInfo(BaseModel):
+    symbol: str
+    name: str
+    category: str
+    price: float
+    indicators: Dict[str, Any]
+
+class CommentRequest(BaseModel):
+    stocks: List[StockInfo]
 
 router = APIRouter()
-try:
-    gemini_key = os.getenv("GEMINI_API_KEY")
-    if gemini_key:
+
+# Global AI client
+client = None
+gemini_key = os.getenv("GEMINI_API_KEY")
+
+if AsyncOpenAI and gemini_key:
+    try:
         client = AsyncOpenAI(
             api_key=gemini_key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         )
-    else:
-        client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY", "dummy_key"))
-except Exception as e:
-    logger.error(f"Failed to initialize AI client: {e}")
-    client = None
+        logger.info("AI client initialized successfully with gemini-2.0-flash endpoint.")
+    except Exception as e:
+        logger.error(f"Failed to initialize AI client: {e}")
+else:
+    logger.warning("AI client not initialized: Missing GEMINI_API_KEY or openai package.")
 
 # Replaced Naver Search with Google News RSS to bypass Next.js DOM obfuscation
 async def fetch_google_news_rss(stock_name: str) -> List[Dict[str, str]]:
