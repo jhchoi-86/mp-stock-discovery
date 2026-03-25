@@ -10,14 +10,17 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import aiohttp
 import xml.etree.ElementTree as ET
-from openai import AsyncOpenAI
+try:
+    from openai import AsyncOpenAI
+except ImportError:
+    logger.error("openai package not found or AsyncOpenAI not available. Please run pip install openai.")
+    AsyncOpenAI = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
-
 try:
     gemini_key = os.getenv("GEMINI_API_KEY")
     if gemini_key:
@@ -115,7 +118,7 @@ async def generate_comments(request: CommentRequest):
         logger.info(f"Requesting OpenAI completion for {len(request.stocks)} stocks...")
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gemini-1.5-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
+                model="gemini-1.5-flash",
                 messages=[
                     {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 객관적이고 단호한 전문가형 어투로 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
                     {"role": "user", "content": prompt}

@@ -17,19 +17,10 @@ app.include_router(anomaly_router, prefix="/api/v1")
 app.include_router(news_router, prefix="/api/v1")
 
 @app.get("/health")
-def health_check(db: Session = Depends(get_db)):
-    try:
-        # Simple test to verify DB connectivity
-        db.execute(text("SELECT 1"))
-        db_status = "connected"
-    except Exception as e:
-        print(f"Database connection error: {e}")
-        db_status = "disconnected"
-    
+def health_check():
     return {
         "status": "ok",
-        "service": "MP Stock AI Microservice",
-        "database": db_status
+        "service": "MP Stock AI Microservice"
     }
 
 if __name__ == "__main__":

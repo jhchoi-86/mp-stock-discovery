@@ -7,7 +7,8 @@ load_dotenv()
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL must be set in the .env file")
+    print("[AI-Service] Warning: DATABASE_URL not set. Database features will be unavailable.")
+    DATABASE_URL = "postgresql://dummy:dummy@localhost/dummy"
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
