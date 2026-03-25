@@ -2,12 +2,14 @@ import os
 import json
 import logging
 from fastapi import APIRouter, HTTPException
+import httpx
 from pydantic import BaseModel
-from typing import List, Dict, Any
-from openai import AsyncOpenAI
 import asyncio
+from typing import List, Dict, Any, Optional
+import urllib.parse
+from bs4 import BeautifulSoup
 import aiohttp
-from news_router import kis_auth
+import xml.etree.ElementTree as ET
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,41 +30,34 @@ except Exception as e:
     logger.error(f"Failed to initialize AI client: {e}")
     client = None
 
-import urllib.parse
-from bs4 import BeautifulSoup
-
-async def fetch_naver_news(stock_name: str) -> tuple[str, str]:
+# Replaced Naver Search with Google News RSS to bypass Next.js DOM obfuscation
+async def fetch_google_news_rss(stock_name: str) -> List[Dict[str, str]]:
     query = urllib.parse.quote(stock_name)
-    url = f"https://search.naver.com/search.naver?where=news&query={query}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-    }
+    url = f"https://news.google.com/rss/search?q={query}&hl=ko&gl=KR&ceid=KR:ko"
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers, timeout=3.5) as resp:
-                if resp.status == 200:
-                    html = await resp.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    articles = soup.find_all('a', class_='news_tit')
-                    
-                    if not articles:
-                        return "최근 뉴스 검색 결과 없음", ""
-                    
-                    llm_text = []
-                    telegram_links = []
-                    
-                    for a in articles[:3]:
-                        title = a.get('title') or a.text
-                        link = a.get('href')
-                        llm_text.append(f"- {title}")
-                        # 텔레그램 No-Parse-Mode에 대비해 마크다운 없이 원시 링크로 삽입 (링크 깨짐 방지)
-                        telegram_links.append(f"▪️ {title}\n  🔗 {link}")
-                        
-                    return "관련 뉴스:\n" + "\n".join(llm_text), "\n\n📰 [네이버 최신 모멘텀]\n" + "\n".join(telegram_links)
+            async with session.get(url, timeout=4.0) as resp:
+                if resp.status != 200:
+                    logger.error(f"Google News RSS HTTP {resp.status} for {stock_name}")
+                    return []
+                
+                xml_data = await resp.text()
+                root = ET.fromstring(xml_data)
+                items = root.findall('.//item')
+                
+                news_list = []
+                # Fetch up to 3 most recent related articles
+                for item in items[:3]:
+                    title = item.find('title').text if item.find('title') is not None else ""
+                    link = item.find('link').text if item.find('link') is not None else ""
+                    if title and link:
+                        news_list.append({"title": title, "url": link})
+                
+                return news_list
     except Exception as e:
-        logger.error(f"Failed to fetch Naver news for {stock_name}: {e}")
-    return "최근 뉴스 확인 불가", ""
+        logger.error(f"Failed to fetch Google News RSS for {stock_name}: {e}")
+        return []
 
 class StockData(BaseModel):
     symbol: str
@@ -99,10 +94,21 @@ async def generate_comments(request: CommentRequest):
         prompt += f"종목명: {stock.name} ({stock.symbol}), 분류: {stock.category}, 현재가: {stock.price}\n"
         prompt += f"지표: {json.dumps(stock.indicators, ensure_ascii=False)}\n"
         
-        try:
-            news_val, links_val = await fetch_naver_news(stock.name)
-        except Exception:
-            news_val, links_val = "뉴스 확인 불가", ""
+        news_data = await fetch_google_news_rss(stock.name)
+        
+        llm_news_text = []
+        telegram_news_links = []
+        
+        if news_data:
+            for article in news_data:
+                llm_news_text.append(f"- {article['title']}")
+                telegram_news_links.append(f"▪️ {article['title']}\n  🔗 {article['url']}")
+            
+            news_val = "관련 뉴스:\n" + "\n".join(llm_news_text)
+            links_val = "\n\n📰 [최신 뉴스 모멘텀]\n" + "\n".join(telegram_news_links)
+        else:
+            news_val = "최근 뉴스 검색 결과 없음"
+            links_val = ""
             
         telegram_links_list.append(links_val)
         prompt += f"{news_val}\n\n"
