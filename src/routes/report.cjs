@@ -20,7 +20,9 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
       symbol: s.code,
       name: s.name,
       category: s.latestSignal?.category || '',
-      price: s.latestSignal?.current_price || s.latestSignal?.entry_price || 0,
+      price: typeof s.latestSignal?.current_price === 'string' 
+        ? parseFloat(s.latestSignal.current_price.replace(/,/g, '')) 
+        : (s.latestSignal?.current_price || s.latestSignal?.entry_price || 0),
       indicators: {
         adx: s.latestSignal?.adx || 0,
         score: s.total_score || 0,
