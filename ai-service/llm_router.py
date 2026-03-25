@@ -10,6 +10,7 @@ import urllib.parse
 from bs4 import BeautifulSoup
 import aiohttp
 import xml.etree.ElementTree as ET
+from openai import AsyncOpenAI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
