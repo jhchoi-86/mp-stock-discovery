@@ -308,9 +308,26 @@ app.get('/api/signals', requireProAuth, (req, res) => {
     res.send(CACHED_SIGNALS);
 });
 
-// SSE Clients
+// SSE Clients & Heartbeat Activity Tracking
 let clients = [];
+const lastActiveMap = new Map(); // userId -> lastActiveTimestamp
 const jwt = require('jsonwebtoken');
+
+// 🔴 [Heartbeat Middleware] Track user activity on every request
+const trackActivity = (req, res, next) => {
+    const token = req.cookies?.accessToken;
+    if (token) {
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+            if (decoded.userId) {
+                lastActiveMap.set(decoded.userId, Date.now());
+            }
+        } catch(e) {}
+    }
+    next();
+};
+
+app.use(trackActivity);
 
 app.get('/api/stream', (req, res) => {
     const token = req.cookies?.accessToken;
@@ -356,10 +373,32 @@ app.get('/api/admin/online-users', (req, res) => {
     }
     if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
     
-    // Extract unique userIds from active SSE clients
-    const onlineIds = [...new Set(clients.map(c => c.userId).filter(Boolean))];
+    const now = Date.now();
+    // 1. Get IDs from active SSE connections
+    const sseIds = clients.map(c => c.userId).filter(Boolean);
+    
+    // 2. Get IDs from Heartbeat map (recent activity < 2 min)
+    const heartbeatIds = [];
+    lastActiveMap.forEach((timestamp, userId) => {
+        if (now - timestamp < 120000) { // 2 minutes
+            heartbeatIds.push(userId);
+        }
+    });
+
+    // 3. Return Union
+    const onlineIds = [...new Set([...sseIds, ...heartbeatIds])];
     res.json(onlineIds);
 });
+
+// Periodic cleanup of lastActiveMap to prevent memory leaks (older than 10 min)
+setInterval(() => {
+    const now = Date.now();
+    lastActiveMap.forEach((timestamp, userId) => {
+        if (now - timestamp > 600000) {
+            lastActiveMap.delete(userId);
+        }
+    });
+}, 300000); // Every 5 min
 
 const broadcastUpdate = () => {
     clients.forEach(client => client.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`));
