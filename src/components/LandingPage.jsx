@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import { Menu, X, Rocket, Shield, BarChart3, ChevronRight, Sparkles } from 'lucide-react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
