@@ -323,6 +323,15 @@ app.get('/api/signals', requireProAuth, (req, res) => {
     res.send(CACHED_SIGNALS);
 });
 
+// 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원
+let currentSyncProgress = { current: 0, total: 348, timeframe: '준비' };
+app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
+    res.json({
+        isSyncing: isSyncMutexLocked,
+        progress: currentSyncProgress
+    });
+});
+
 // SSE Clients & Heartbeat Activity Tracking
 let clients = [];
 const lastActiveMap = new Map(); // userId -> lastActiveTimestamp
@@ -652,7 +661,13 @@ app.post('/api/reset', requireProAuth, async (req, res) => {
     try {
         // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
         await withSignalLock(async () => {
-            await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify([], null, 2));
+            const resultStr = JSON.stringify([], null, 2);
+            await fs.promises.writeFile(SIGNALS_FILE, resultStr);
+            await fs.promises.writeFile(STOCK_MASTER_FILE, resultStr);
+            CACHED_SIGNALS = resultStr; // 즉시 캐시 갱신
+            CACHED_STOCKS = resultStr;
+            lastSignalsMtimeMs = Date.now();
+            lastStocksMtimeMs = Date.now();
         });
         alertCache.clear();
         res.json({ message: '모든 분석 데이터가 초기화되었습니다.' });
@@ -726,7 +741,8 @@ app.post('/api/auto-sync', async (req, res) => {
                 console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
 
                 const emitProgress = (cur, tot, t) => {
-                    const payload = `data: ${JSON.stringify({ type: 'sync_progress', current: cur, total: tot, timeframe: t })}\n\n`;
+                    currentSyncProgress = { current: cur, total: tot, timeframe: t };
+                    const payload = `data: ${JSON.stringify({ type: 'sync_progress', payload: { current: cur, total: tot, timeframe: t } })}\n\n`;
                     clients.forEach(c => { 
                         try { 
                             c.write(payload); 
@@ -1028,7 +1044,10 @@ app.post('/api/auto-sync', async (req, res) => {
             currentSignals = currentSignals.filter(s => !(syncCodes.has(s.code) && s.timeframe === tf));
 
             const merged = [...currentSignals, ...syncResults];
-            await fs.promises.writeFile(SIGNALS_FILE, JSON.stringify(merged, null, 2));
+            const resultStr = JSON.stringify(merged, null, 2);
+            await fs.promises.writeFile(SIGNALS_FILE, resultStr);
+            CACHED_SIGNALS = resultStr; // 즉시 캐시 갱신
+            lastSignalsMtimeMs = Date.now();
         });
         broadcastUpdate();
     }

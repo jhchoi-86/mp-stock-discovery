@@ -4,8 +4,18 @@ import { generateReportContent, generateTelegramContent } from '../utils/reportU
 import toast from 'react-hot-toast';
 
 export const useStockManager = (isAuthenticated) => {
-  const [stocks, setStocks] = useState([]);
-  const [signals, setSignals] = useState([]);
+  const [stocks, setStocks] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mp_stocks');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) { return []; }
+  });
+  const [signals, setSignals] = useState(() => {
+    try {
+      const saved = localStorage.getItem('mp_signals');
+      return saved ? JSON.parse(saved) : [];
+    } catch(e) { return []; }
+  });
   const [lastUpdate, setLastUpdate] = useState(new Date());
   
   // Filters
@@ -29,6 +39,14 @@ export const useStockManager = (isAuthenticated) => {
   useEffect(() => { localStorage.setItem('mp_categoryFilter', categoryFilter); }, [categoryFilter]);
   useEffect(() => { localStorage.setItem('mp_showAll', String(showAll)); }, [showAll]);
   useEffect(() => { localStorage.setItem('mp_uploadTimeframe', uploadTimeframe); }, [uploadTimeframe]);
+
+  // 🔴 [Red Team 방어] Persistent Data Storage
+  useEffect(() => { 
+    if (stocks && stocks.length > 0) localStorage.setItem('mp_stocks', JSON.stringify(stocks)); 
+  }, [stocks]);
+  useEffect(() => { 
+    if (signals && signals.length > 0) localStorage.setItem('mp_signals', JSON.stringify(signals)); 
+  }, [signals]);
 
   const fetchData = async () => {
     try {
@@ -57,6 +75,18 @@ export const useStockManager = (isAuthenticated) => {
     if (!isAuthenticated) return;
 
     fetchData(); // Initial data load
+    
+    // 🔴 [Red Team 방어] 동기화 상태 복구 로직
+    const checkSyncStatus = async () => {
+      try {
+        const res = await axiosClient.get('/api/auto-sync/status');
+        if (res.data?.isSyncing) {
+            setIsSyncing(true);
+            setSyncProgress(res.data.progress || { current: 0, total: 348, timeframe: '진행중' });
+        }
+      } catch(e) { console.error('Sync status check failed:', e); }
+    };
+    checkSyncStatus();
     
     // Setup Server-Sent Events (SSE)
     const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
