@@ -1198,7 +1198,7 @@ if (isPrimaryWorker) {
                 // 2. 15초 Timeout Fallback 방어 로직 적용 (V5 패치)
                 const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
                   { stocks: aiPayload }, 
-                  { timeout: 25000 } // 🔴 [Red Team 방어] 10개 이상 종목 분석 대비 25초로 증설 (기존 15초)
+                  { timeout: 30000 } // 🔴 [Red Team 방어] 10개 이상 종목 분석 대비 30초로 증설 (기존 25초)
               );
                 
                 let commentsArray = [];

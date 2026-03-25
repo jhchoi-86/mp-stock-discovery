@@ -89,9 +89,12 @@ async def generate_comments(request: CommentRequest):
     prompt += '[{"symbol": "종목코드", "ai_comment": "요약 코멘트", "selected_news": {"title": "뉴스제목", "url": "URL"}}]\n\n'
     
     # 🔴 [Red Team Performance Patch] Parallelize News Fetching to prevent timeouts
+    import time
+    start_time = time.time()
     logger.info(f"Fetching news for {len(request.stocks)} stocks in parallel...")
     news_tasks = [fetch_google_news_rss(stock.name) for stock in request.stocks]
     all_news_data = await asyncio.gather(*news_tasks)
+    logger.info(f"News fetch completed in {time.time() - start_time:.2f}s")
     
     for i, stock in enumerate(request.stocks):
         prompt += f"종목명: {stock.name} ({stock.symbol}), 분류: {stock.category}, 현재가: {stock.price}\n"
@@ -107,11 +110,12 @@ async def generate_comments(request: CommentRequest):
         prompt += f"{news_val}\n\n"
 
     try:
-        # LLM API 타임아웃 (Increased to 24s to match backend's 25s window)
+        # LLM API 타임아웃 (Increased to 29s to match backend's 30s window)
+        llm_start = time.time()
         logger.info(f"Requesting OpenAI completion for {len(request.stocks)} stocks...")
         response = await asyncio.wait_for(
             client.chat.completions.create(
-                model="gemini-2.0-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
+                model="gemini-1.5-flash" if os.getenv("GEMINI_API_KEY") else "gpt-3.5-turbo",
                 messages=[
                     {"role": "system", "content": "너는 20년 경력의 수석 주식 차트 분석 전문가야. 객관적이고 단호한 전문가형 어투로 팩트 기반 기술적 분석만 완전한 JSON 형태로 짧게 대답해. 배열 외에 단 한 글자도 출력하지 마."},
                     {"role": "user", "content": prompt}
@@ -119,8 +123,9 @@ async def generate_comments(request: CommentRequest):
                 temperature=0.3,
                 max_tokens=4000
             ),
-            timeout=24.0 
+            timeout=29.0 
         )
+        logger.info(f"LLM completion completed in {time.time() - llm_start:.2f}s")
         
         reply_content = response.choices[0].message.content.strip()
         
@@ -145,7 +150,7 @@ async def generate_comments(request: CommentRequest):
         return parsed_json
         
     except asyncio.TimeoutError:
-        logger.error("LLM Request Timeout (exceeded 24.0s)")
+        logger.error("LLM Request Timeout (exceeded 29.0s)")
         raise HTTPException(status_code=504, detail="LLM Request Timeout")
     except json.JSONDecodeError as jde:
         logger.error(f"LLM returned invalid JSON format: {jde}\nContent: {reply_content}")
