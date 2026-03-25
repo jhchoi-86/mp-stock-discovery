@@ -109,30 +109,47 @@ async def generate_comments(request: CommentRequest):
         )
 
         llm_start = time.time()
-        model = genai.GenerativeModel('gemini-2.0-flash')
-        
-        # 3. Call Gemini (Official SDK)
-        response = await model.generate_content_async(
-            prompt,
-            generation_config=genai.types.GenerationConfig(
-                temperature=0.3,
-                max_output_tokens=2048
+        try:
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            response = await asyncio.to_thread(
+                model.generate_content,
+                prompt,
+                generation_config={"response_mime_type": "application/json"}
             )
-        )
-        
+            
+            raw_text = response.text
+            logger.info(f"✅ [Gemini] Raw Response length: {len(raw_text)}")
+            
+            # JSON 추출 시도
+            try:
+                # 빽따옴표 제거 로직
+                clean_json = raw_text.strip()
+                if clean_json.startswith("```json"):
+                    clean_json = clean_json[7:-3].strip()
+                elif clean_json.startswith("```"):
+                    clean_json = clean_json[3:-3].strip()
+                    
+                ai_data = json.loads(clean_json)
+                # 'comments' 키가 없으면 전체가 데이터라고 가정
+                parsed_data = ai_data.get("comments", ai_data)
+            except Exception as je:
+                logger.error(f"❌ [RED-TEAM] JSON Parsing failed: {str(je)}")
+                raise HTTPException(status_code=500, detail="AI 데이터 형식 오류")
+                
+        except genai.types.ResourceExhausted as re_e:
+            logger.error(f"❌ [Gemini API] ResourceExhausted Error: {str(re_e)}")
+            raise HTTPException(status_code=429, detail="AI 사용량이 많아 잠시 제한되었습니다. 1분 뒤 다시 시도해 주세요.")
+        except Exception as ge:
+            logger.error(f"❌ [RED-TEAM] Gemini API Error: {str(ge)}")
+            if "429" in str(ge) or "quota" in str(ge).lower():
+                raise HTTPException(status_code=429, detail="AI 사용량이 많아 잠시 제한되었습니다. 1분 뒤 다시 시도해 주세요.")
+            raise HTTPException(status_code=500, detail=f"AI 통신 오류: {str(ge)}")
+            
         logger.info(f"✅ [LLM] Gemini response received in {time.time() - llm_start:.2f}s")
         
-        if not response.text:
-            raise ValueError("Empty response text from Gemini")
+        if not parsed_data:
+            raise ValueError("Empty response data from Gemini")
             
-        raw_content = response.text.strip()
-        logger.info(f"[LLM] Raw Content: {raw_content[:100]}...")
-        
-        # 4. Robust JSON Extraction
-        match = re.search(r'\[.*\]', raw_content, re.DOTALL)
-        clean_json = match.group(0) if match else raw_content
-        
-        parsed_data = json.loads(clean_json)
         if isinstance(parsed_data, dict):
             parsed_data = [parsed_data]
             
