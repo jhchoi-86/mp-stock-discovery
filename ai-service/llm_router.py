@@ -24,8 +24,8 @@ class StockInfo(BaseModel):
     symbol: str
     name: str
     category: str
-    price: float
-    indicators: Dict[str, Any]
+    price: Optional[float] = 0.0
+    indicators: Optional[Dict[str, Any]] = {}
 
 class CommentRequest(BaseModel):
     stocks: List[StockInfo]
