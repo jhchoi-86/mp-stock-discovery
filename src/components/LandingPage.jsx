@@ -88,7 +88,7 @@ const LandingPage = ({ onLoginClick }) => {
           <div className="lp-nav-links">
             <a href="#home" className="lp-nav-link">Home</a>
             <a href="#signals" className="lp-nav-link">MP 시그널</a>
-            <a href="#performance" className="lp-nav-link">Daily 성과</a>
+            <a href="#report" className="lp-nav-link">Daily 성과</a>
             <button onClick={onLoginClick} className="lp-btn-gold">로그인</button>
           </div>
         </div>
@@ -135,7 +135,7 @@ const LandingPage = ({ onLoginClick }) => {
             </div>
         </div>
         
-        <div style={{marginTop: '2rem', textAlign: 'left'}}>
+        <div id="report" style={{marginTop: '2rem', textAlign: 'left'}}>
             <MPStockDailyReport data={data} isLoading={isLoading} isFallback={isFallback} />
         </div>
       </header>
@@ -193,7 +193,7 @@ const LandingPage = ({ onLoginClick }) => {
       </section>
 
       {/* CTA & Lead Gen */}
-      <section className="lp-section" id="performance">
+      <section className="lp-section" id="subscribe">
         <div className="lp-hero" style={{background: 'linear-gradient(to bottom, rgba(212, 212, 212, 0.05), rgba(0,0,0,0))', borderRadius: '40px', padding: '5rem 2rem'}}>
             <div style={{display: 'flex', flexWrap: 'wrap', gap: '4rem', justifyContent: 'center'}}>
                 {/* Free Case */}
