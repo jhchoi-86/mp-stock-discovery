@@ -36,6 +36,7 @@ router.post('/register', async (req, res) => {
         data: {
           email,
           passwordHash,
+          name: email.split('@')[0], // Default name from email prefix
           role: 'PENDING'
         }
       });
@@ -91,16 +92,16 @@ router.post('/login', async (req, res) => {
     // Set HttpOnly Cookie for Refresh Token
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: true, // Switched to true for HTTPS deployment
-      sameSite: 'lax', // Must be lax (not none) for non-Secure HTTP contexts
-      path: '/api/auth', // Broaden path slightly so logout and refresh can both read it
+      secure: process.env.NODE_ENV === 'production', 
+      sameSite: 'lax', 
+      path: '/api/auth', 
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     });
 
     // Set HttpOnly Cookie for Access Token (Enables SSE and native fetch APIs)
     res.cookie('accessToken', accessToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 1000 // 1 hour
@@ -128,14 +129,14 @@ router.post('/logout', async (req, res) => {
     // Clear Cookie
     res.clearCookie('refreshToken', {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/api/auth'
     });
     
     res.clearCookie('accessToken', {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/'
     });
@@ -170,6 +171,8 @@ router.post('/refresh', async (req, res) => {
     
     // Ensure the token corresponds to an active user
     const user = await prisma.user.findUnique({ where: { id: userId } });
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    const baseURL = process.env.VITE_API_BASE_URL || (isDevelopment ? 'http://localhost:3001' : req.protocol + '://' + req.get('host'));
     if (!user) {
       return res.status(401).json({ error: 'User deleted' });
     }
@@ -181,7 +184,7 @@ router.post('/refresh', async (req, res) => {
     // Set NEW HttpOnly Cookie
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/api/auth',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
@@ -190,7 +193,7 @@ router.post('/refresh', async (req, res) => {
     // Issuing Access Token via Cookie alongside the JSON response
     res.cookie('accessToken', newAccessToken, {
       httpOnly: true,
-      secure: true,
+      secure: process.env.NODE_ENV === 'production',
       sameSite: 'lax',
       path: '/',
       maxAge: 60 * 60 * 1000

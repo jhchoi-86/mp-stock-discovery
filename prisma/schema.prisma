@@ -187,3 +187,29 @@ model Lead {
 
   @@map("leads")
 }
+
+model DailyStockSnapshot {
+  id           Int      @id @default(autoincrement())
+  code         String   @db.VarChar(20)
+  name         String   @db.VarChar(100)
+  category     String?  @db.VarChar(100)
+  score        Int?
+  adx          Int?
+  trend        String?  @db.VarChar(20)
+  currentPrice Float?   @map("current_price")
+  entryPrice1  Float?   @map("entry_price1")
+  entryPrice2  Float?   @map("entry_price2")
+  entryPrice3  Float?   @map("entry_price3")
+  targetPrice1 Float?   @map("target_price1")
+  tradeAmount  BigInt?  @map("trade_amount")
+  foreignBuy   String?  @map("foreign_buy")
+  instBuy      String?  @map("inst_buy")
+  yield        Float?
+  isExecuted   Boolean? @default(false) @map("is_executed")
+  executedAt   String?  @map("executed_at")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@index([code])
+  @@map("daily_stock_snapshots")
+}

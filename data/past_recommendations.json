@@ -1,9 +1,37 @@
 [
   {
-    "code": "005930",
-    "name": "[테스트] 삼성전자 YF우회",
-    "rec_price": 187300,
-    "date": "2026-03-24",
-    "category": "야간 추천"
+    "code": "062040",
+    "name": "산일전기",
+    "rec_price": 157700,
+    "date": "2026-03-26",
+    "category": "VIP 추천"
+  },
+  {
+    "code": "011070",
+    "name": "LG이노텍",
+    "rec_price": 309000,
+    "date": "2026-03-26",
+    "category": "VIP 추천"
+  },
+  {
+    "code": "066970",
+    "name": "엘앤에프",
+    "rec_price": 143500,
+    "date": "2026-03-26",
+    "category": "VIP 추천"
+  },
+  {
+    "code": "298040",
+    "name": "효성중공업",
+    "rec_price": 2907000,
+    "date": "2026-03-26",
+    "category": "VIP 추천"
+  },
+  {
+    "code": "213420",
+    "name": "덕산네오룩스",
+    "rec_price": 50800,
+    "date": "2026-03-26",
+    "category": "VIP 추천"
   }
 ]

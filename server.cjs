@@ -170,6 +170,8 @@ async function getKisAccessToken() {
 }
 // 🔴 [Red Team 방어 - R8-B] 전역 DB 커넥션 풀 싱글턴 패턴 적용
 const { PrismaClient } = require('@prisma/client');
+BigInt.prototype.toJSON = function() { return this.toString() };
+
 const prisma = new PrismaClient();
 
 const cookieParser = require('cookie-parser');
@@ -338,6 +340,17 @@ app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
 
 // SSE Clients & Heartbeat Activity Tracking
 let clients = [];
+
+const broadcastUpdate = () => {
+    const payload = `data: ${JSON.stringify({ type: 'signal_update' })}\n\n`;
+    clients.forEach(c => {
+        try {
+            c.write(payload);
+            if (c.flush) c.flush();
+        } catch(e) {}
+    });
+};
+
 const lastActiveMap = new Map(); // userId -> lastActiveTimestamp
 const jwt = require('jsonwebtoken');
 
@@ -416,6 +429,87 @@ app.get('/api/admin/online-users', (req, res) => {
     // 3. Return Union
     const onlineIds = [...new Set([...sseIds, ...heartbeatIds])];
     res.json(onlineIds);
+});
+
+// [Admin] 성과 통계 조회
+app.get('/api/admin/daily-snapshots', async (req, res) => {
+    let isAdmin = false;
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+        const token = authHeader.split(' ')[1];
+        try {
+            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+            if (decoded.role === 'ADMIN' || decoded.email === 'choisooki7@gmail.com') isAdmin = true;
+        } catch(e) {}
+    }
+    if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
+
+    const { date, code, sortBy = 'yield', order = 'desc' } = req.query;
+    try {
+        const snapshots = await getPerformanceSnapshotData({ date, code, sortBy, order });
+        res.json(snapshots);
+    } catch (err) {
+        console.error('Failed to get snapshots:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// [Public] 성과 통계 조회 (Landing Page용 - 누구나 접근 가능)
+app.get('/api/public/daily-snapshots', async (req, res) => {
+    const { date, code, sortBy = 'yield', order = 'desc' } = req.query;
+    try {
+        const snapshots = await getPerformanceSnapshotData({ date, code, sortBy, order });
+        res.json(snapshots);
+    } catch (err) {
+        console.error('Failed to get public snapshots:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// Helper for performance snapshots
+async function getPerformanceSnapshotData({ date, code, sortBy, order }) {
+    const where = {};
+    if (date && date !== 'all') {
+        const start = new Date(date);
+        start.setHours(0,0,0,0);
+        const end = new Date(date);
+        end.setHours(23,59,59,999);
+        where.createdAt = { gte: start, lte: end };
+    }
+    if (code) {
+      where.OR = [
+        { code: { contains: code, mode: 'insensitive' } },
+        { name: { contains: code, mode: 'insensitive' } }
+      ];
+    }
+    
+    const rawSnapshots = await prisma.dailyStockSnapshot.findMany({
+        where,
+        orderBy: { [sortBy]: order },
+        take: 1000
+    });
+    
+    return rawSnapshots.map(s => ({
+        ...s,
+        tradeAmount: s.tradeAmount ? s.tradeAmount.toString() : null
+    }));
+}
+
+// [Public/Paid] 성과 통계 날짜 목록
+app.get('/api/public/daily-snapshot-dates', async (req, res) => {
+    try {
+        const result = await prisma.dailyStockSnapshot.findMany({
+            select: { createdAt: true },
+            distinct: ['createdAt'],
+            orderBy: { createdAt: 'desc' },
+            take: 100
+        });
+        const formatted = [...new Set(result.map(d => new Date(d.createdAt).toISOString().split('T')[0]))];
+        res.json(formatted);
+    } catch (err) {
+        console.error('Failed to get snapshot dates:', err);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
 });
 
 // Periodic cleanup of lastActiveMap to prevent memory leaks (older than 10 min)
@@ -1063,8 +1157,10 @@ app.post('/api/auto-sync', async (req, res) => {
         } catch (globalErr) {
             console.error('[Auto-Sync Background Error]', globalErr);
         } finally {
-            // Drop the mutex lock regardless of success or crash
             isSyncMutexLocked = false;
+            // 🔴 [Stability Patch] Emit final completion signal
+            const finalPayload = `data: ${JSON.stringify({ type: 'sync_complete' })}\n\n`;
+            clients.forEach(c => { try { c.write(finalPayload); if (c.flush) c.flush(); } catch(e) {} });
         }
     })();
 });

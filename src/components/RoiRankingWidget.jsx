@@ -13,8 +13,11 @@ export default function RoiRankingWidget() {
         const res = await axiosClient.get('/api/roi-ranking');
         setRankings(res.data);
       } catch (err) {
-        console.error('Failed to fetch ROI rankings:', err);
-        setError('수익률 데이터를 불러오는데 실패했습니다.');
+        // Silently handle 401 if it's just a timing issue during initial load
+        if (err.response?.status !== 401) {
+          console.error('Failed to fetch ROI rankings:', err);
+          setError('수익률 데이터를 불러오는데 실패했습니다.');
+        }
       } finally {
         setLoading(false);
       }

@@ -87,6 +87,25 @@ router.post('/', authMiddleware, guardMiddleware('FREE_USER', 'SEND_REPORT'), as
       }
     });
 
+    // 1.1 Save Structured Recommendations (v4.7.0)
+    if (recommendations && Array.isArray(recommendations)) {
+      try {
+        for (const rec of recommendations) {
+          await prisma.recommendation.create({
+            data: {
+              stockCode: rec.stockCode || rec.code,
+              stockName: rec.stockName || rec.name,
+              entryPrice: rec.entryPrice,
+              targetPrice: rec.targetPrice,
+              recommendedAt: new Date()
+            }
+          });
+        }
+      } catch (recErr) {
+        console.error('[Send Report] Structured Recommendation Save Failed:', recErr);
+      }
+    }
+
     // 2. Log Action
     await prisma.auditLog.create({
       data: {

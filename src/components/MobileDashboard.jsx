@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
-import { Search, Settings, Share2, Activity, RotateCcw, LogOut, UserCog, Archive, X } from 'lucide-react';
-import { Virtuoso } from 'react-virtuoso';
-import UserProfile from './UserProfile.jsx';
-import AdminDashboard from './AdminDashboard.jsx';
-import ReportArchive from './ReportArchive.jsx';
+import DailySnapshotAnalytics from './DailySnapshotAnalytics.jsx';
+import MPStockDailyReport from './MPStockDailyReport.jsx';
 import MobileStockCard from './MobileStockCard.jsx';
-import BottomSheetFilter from './BottomSheetFilter.jsx';
+import SyncProgressHeader from './SyncProgressHeader.jsx';
+import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
+import UserProfile from './UserProfile.jsx';
 import SubscriptionModal from './SubscriptionModal.jsx';
+import ReportArchive from './ReportArchive.jsx';
+import reportService from '../api/reportService';
+import useSWR from 'swr';
+import { Activity, Share2, Filter, Layout, LogOut } from 'lucide-react';
 
 const MobileDashboard = ({ manager, user, clearAuth }) => {
+  const [landingTab, setLandingTab] = useState('MP_SIGNAL'); // 'HOME', 'MP_SIGNAL', 'DAILY_PERFORMANCE'
   const {
       searchQuery, setSearchQuery,
       marketFilter, setMarketFilter,
       categoryFilter, setCategoryFilter,
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
-      isSyncing, syncProgress, isSendingTg,
+      isSyncing, isSendingTg,
       candidates, topSectors, activeCount, signals, selectedStocks,
       handleIntegratedSync, handleSendToTelegram,
-      toggleSelectStock, toggleSelectAll
+      toggleSelectStock, toggleSelectAll,
+      fetchData
   } = manager;
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -27,35 +32,66 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
 
+  const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
+    revalidateOnFocus: true,
+    refreshInterval: 30000
+  });
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', color: '#fff' }}>
       {/* 1. Sticky Top Navigation */}
       <header style={{
-        position: 'sticky', top: 0, zIndex: 50,
-        background: 'rgba(15, 23, 42, 0.85)', backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid var(--glass-border)', padding: '0.75rem 1rem',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+        position: 'sticky', top: 0, zIndex: 100,
+        background: 'rgba(15, 23, 42, 0.95)', backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid var(--glass-border)', padding: '0.5rem 1rem',
+        display: 'flex', flexDirection: 'column', gap: '0.75rem'
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <h1 style={{ fontSize: '1.2rem', fontWeight: '800', margin: 0, background: 'linear-gradient(to right, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', color: 'transparent' }}>
-            MP STOCK
-          </h1>
-          <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.1)', padding: '2px 6px', borderRadius: '4px' }}>
-            VIP
-          </span>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h1 style={{ fontSize: '1.1rem', fontWeight: '800', margin: 0, background: 'linear-gradient(to right, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', color: 'transparent' }}>
+                    MP STOCK
+                </h1>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <button onClick={() => setIsProfileOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>
+                    {user?.name || user?.email?.split('@')[0]}
+                </button>
+            </div>
         </div>
-        
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <button onClick={() => setIsProfileOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 'bold' }}>
-            {user?.name || user?.email?.split('@')[0]}
-          </button>
-        </div>
+
+        <nav style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '3px', borderRadius: '10px', width: '100%' }}>
+            <button 
+              onClick={() => { setLandingTab('HOME'); setShowAdminPanel(false); }}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'HOME' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
+            >
+              Home
+            </button>
+            <button 
+              onClick={() => { setLandingTab('MP_SIGNAL'); setShowAdminPanel(false); }}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'MP_SIGNAL' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
+            >
+              MP 시그널
+            </button>
+            <button 
+              onClick={() => { setLandingTab('DAILY_PERFORMANCE'); setShowAdminPanel(false); }}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'DAILY_PERFORMANCE' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
+            >
+              Daily 성과
+            </button>
+            <button 
+              onClick={() => { setLandingTab('DAILY_STOCK_ANALYSIS'); setShowAdminPanel(false); }}
+              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'DAILY_STOCK_ANALYSIS' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
+            >
+              종목 분석
+            </button>
+          </nav>
       </header>
       
       {/* User Profile Modal Map */}
       <UserProfile isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
       <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
       <SubscriptionModal isOpen={isSubscriptionOpen} onClose={() => setIsSubscriptionOpen(false)} />
+      <SignalNotificationWatcher signals={signals} />
 
       {/* Quick Action Bar */}
       <div style={{ display: 'flex', gap: '0.5rem', overflowX: 'auto', padding: '0.75rem 1rem', borderBottom: '1px solid var(--glass-border)', background: 'rgba(255,255,255,0.02)', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
@@ -99,6 +135,23 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
+        {landingTab === 'DAILY_PERFORMANCE' ? (
+          <div style={{ padding: '1rem' }} className="fade-in">
+             <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', marginBottom: '1rem' }}>
+                <Activity size={20} color="var(--primary)" /> 종목 성과 분석 📊
+             </h2>
+             <DailySnapshotAnalytics isPublic={true} isMobile={true} />
+          </div>
+        ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
+          <div style={{ padding: '1rem' }} className="fade-in">
+             <MPStockDailyReport 
+                data={reportData} 
+                isLoading={isReportLoading} 
+                isFallback={!reportData && !isReportLoading} 
+             />
+          </div>
+        ) : (
+          <>
         {/* 2. Status Widget (수평 스크롤) */}
         <div style={{ 
           display: 'flex', gap: '1rem', overflowX: 'auto', padding: '1rem', 
@@ -112,13 +165,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>수신 신호</div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-              {isSyncing && syncProgress.total > 0 ? (
-                <span>{syncProgress.timeframe ? `[${syncProgress.timeframe}] ` : ''}{syncProgress.current} / {syncProgress.total}</span>
-              ) : (
-                signals.length
-              )}
-            </div>
+            <SyncProgressHeader onUpdateRequested={fetchData} fallbackCount={signals.length} />
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>강력 신호</div>
@@ -208,6 +255,8 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             }}
           />
         </div>
+        </>
+        )}
       </div>
       )}
 

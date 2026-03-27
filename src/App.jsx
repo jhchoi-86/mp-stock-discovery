@@ -9,6 +9,7 @@ import { useStockManager } from './hooks/useStockManager.js';
 import useIsMobile from './hooks/useIsMobile.js';
 import useSecurityShield from './hooks/useSecurityShield.js';
 import LandingPage from './components/LandingPage.jsx';
+import { SSEProvider } from './context/SSEContext.jsx';
 
 const App = () => {
   const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
@@ -51,16 +52,35 @@ const App = () => {
     return <LandingPage onLoginClick={() => setShowLogin(true)} />;
   }
 
-  return (
-    <>
-      <Toaster position="bottom-right" />
-      {isMobile ? (
-        <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
-      ) : (
-        <PcDashboard manager={manager} user={user} clearAuth={clearAuth} />
-      )}
-    </>
-  );
+  const isManagementUser = user && (user.role === 'ADMIN' || user.email === 'choisooki7@gmail.com');
+
+  if (isAuthenticated && !isManagementUser) {
+    return (
+      <LandingPage 
+        onLoginClick={() => setShowLogin(true)} 
+        isAuthenticated={true} 
+        onLogoutClick={clearAuth} 
+      />
+    );
+  }
+
+  if (isAuthenticated && isManagementUser) {
+    return (
+      <div className="dashboard-root">
+        <Toaster position="bottom-right" />
+        <SSEProvider onUpdateRequested={manager.fetchData}>
+            {isMobile ? (
+              <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
+            ) : (
+              <PcDashboard manager={manager} user={user} clearAuth={clearAuth} />
+            )}
+        </SSEProvider>
+      </div>
+    );
+  }
+
+  // Final fallback (should not be reached if logic is complete)
+  return null;
 };
 
 export default App;

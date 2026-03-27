@@ -1,9 +1,11 @@
 import React from 'react';
-import { motion } from 'framer-motion';
-import { Menu, X, Rocket, Shield, BarChart3, Sparkles, TrendingUp, CheckCircle2, Zap, Bell } from 'lucide-react';
+// import { motion } from 'framer-motion';
+
+import { Menu, X, Rocket, Shield, BarChart3, Sparkles, TrendingUp, CheckCircle, Smartphone, Activity, Share2, LogIn, ChevronRight, Play, Zap, Bell, CheckCircle2 } from 'lucide-react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
 import MPStockDailyReport from './MPStockDailyReport';
+import DailySnapshotAnalytics from './DailySnapshotAnalytics';
 
 const SocialMarquee = () => {
   const alerts = [
@@ -34,7 +36,7 @@ const SocialMarquee = () => {
   );
 };
 
-const LandingPage = ({ onLoginClick }) => {
+const LandingPage = ({ onLoginClick, isAuthenticated, onLogoutClick }) => {
   const [isMenuOpen, setIsMenuOpen] = React.useState(false);
   const [email, setEmail] = React.useState('');
   const [honeypot, setHoneypot] = React.useState('');
@@ -42,20 +44,22 @@ const LandingPage = ({ onLoginClick }) => {
   
   const { data, error, isLoading } = useSWR('reports/latest', reportService.getLatestReport, {
     revalidateOnFocus: true,
-    refreshInterval: 60000
+    refreshInterval: 10000
   });
 
   const isFallback = !data && !isLoading; 
 
   const stats = React.useMemo(() => {
-    if (!data || !data.stocks) return { hitRate: '92', avgReturn: '+4.8', totalSignals: '24' };
+    if (!data || !data.stocks) return { hitRate: '---', avgReturn: '0.0', totalSignals: '0' };
     const stocks = data.stocks || [];
-    const hits = stocks.filter(s => s.status === 'EXECUTED' || s.yield_pct > 0).length;
+    const hits = stocks.filter(s => s.status === '체결' || s.status === 'EXECUTED').length;
     const hitRate = stocks.length > 0 ? ((hits / stocks.length) * 100).toFixed(0) : '0';
     const returns = stocks.map(s => s.yield_pct || 0);
-    const avgReturn = returns.length > 0 ? (returns.reduce((a, b) => a + b, 0) / returns.length).toFixed(1) : '0.0';
-    return { hitRate, avgReturn: hitRate === '0' ? '0.0' : `+${avgReturn}`, totalSignals: stocks.length };
+    const avgVal = returns.length > 0 ? (returns.reduce((a, b) => a + b, 0) / returns.length) : 0;
+    const avgReturn = (avgVal >= 0 ? "+" : "") + avgVal.toFixed(1);
+    return { hitRate, avgReturn, totalSignals: stocks.length };
   }, [data]);
+
 
   const handleSubscribe = async (e) => {
     e.preventDefault();
@@ -71,7 +75,8 @@ const LandingPage = ({ onLoginClick }) => {
   };
 
   return (
-    <div className="lp-container">
+    <div className="lp-premium-wrap">
+      <div className="lp-container">
       {/* Navigation */}
       <nav className="lp-nav">
         <div className="lp-nav-inner">
@@ -86,17 +91,18 @@ const LandingPage = ({ onLoginClick }) => {
             <a href="#home" className="lp-nav-link">Home</a>
             <a href="#signals" className="lp-nav-link">MP 시그널</a>
             <a href="#report" className="lp-nav-link">Daily 성과</a>
-            <button onClick={onLoginClick} className="lp-btn-gold">로그인</button>
+            <a href="#stats" className="lp-nav-link">Daily 종목 분석</a>
+            {isAuthenticated ? (
+              <button onClick={onLogoutClick} className="lp-btn-gold" style={{backgroundColor: 'rgba(231, 76, 60, 0.1)', color: '#e74c3c', border: '1px solid rgba(231, 76, 60, 0.3)'}}>로그아웃</button>
+            ) : (
+              <button onClick={onLoginClick} className="lp-btn-gold">로그인</button>
+            )}
           </div>
         </div>
       </nav>
 
-      {/* Hero Section */}
       <header className="lp-hero" id="home">
-        <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            animate={{ opacity: 1, scale: 1 }}
-        >
+        <div className="animate-in fade-in zoom-in duration-700">
             <h1 className="lp-hero-title">
               감정이 배제된 AI의 정확한 타점,<br/>
               <span style={{color: 'var(--primary)', textShadow: '0 0 30px rgba(212,175,55,0.4)'}}>매일 결과로 증명합니다.</span>
@@ -105,7 +111,9 @@ const LandingPage = ({ onLoginClick }) => {
                 KOSPI 200 & KOSDAQ 150 주도주 중심, 매일 업데이트되는<br/>
                 5종목의 놀라운 승률을 지금 바로 확인하세요.
             </p>
-        </motion.div>
+        </div>
+
+
 
         {/* Stats Grid */}
         <div className="lp-hero-stats-grid">
@@ -132,7 +140,14 @@ const LandingPage = ({ onLoginClick }) => {
             </div>
         </div>
         
-        <div id="report" style={{marginTop: '2rem', textAlign: 'left'}}>
+        <div id="stats" style={{marginTop: '4rem', textAlign: 'left'}}>
+            <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '1.5rem', color: 'var(--primary)'}}>
+                Daily 종목 분석
+            </h2>
+            <DailySnapshotAnalytics isPublic={true} isMobile={window.innerWidth < 768} />
+        </div>
+
+        <div id="report" style={{marginTop: '6rem', textAlign: 'left'}}>
             <MPStockDailyReport data={data} isLoading={isLoading} isFallback={isFallback} />
         </div>
       </header>
@@ -174,17 +189,15 @@ const LandingPage = ({ onLoginClick }) => {
                     icon: <Sparkles size={32} />
                 }
             ].map((item, idx) => (
-                <motion.div 
+                <div 
                     key={idx}
                     className="lp-card"
-                    initial={{ opacity: 0, y: 20 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
                 >
                     <div style={{color: 'var(--primary)', marginBottom: '1.5rem'}}>{item.icon}</div>
                     <h3 style={{fontSize: '1.25rem', fontWeight: 700, marginBottom: '1.25rem', lineHeight: 1.4}}>{item.title}</h3>
                     <p style={{color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.7}}>{item.desc}</p>
-                </motion.div>
+                </div>
+
             ))}
         </div>
       </section>
@@ -240,6 +253,7 @@ const LandingPage = ({ onLoginClick }) => {
                     <div>
                         <p style={{fontWeight: 700, marginBottom: '1rem', fontSize: '0.9rem'}}>Company</p>
                         <p style={{fontSize: '0.8rem', color: 'var(--text-secondary)'}}>대표: 최종한</p>
+                        <p style={{fontSize: '0.8rem', color: 'var(--text-secondary)'}}>연락처: jonghanchoi.86@gmail.com</p>
                     </div>
                 </div>
             </div>
@@ -252,6 +266,7 @@ const LandingPage = ({ onLoginClick }) => {
         </div>
       </footer>
     </div>
+  </div>
   );
 };
 

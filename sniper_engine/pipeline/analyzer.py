@@ -107,9 +107,14 @@ async def analyzer_task():
                         total_score = scoring_result["total_score"]
                         grade = ScoringEngine.get_grade(total_score)
                         
-                        # 4. 🔴 [Red Team 방어] 무지성 진입 차단. C등급 무시, 오직 S, A, B 등급(200점 이상)만 승인
-                        if total_score >= 200 and price >= vwap_val and is_buy:
+                        # 4. 🔴 [Red Team 방어] 무지성 진입 차단. C/B등급 무시, 오직 S, A 등급(300점 이상)만 승인 (v5.1.0)
+                        if total_score >= 300 and price >= vwap_val and is_buy and ticker not in STATE.get('active_tickers', set()):
+
+                            # 🔵 [Immediate Lock] 중복 신호 폭발 방지 (v4.8.0)
+                            STATE.get('active_tickers', set()).add(ticker)
+                            
                             signal_id = f"SIG_{ticker}_{uuid.uuid4().hex[:8]}"
+
                             alert_payload = {
                                 "signal_id": signal_id,
                                 "type": "ENTRY",
@@ -137,3 +142,7 @@ async def analyzer_task():
             break
         except Exception as e:
             logger.error(f"🔴 Analyzer Critical Exception: {e}")
+            try:
+                TICK_QUEUE.task_done()
+            except ValueError:
+                pass

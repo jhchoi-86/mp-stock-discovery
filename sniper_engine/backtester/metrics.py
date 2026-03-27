@@ -28,9 +28,9 @@ class TradeMetrics:
             
             if sig_type == "ENTRY":
                 # 🔴 [Red Team 지적 사항 즉결 패치] 
-                # 시장가 시장 진입 시 '호가창 밀림(Slippage)' 0.2% 손해를 강제 추가. 
-                # (예: 타점 폭발 시 165000원 -> 실제 시장가 체결 165330원)
-                slippage_penalty = raw_price * 0.002 
+                # 시장가 시장 진입 시 '호가창 밀림(Slippage)' 0.7% 손해를 강제 추가. 
+                # (예: 타점 폭발 시 165000원 -> 실제 시장가 체결 166155원)
+                slippage_penalty = raw_price * 0.007 
                 executed_price = raw_price + slippage_penalty
                 
                 positions[sig_id] = {
@@ -42,8 +42,9 @@ class TradeMetrics:
                 # 🔴 [Red Team 지적 사항 즉결 패치] Tracker 가 넘긴 당시 시세(raw_price)로 정산
                 entry_price = positions[sig_id]["entry_price"]
                 
-                # 매각 시에도 탈출 슬리피지(호가 공백) 페널티 0.2% 폭격 부여
-                exit_slippage = raw_price * 0.002
+                # 매각 시에도 탈출 슬리피지(호가 공백) 페널티 0.7% 폭격 부여
+                exit_slippage = raw_price * 0.007
+
                 
                 # 최종 세금 + 페널티 맞고 들어온 세후 매도 체결단가
                 executed_exit_price = raw_price - exit_slippage - (raw_price * self.tax_rate) - (raw_price * self.fee_rate)

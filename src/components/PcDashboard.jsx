@@ -1,18 +1,41 @@
 import React, { useState, useRef } from 'react';
-import { LineChart, LayoutDashboard, Share2, ExternalLink, Activity, Upload, RotateCcw, RefreshCw, Trash2, Power, LogOut, UserCog, Archive } from 'lucide-react';
-import SignalIndicator from '../SignalIndicator';
-import AdminDashboard from './AdminDashboard.jsx';
+import DailySnapshotAnalytics from './DailySnapshotAnalytics.jsx';
+import MPStockDailyReport from './MPStockDailyReport.jsx';
 import UserProfile from './UserProfile.jsx';
-import RoiRankingWidget from './RoiRankingWidget.jsx';
-import ReportArchive from './ReportArchive.jsx';
 import SubscriptionModal from './SubscriptionModal.jsx';
+import ReportArchive from './ReportArchive.jsx';
+import AdminDashboard from './AdminDashboard.jsx';
+import RoiRankingWidget from './RoiRankingWidget.jsx';
+import SignalIndicator from '../SignalIndicator.jsx';
+import SyncProgressHeader from './SyncProgressHeader.jsx';
+import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
+import TradingViewWidget from './TradingViewWidget.jsx';
+import reportService from '../api/reportService';
+import useSWR from 'swr';
+import { 
+  UserCog, 
+  Archive, 
+  LogOut, 
+  Activity, 
+  RotateCcw, 
+  Share2, 
+  ExternalLink 
+} from 'lucide-react';
 
 const PcDashboard = ({ manager, user, clearAuth }) => {
+  const isManagementUser = user && (user.role === 'ADMIN' || user.email === 'choisooki7@gmail.com');
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [landingTab, setLandingTab] = useState('MP_SIGNAL'); // 'HOME', 'MP_SIGNAL', 'DAILY_PERFORMANCE'
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [selectedTicker, setSelectedTicker] = useState('KRX:005930');
   const fileInputRef = useRef(null);
+
+  const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
+    revalidateOnFocus: true,
+    refreshInterval: 30000
+  });
 
   const {
       stocks, signals, lastUpdate,
@@ -22,7 +45,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
       selectedStocks, toggleSelectAll, toggleSelectStock,
-      isSyncing, syncProgress, isSendingTg, 
+      isSyncing, isSendingTg, 
       candidates, topSectors, activeCount, 
       handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
       handleDownloadReport, handleDownloadTVList, handleSendToTelegram
@@ -30,13 +53,42 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
 
   return (
     <div className="container">
-      <header className="fade-in">
-        <div className="logo-section" style={{ minWidth: '300px', flex: '1 1 auto' }}>
-          <h1 style={{ lineHeight: '1.4', fontSize: '1.7rem', fontWeight: '800' }}>
-            MP KOSPI 200, KOSDAQ 150 우량주<br/>
-            <span style={{ color: 'var(--accent)' }}>매수 추천 종목 리서치</span>
-          </h1>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '6px' }}>정리 시스템 (전체 350개 종목)</p>
+    <header className="fade-in">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '3rem', flex: 1 }}>
+            <div className="logo-section" style={{ minWidth: '300px' }}>
+                <h1 style={{ lineHeight: '1.4', fontSize: '1.7rem', fontWeight: '800' }}>
+                    MP KOSPI 200, KOSDAQ 150 우량주<br/>
+                    <span style={{ color: 'var(--accent)' }}>매수 추천 종목 리서치</span>
+                </h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', marginTop: '6px' }}>정리 시스템 (전체 350개 종목)</p>
+            </div>
+
+            <nav style={{ display: 'flex', background: 'rgba(255,255,255,0.05)', padding: '4px', borderRadius: '12px', gap: '4px' }}>
+                <button 
+                  onClick={() => { setLandingTab('HOME'); setShowAdminPanel(false); }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'HOME' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                >
+                  Home
+                </button>
+                <button 
+                  onClick={() => { setLandingTab('MP_SIGNAL'); setShowAdminPanel(false); }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'MP_SIGNAL' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                >
+                  MP 시그널
+                </button>
+                <button 
+                  onClick={() => { setLandingTab('DAILY_PERFORMANCE'); setShowAdminPanel(false); }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'DAILY_PERFORMANCE' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                >
+                  Daily 성과
+                </button>
+                <button 
+                  onClick={() => { setLandingTab('DAILY_STOCK_ANALYSIS'); setShowAdminPanel(false); }}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'DAILY_STOCK_ANALYSIS' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                >
+                  Daily 종목 분석
+                </button>
+              </nav>
         </div>
         <div className="stats-bar">
           <div className="stat-item">
@@ -46,18 +98,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               실시간 가동중
             </div>
           </div>
-          <div className="stat-item">
-            <div className="stat-label">수신 신호</div>
-            <div className="stat-value">
-              {isSyncing && syncProgress.total > 0 ? (
-                <span style={{ color: 'var(--primary)', fontSize: '0.85rem' }}>
-                  {syncProgress.timeframe ? `[${syncProgress.timeframe}] ` : ''}{syncProgress.current} / {syncProgress.total}
-                </span>
-              ) : (
-                signals.length
-              )}
-            </div>
-          </div>
+          <SyncProgressHeader onUpdateRequested={manager.fetchData} fallbackCount={signals.length} />
           <div className="stat-item">
             <div className="stat-label">강력 신호 (HH)</div>
             <div className="stat-value" style={{ color: 'var(--accent)' }}>{activeCount}</div>
@@ -133,8 +174,30 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       {showAdminPanel && user?.role === 'ADMIN' ? (
         <AdminDashboard />
       ) : (
-        <>
-      <RoiRankingWidget />
+        <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
+            {landingTab === 'DAILY_PERFORMANCE' ? (
+                <div className="fade-in">
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', marginBottom: '1.5rem' }}>
+                        <Activity size={24} color="var(--primary)" /> 종목 성과 분석 📊
+                    </h2>
+                    <DailySnapshotAnalytics isPublic={true} isMobile={false} />
+                </div>
+            ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
+                <div className="fade-in">
+                    <MPStockDailyReport 
+                        data={reportData} 
+                        isLoading={isReportLoading} 
+                        isFallback={!reportData && !isReportLoading} 
+                    />
+                </div>
+            ) : (
+                <>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 450px', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                    <RoiRankingWidget />
+                    <div className="fade-in" style={{ animationDelay: '0.2s' }}>
+                        <TradingViewWidget symbol={selectedTicker} />
+                    </div>
+                </div>
       <div className="controls fade-in" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input 
           type="text" 
@@ -202,7 +265,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               className="card" 
               style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "분석중..." : "통합 자동 동기화: 1H, 2H, 4H, 1D, 1W"}
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 1H, 2H, 4H, 1D, 1W"}
             </button>
           </div>
         )}
@@ -563,14 +626,25 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
+                      <button 
+                        onClick={() => {
+                          const prefix = (stock.market?.includes('KOSPI') || stock.market === 'KOSPI200') ? 'KRX' : 'KOSDAQ';
+                          const target = `${prefix}:${stock.code}`;
+                          setSelectedTicker(target);
+                        }} 
+                        className="tv-link"
+                        style={{ fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}
+                      >
+                        <Activity size={14} /> 분석
+                      </button>
                       <a 
-                        href={`https://www.tradingview.com/chart/?symbol=KRX:${stock.code}`} 
+                        href={`https://www.tradingview.com/chart/?symbol=${(stock.market?.includes('KOSPI') || stock.market === 'KOSPI200') ? 'KRX' : 'KOSDAQ'}:${stock.code}`} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="tv-link"
                         style={{ fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap' }}
                       >
-                        <ExternalLink size={14} /> 차트
+                        <ExternalLink size={14} /> 외부
                       </a>
                     </td>
                   </tr>
@@ -596,7 +670,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         </div>
         </div>
         </>
+            )}
+        </div>
       )}
+      <SignalNotificationWatcher />
 
       {/* Copyright Footer */}
       <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)', fontSize: '0.8rem', marginTop: 'auto' }}>

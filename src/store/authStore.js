@@ -10,7 +10,8 @@ const useAuthStore = create((set, get) => ({
   isInitialized: false, // Prevents UI flickering on initial load
 
   // Action to set user after successful login
-  setAuth: (userData) => {
+  setAuth: (userData, token = null) => {
+    if (token) setAccessToken(token);
     set({
       user: userData,
       isAuthenticated: !!userData,
@@ -36,27 +37,40 @@ const useAuthStore = create((set, get) => ({
       
       if (response && response.data && response.data.accessToken) {
         // We successfully grabbed an access token, which means the user was logged in previously!
-        // We need the user payload out of the JWT to define roles and UI access
         const token = response.data.accessToken;
         
-        // Decode payload manually or fetch a full profile endpoint
-        // Since we embedded {userId, role} into our JWT config initially:
-        const payloadStr = token.split('.')[1];
-        const payloadObj = JSON.parse(atob(payloadStr));
-        
-        // Reconstruct basic user object representing current session info
-        get().setAuth({
-          id: payloadObj.userId,
-          role: payloadObj.role,
-          name: 'Authorized User' // In a prod app, we'd GET /api/auth/me to get exact names
-        });
-        
-        return true;
+        // Decode payload safely (Base64URL aware)
+        try {
+          const base64Url = token.split('.')[1];
+          const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+          const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
+              return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          }).join(''));
+          
+          const payloadObj = JSON.parse(jsonPayload);
+          
+          // Reconstruct basic user object representing current session info
+          get().setAuth({
+            id: payloadObj.userId,
+            role: payloadObj.role,
+            name: 'Authorized User'
+          }, token);
+          
+          return true;
+        } catch (decodeError) {
+          console.error('[AuthStore] JWT Decode Error:', decodeError);
+          set({ isInitialized: true, isAuthenticated: false, user: null });
+          return false;
+        }
       }
+      // No token received but no error thrown
+      set({ isInitialized: true, isAuthenticated: false, user: null });
+      return false;
     } catch (error) {
       // No active session or cookie was found. Safe to assume logged out.
       console.log('[AuthStore] No active session found during initialization.');
       set({ isInitialized: true, isAuthenticated: false, user: null });
+      return false;
     }
   }
 }));

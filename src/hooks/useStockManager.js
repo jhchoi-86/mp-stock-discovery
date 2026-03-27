@@ -28,7 +28,6 @@ export const useStockManager = (isAuthenticated) => {
   const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
   
   const [isSyncing, setIsSyncing] = useState(false);
-  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 0, timeframe: '' });
   const [isSendingTg, setIsSendingTg] = useState(false);
 
   // Selections
@@ -82,49 +81,13 @@ export const useStockManager = (isAuthenticated) => {
         const res = await axiosClient.get('/api/auto-sync/status');
         if (res.data?.isSyncing) {
             setIsSyncing(true);
-            setSyncProgress(res.data.progress || { current: 0, total: 348, timeframe: '진행중' });
+            // syncProgress는 이제 전역 SSEContext에서 관리함
         }
       } catch(e) { console.error('Sync status check failed:', e); }
     };
     checkSyncStatus();
     
-    // Setup Server-Sent Events (SSE)
-    const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
-    const eventSource = new EventSource(`${API_URL}/api/stream`, { withCredentials: true });
-    eventSource.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'update') {
-        fetchData();
-      } else if (data.type === 'sniper_alert') {
-        const { ticker, type: alertType, price, grade, score, reason } = data.payload;
-        if (alertType === 'ENTRY') {
-            toast.success(`[스나이퍼 🚨포착] ${ticker} | 진입가: ${Math.round(price).toLocaleString()}원 (점수: ${score}점, ${grade}등급)`, {
-                duration: 6000,
-                icon: '🎯',
-                style: { background: '#1e1e2f', color: '#fff', border: '1px solid #FF1744' }
-            });
-        } else if (alertType === 'EXIT_WARN') {
-            toast.error(`[청산 ⚠️경고] ${ticker} | 사유: ${reason}`, {
-                duration: 8000,
-                icon: '⚠️',
-                style: { background: '#2d1a1a', color: '#ffb86c', border: '1px solid #ff5555' }
-            });
-        }
-      } else if (data.type === 'sync_progress') {
-        const { current, total, timeframe } = data.payload || data;
-        setSyncProgress({ current, total, timeframe });
-        setIsSyncing(true);
-        
-        if (current === total) {
-          setIsSyncing(false);
-          fetchData();
-        }
-      }
-    };
-
-    return () => {
-      eventSource.close();
-    };
+    // SSE 관리 로직은 SSEContext.jsx로 이동됨 (중복 연결 방지)
   }, [isAuthenticated]);
 
   const getSignalsForStock = (code) => {
@@ -346,15 +309,10 @@ export const useStockManager = (isAuthenticated) => {
     const timeframes = ['1H', '2H', '4H', '1D', '1W'];
     
     try {
-      const { default: axiosClient } = await import('../api/axiosClient.js');
-      
-      setSyncProgress({ current: 0, total: 348, timeframe: timeframes[0] });
       // 백엔드에서 배열 처리를 지원하므로 한 번만 요청 (Mutex Lock 우회 및 순차 처리 보장)
       const response = await axiosClient.post('/api/auto-sync', { timeframes: timeframes }, { timeout: 300000 });
       
       alert(response.data.message);
-      // fetchData()는 SSE의 `current === total` 완료 이벤트 수신 시점(useStockManager)에서 자동 실행되므로 여기선 생략해도 무방하나,
-      // immediate fallback 보장 차원에서 호출
       fetchData();
     } catch (error) {
       console.error("Integrated auto-sync error:", error);
@@ -362,7 +320,6 @@ export const useStockManager = (isAuthenticated) => {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
       setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 348, timeframe: '완료' });
     }
   };
 
@@ -477,7 +434,7 @@ export const useStockManager = (isAuthenticated) => {
     showAll, setShowAll,
     uploadTimeframe, setUploadTimeframe,
     selectedStocks, setSelectedStocks,
-    isSyncing, syncProgress, isSendingTg,
+    isSyncing, isSendingTg,
     
     // Derived
     candidates, topSectors, activeCount,

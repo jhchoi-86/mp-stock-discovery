@@ -53,14 +53,15 @@ module.exports = {
       name: 'mp-stock-sniper-engine',
       script: 'main.py',
       cwd: './sniper_engine',
-      interpreter: './sniper_engine/venv/bin/python',
+      interpreter: './venv/bin/python3',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
       max_memory_restart: '1G',
       env_production: {
-        NODE_ENV: 'production'
+        NODE_ENV: 'production',
+        PYTHONPATH: '..'
       }
     },
     {

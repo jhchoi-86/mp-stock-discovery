@@ -11,7 +11,9 @@ STATE = {
     'buy_ticks': {},
     'sell_ticks': {},
     'ask_vol_sum': {},
-    'bid_vol_sum': {}
+    'bid_vol_sum': {},
+    'is_backtest': False,
+    'active_tickers': set()
 }
 
 # 🔴 [Red Team 압박 점검] OOM 틱 폭파 방어망

@@ -39,11 +39,12 @@ async def tracker_task():
                     }
                     STATE['virtual_pos'][sig_id] = pos_data
                     
-                    try:
-                        # 🔴 [Red Team 방어] 프로세스 OOM 킬(kill) 시 포지션 리스트 공중분해 방지용 Redis 안전망 hset 캐싱
-                        await redis_pool.hset(f"pos:{sig_id}", mapping=pos_data)
-                    except Exception as e:
-                        logger.warning(f"Tracker Redis Backup Failed (Skipping): {e}")
+                    if not STATE.get('is_backtest'):
+                        try:
+                            # 🔴 [Red Team 방어] 프로세스 OOM 킬(kill) 시 포지션 리스트 공중분해 방지용 Redis 안전망 hset 캐싱
+                            await redis_pool.hset(f"pos:{sig_id}", mapping=pos_data)
+                        except Exception as e:
+                            logger.warning(f"Tracker Redis Backup Failed (Skipping): {e}")
 
                     logger.info(f"🛡️ Position Tracked: {ticker} [{sig_id}] | Target: {pos_data['target']} | Stop: {pos_data['stop']}")
                     
@@ -81,11 +82,19 @@ async def tracker_task():
 
             # 가비지 컬렉션 (GC) 및 Broadcaster용 경고 빔 전송
             for sig_id in keys_to_delete:
+                ticker = STATE['virtual_pos'][sig_id]['ticker']
                 del STATE['virtual_pos'][sig_id]
-                try:
-                    await redis_pool.delete(f"pos:{sig_id}")
-                except Exception:
-                    pass
+                
+                # 🔵 [Unlock Signal] v4.8.0 리밸런싱을 위해 락 해제
+                if ticker in STATE.get('active_tickers', set()):
+                    STATE.get('active_tickers', set()).remove(ticker)
+                    logger.info(f"🔓 [Signal Unlocked] {ticker} is now eligible for new recommendations.")
+
+                if not STATE.get('is_backtest'):
+                    try:
+                        await redis_pool.delete(f"pos:{sig_id}")
+                    except Exception:
+                        pass
                 
                 await BROADCAST_QUEUE.put({
                     "type": "EXIT_WARN", 
@@ -95,10 +104,18 @@ async def tracker_task():
                     "price": float(cur_price)  # 🔴 [Red Team 핫픽스] 백테스터 Metrics 정산을 위해 청산 실행가(Price) 기명 필수!
                 })
 
-            await asyncio.sleep(0.5) 
+            if not STATE.get('is_backtest'):
+                await asyncio.sleep(0.5) 
+            else:
+                await asyncio.sleep(0) # Yield for other tasks but don't wait
                 
         except asyncio.CancelledError:
             break
         except Exception as e:
             logger.error(f"🔴 Tracker Critical Exception: {e}")
+            # Ensure task_done is called if we were in the middle of processing an alert
+            try:
+                TRACKER_QUEUE.task_done()
+            except ValueError:
+                pass
             await asyncio.sleep(1)

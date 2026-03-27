@@ -40,6 +40,32 @@ const adminService = {
       console.error(`[Admin Service] Updating user ${userId} failed:`, error);
       throw error;
     }
+  },
+
+  /**
+   * Fetches daily stock snapshots for analytics (Public/Paid).
+   */
+  getPublicSnapshots: async (params) => {
+    try {
+      const response = await axiosClient.get('/api/public/daily-snapshots', { params });
+      return response.data;
+    } catch (error) {
+      console.error('[Admin Service] Fetching public snapshots failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetches available dates for daily snapshots (Public/Paid).
+   */
+  getPublicSnapshotDates: async () => {
+    try {
+      const response = await axiosClient.get('/api/public/daily-snapshot-dates');
+      return response.data;
+    } catch (error) {
+      console.error('[Admin Service] Fetching public snapshot dates failed:', error);
+      throw error;
+    }
   }
 };
 

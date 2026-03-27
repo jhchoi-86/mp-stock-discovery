@@ -3,9 +3,12 @@ import adminService from '../api/adminService';
 import axiosClient from '../api/axiosClient';
 import useAuthStore from '../store/authStore';
 import { UserCog, ShieldAlert, ShieldCheck, ToggleLeft, ToggleRight, Trash2, CheckCircle } from 'lucide-react';
+import BacktestReportWidget from './BacktestReportWidget';
+import DailySnapshotAnalytics from './DailySnapshotAnalytics';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
+  const [activeTab, setActiveTab] = useState('users'); // 'users' or 'analytics'
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
@@ -155,11 +158,43 @@ const AdminDashboard = () => {
 
   return (
     <div className="fade-in" style={{ padding: '1.5rem', width: '100%' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
-        <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', margin: 0 }}>
-          <UserCog size={28} color="var(--accent)" />
-          회원 관리 블록 
-        </h2>
+      {/* 🚀 Phase 5: Backtest Performance Integration */}
+      <div style={{ marginBottom: '2.5rem' }}>
+        <BacktestReportWidget />
+      </div>
+
+      <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--glass-border)', marginBottom: '2rem' }}>
+        <button 
+          onClick={() => setActiveTab('users')}
+          style={{
+            padding: '0.75rem 1.5rem', background: activeTab === 'users' ? 'rgba(255,255,255,0.1)' : 'none',
+            border: 'none', borderBottom: activeTab === 'users' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'users' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          회원 관리
+        </button>
+        <button 
+          onClick={() => setActiveTab('analytics')}
+          style={{
+            padding: '0.75rem 1.5rem', background: activeTab === 'analytics' ? 'rgba(255,255,255,0.1)' : 'none',
+            border: 'none', borderBottom: activeTab === 'analytics' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'analytics' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          종목 성과 분석 📊
+        </button>
+      </div>
+
+      {activeTab === 'analytics' ? (
+        <DailySnapshotAnalytics />
+      ) : (
+        <>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>
+          <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', margin: 0 }}>
+            <UserCog size={28} color="var(--accent)" />
+            회원 관리 블록 
+          </h2>
         
         <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
           <input 
@@ -311,9 +346,13 @@ const AdminDashboard = () => {
           </tbody>
         </table>
       </div>
+      </>
+      )}
     </div>
   );
 };
+
+
 
 const thStyle = {
   padding: '1rem',

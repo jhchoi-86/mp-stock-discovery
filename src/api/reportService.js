@@ -3,7 +3,7 @@ import axiosClient from './axiosClient';
 const reportService = {
   getLatestReport: async () => {
     try {
-      const response = await axiosClient.get('/reports/daily/latest');
+      const response = await axiosClient.get('/api/reports/daily/latest');
       return response.data;
     } catch (error) {
       console.error('Failed to fetch latest report:', error);
