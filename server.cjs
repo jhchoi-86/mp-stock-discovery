@@ -522,9 +522,6 @@ setInterval(() => {
     });
 }, 300000); // Every 5 min
 
-const broadcastUpdate = () => {
-    clients.forEach(client => client.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`));
-};
 
 // Webhook Receiver
 app.post('/api/webhook', async (req, res) => {
