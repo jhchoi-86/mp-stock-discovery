@@ -9,7 +9,6 @@ import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
-import TradingViewWidget from './TradingViewWidget.jsx';
 import reportService from '../api/reportService';
 import useSWR from 'swr';
 import { 
@@ -29,7 +28,6 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
-  const [selectedTicker, setSelectedTicker] = useState('KRX:005930');
   const fileInputRef = useRef(null);
 
   const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
@@ -192,11 +190,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 </div>
             ) : (
                 <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 450px', gap: '1.5rem', marginBottom: '1.5rem' }}>
+                <div style={{ marginBottom: '1.5rem' }}>
                     <RoiRankingWidget />
-                    <div className="fade-in" style={{ animationDelay: '0.2s' }}>
-                        <TradingViewWidget symbol={selectedTicker} />
-                    </div>
                 </div>
       <div className="controls fade-in" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input 
@@ -626,17 +621,6 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
                     <td style={{ textAlign: 'center' }}>
-                      <button 
-                        onClick={() => {
-                          const prefix = (stock.market?.includes('KOSPI') || stock.market === 'KOSPI200') ? 'KRX' : 'KOSDAQ';
-                          const target = `${prefix}:${stock.code}`;
-                          setSelectedTicker(target);
-                        }} 
-                        className="tv-link"
-                        style={{ fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px', whiteSpace: 'nowrap', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)' }}
-                      >
-                        <Activity size={14} /> 분석
-                      </button>
                       <a 
                         href={`https://www.tradingview.com/chart/?symbol=${(stock.market?.includes('KOSPI') || stock.market === 'KOSPI200') ? 'KRX' : 'KOSDAQ'}:${stock.code}`} 
                         target="_blank" 

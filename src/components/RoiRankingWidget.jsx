@@ -33,12 +33,7 @@ export default function RoiRankingWidget() {
   if (loading) return null; // Or a subtle skeleton loader
   
   if (error || rankings.length === 0) {
-    return (
-      <div className="w-full bg-slate-900/60 backdrop-blur-md rounded-2xl p-6 border border-slate-700/50 mb-6 flex items-center justify-center text-slate-400">
-        <AlertCircle size={20} className="mr-2" />
-        <span className="text-sm">{error || "아직 집계된 추천 적중 데이터가 없습니다."}</span>
-      </div>
-    );
+    return null;
   }
 
   return (
