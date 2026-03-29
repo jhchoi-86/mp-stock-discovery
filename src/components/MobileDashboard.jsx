@@ -11,6 +11,17 @@ import reportService from '../api/reportService';
 import useSWR from 'swr';
 import { Activity, Share2, Filter, Layout, LogOut } from 'lucide-react';
 
+// KST 기준 장중 상태 판별
+function getMarketStatus() {
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const day   = kstNow.getUTCDay();
+  const t     = kstNow.getUTCHours() * 100 + kstNow.getUTCMinutes();
+  if (day === 0 || day === 6) return 'closed';
+  if (t >= 900  && t < 1530) return 'live';
+  if (t >= 1530 && t <= 2000) return 'afterhours';
+  return 'closed';
+}
+
 const MobileDashboard = ({ manager, user, clearAuth }) => {
   const [landingTab, setLandingTab] = useState('MP_SIGNAL'); // 'HOME', 'MP_SIGNAL', 'DAILY_PERFORMANCE'
   const {
@@ -137,18 +148,18 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
         {landingTab === 'DAILY_PERFORMANCE' ? (
           <div style={{ padding: '1rem' }} className="fade-in">
-             <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', marginBottom: '1rem' }}>
-                <Activity size={20} color="var(--primary)" /> 종목 성과 분석 📊
-             </h2>
-             <DailySnapshotAnalytics isPublic={true} isMobile={true} />
-          </div>
-        ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
-          <div style={{ padding: '1rem' }} className="fade-in">
              <MPStockDailyReport 
                 data={reportData} 
                 isLoading={isReportLoading} 
                 isFallback={!reportData && !isReportLoading} 
              />
+          </div>
+        ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
+          <div style={{ padding: '1rem' }} className="fade-in">
+             <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', marginBottom: '1rem' }}>
+                <Activity size={20} color="var(--primary)" /> 종목 성과 분석 📊
+             </h2>
+             <DailySnapshotAnalytics isPublic={true} isMobile={true} />
           </div>
         ) : (
           <>
@@ -159,9 +170,17 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         }}>
           <div style={{ minWidth: '100px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>시스템 상태</div>
-            <div style={{ fontSize: '0.9rem', color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <div className="pulse-dot" style={{ width: '6px', height: '6px' }}></div> 실시간 가동중
-            </div>
+            {(() => {
+              const ms = getMarketStatus();
+              const color = ms === 'live' ? 'var(--success)' : ms === 'afterhours' ? '#f59e0b' : '#6b7280';
+              const label = ms === 'live' ? '실시간 가동중' : ms === 'afterhours' ? '시간외 거래' : '장 마감';
+              return (
+                <div style={{ fontSize: '0.9rem', color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <div className="pulse-dot" style={{ width: '6px', height: '6px', background: ms !== 'live' ? color : '', boxShadow: ms !== 'live' ? 'none' : '' }}></div>
+                  {label}
+                </div>
+              );
+            })()}
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>수신 신호</div>

@@ -21,14 +21,26 @@ import {
   ExternalLink 
 } from 'lucide-react';
 
+// KST 기준 장중 상태 판별
+function getMarketStatus() {
+  const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
+  const day   = kstNow.getUTCDay();
+  const t     = kstNow.getUTCHours() * 100 + kstNow.getUTCMinutes();
+  if (day === 0 || day === 6) return 'closed';
+  if (t >= 900  && t < 1530) return 'live';       // 09:00~15:30 정규장
+  if (t >= 1530 && t <= 2000) return 'afterhours'; // 15:30~20:00 시간외
+  return 'closed';
+}
+
 const PcDashboard = ({ manager, user, clearAuth }) => {
-  const isManagementUser = user && (user.role === 'ADMIN' || user.email === 'choisooki7@gmail.com');
+  const isManagementUser = user && user.role === 'ADMIN';
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [landingTab, setLandingTab] = useState('MP_SIGNAL'); // 'HOME', 'MP_SIGNAL', 'DAILY_PERFORMANCE'
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
   const fileInputRef = useRef(null);
+  const marketStatus = getMarketStatus();
 
   const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
     revalidateOnFocus: true,
@@ -91,9 +103,17 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         <div className="stats-bar">
           <div className="stat-item">
             <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>시스템 상태</div>
-            <div className="stat-value" style={{ color: 'var(--success)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap' }}>
-              <div className="pulse-dot"></div>
-              실시간 가동중
+            <div className="stat-value" style={{
+              color: marketStatus === 'live' ? 'var(--success)' : marketStatus === 'afterhours' ? '#f59e0b' : '#6b7280',
+              display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap'
+            }}>
+              <div className="pulse-dot" style={{
+                background: marketStatus === 'live' ? '' : marketStatus === 'afterhours' ? '#f59e0b' : '#6b7280',
+                boxShadow: marketStatus === 'live' ? '' : 'none'
+              }}></div>
+              {marketStatus === 'live' && '실시간 가동중'}
+              {marketStatus === 'afterhours' && '시간외 거래'}
+              {marketStatus === 'closed' && '장 마감'}
             </div>
           </div>
           <SyncProgressHeader onUpdateRequested={manager.fetchData} fallbackCount={signals.length} />
@@ -175,18 +195,18 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
             {landingTab === 'DAILY_PERFORMANCE' ? (
                 <div className="fade-in">
-                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', marginBottom: '1.5rem' }}>
-                        <Activity size={24} color="var(--primary)" /> 종목 성과 분석 📊
-                    </h2>
-                    <DailySnapshotAnalytics isPublic={true} isMobile={false} />
-                </div>
-            ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
-                <div className="fade-in">
                     <MPStockDailyReport 
                         data={reportData} 
                         isLoading={isReportLoading} 
                         isFallback={!reportData && !isReportLoading} 
                     />
+                </div>
+            ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
+                <div className="fade-in">
+                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', marginBottom: '1.5rem' }}>
+                        <Activity size={24} color="var(--primary)" /> 종목 성과 분석 📊
+                    </h2>
+                    <DailySnapshotAnalytics isPublic={true} isMobile={false} />
                 </div>
             ) : (
                 <>
