@@ -110,12 +110,12 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
               <div key={idx} className="card" style={{ padding: '1rem', borderLeft: `4px solid ${s.yield >= 0 ? 'var(--success)' : 'var(--danger)'}` }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                   <span 
-                    style={{ fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
+                    style={{ fontWeight: 800, fontSize: '1rem', cursor: 'pointer', textDecoration: 'underline', color: 'var(--primary)' }}
                     onClick={() => window.open(`https://kr.tradingview.com/chart/?symbol=KRX:${s.code}`, '_blank')}
                   >
                     {s.name} <small style={{ fontWeight: 'normal', color: 'var(--text-muted)', fontSize: '0.75rem' }}>{s.code}</small>
                   </span>
-                  <span style={{ color: s.yield >= 0 ? '#ff4d4d' : '#4d94ff', fontWeight: 'bold' }}>
+                  <span style={{ color: s.yield >= 0 ? '#ff4d4d' : '#4d94ff', fontWeight: 'normal' }}>
                     {s.yield >= 0 ? '+' : ''}{(s.yield || 0).toFixed(2)}%
                   </span>
                 </div>
@@ -203,7 +203,7 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
                   </td>
                   {!isPublic && (
                     <td style={{ padding: '1rem', textAlign: 'center' }}>
-                      <div style={{ fontSize: '1.2rem', fontWeight: 900, color: s.adx >= 25 ? 'var(--accent)' : '#fff' }}>
+                      <div style={{ fontSize: '1.2rem', fontWeight: 'normal', color: s.adx >= 25 ? 'var(--accent)' : '#fff' }}>
                         {s.adx || 0}
                       </div>
                       <div style={{ fontSize: '0.65rem', color: '#666' }}>{s.adx >= 25 ? '강함' : '추세중'}</div>
@@ -213,7 +213,7 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
                     <span style={{ fontSize: '0.85rem', color: '#fff' }}>{s.category}</span>
                   </td>
                   <td style={{ padding: '1rem', textAlign: 'center' }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                    <div style={{ fontSize: '1rem', fontWeight: 'normal', color: '#fff' }}>
                       {s.score}
                     </div>
                   </td>
@@ -223,14 +223,14 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
                     </div>
                   </td>
                   <td style={{ padding: '1rem', textAlign: 'right' }}>
-                    <div style={{ fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                    <div style={{ fontSize: '1rem', fontWeight: 'normal', color: '#fff' }}>
                         {Math.round(s.currentPrice || 0).toLocaleString()}원
                     </div>
                   </td>
                   <td style={{ padding: '1rem', textAlign: 'right' }}>
                     <div style={{
                         fontSize: '1.1rem', 
-                        fontWeight: 900, 
+                        fontWeight: 'normal', 
                         color: s.yield >= 0 ? '#ff4d4d' : '#4d94ff'
                     }}>
                         {s.yield >= 0 ? '+' : ''}{(s.yield || 0).toFixed(2)}%

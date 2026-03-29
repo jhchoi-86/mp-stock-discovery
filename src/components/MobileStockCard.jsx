@@ -29,7 +29,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
     const absRate = Math.abs(parseFloat(kisData.rate));
     
     return (
-      <span style={{ color, marginLeft: '6px', fontSize: '0.8rem', fontWeight: 'bold' }}>
+      <span style={{ color, marginLeft: '6px', fontSize: '0.8rem', fontWeight: 'normal' }}>
         {arrow} {absRate.toFixed(2)}%
       </span>
     );
@@ -97,17 +97,17 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
               <span style={{ fontSize: '1.1rem', fontWeight: '800', color: '#fff' }}>{stock.name}</span>
               {isHH && (
-                <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
                   HH 강력신호
                 </span>
               )}
               {stock.isTopSector && (
-                <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
                   🔥 주도섹터
                 </span>
               )}
             </div>
-            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: '#fff' }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'normal', color: '#fff' }}>
               {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
             </div>
           </div>
@@ -120,7 +120,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
           </div>
 
           <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
-            <div style={{ background: catBg, color: catColor, padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>
+            <div style={{ background: catBg, color: catColor, padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'normal' }}>
               {categoryLabel}
             </div>
             <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}>
@@ -139,7 +139,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
           {/* Moving Averages (1D) */}
           {t1D && (
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: '#fff', background: 'rgba(255,193,7,0.1)', padding: '6px 8px', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,193,7,0.3)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontWeight: 'bold', color: '#ffc107', marginRight: '4px' }}>이평선 주가💡</span>
+              <span style={{ fontWeight: 'normal', color: '#ffc107', marginRight: '4px' }}>이평선 주가💡</span>
               <span style={{ fontSize: '0.7rem' }}>20일: {t1D.sma20 > 0 ? `${t1D.sma20.toLocaleString()}원` : '-'}</span>
               <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
               <span style={{ fontSize: '0.7rem' }}>60일: {t1D.sma60 > 0 ? `${t1D.sma60.toLocaleString()}원` : '-'}</span>
@@ -153,7 +153,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>
                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                  {t1H?.result_2 > 0 && (
-                   <span style={{ color: '#FFD700', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                   <span style={{ color: '#FFD700', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
                      1차 진입(1H): {Math.round(t1H.result_2).toLocaleString()}
                      {stock.close > 0 && (
                        <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t1H.result_2 >= stock.close ? '#ff6b6b' : '#339af0' }}>
@@ -163,7 +163,7 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
                    </span>
                  )}
                  {t1D?.bb_upper > 0 && (
-                   <span style={{ color: 'var(--accent)', fontWeight: 'bold', whiteSpace: 'nowrap', marginTop: '4px' }}>
+                   <span style={{ color: 'var(--accent)', fontWeight: 'normal', whiteSpace: 'nowrap', marginTop: '4px' }}>
                      목표(1D): {Math.round(t1D.bb_upper).toLocaleString()}
                    </span>
                  )}
@@ -203,13 +203,13 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
         <a 
           href={`https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}`}
           target="_blank" rel="noopener noreferrer"
-          style={{ flex: 1, padding: '0.6rem', textAlign: 'center', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 'bold', textDecoration: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', borderRight: '1px solid rgba(255,255,255,0.05)' }}
+          style={{ flex: 1, padding: '0.6rem', textAlign: 'center', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: 'normal', textDecoration: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', borderRight: '1px solid rgba(255,255,255,0.05)' }}
         >
           <ExternalLink size={14} /> 차트보기
         </a>
         <button 
           onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-          style={{ flex: 1, padding: '0.6rem', background: 'none', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: 'bold', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
+          style={{ flex: 1, padding: '0.6rem', background: 'none', border: 'none', color: '#fff', fontSize: '0.8rem', fontWeight: 'normal', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', cursor: 'pointer' }}
         >
           {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />} 
           {isExpanded ? '상세 접기' : '상세 지표 수치'}

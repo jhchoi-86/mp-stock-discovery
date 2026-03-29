@@ -480,12 +480,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
                           <span className="stock-name" style={{ fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{stock.name}</span>
                           {stock.latestSignal && stock.latestSignal.signal_HH && (
-                            <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                            <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
                               HH 강력신호
                             </span>
                           )}
                           {stock.isTopSector && (
-                            <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                            <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
                               🔥 주도섹터
                             </span>
                           )}
@@ -499,10 +499,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }}>
                        {stock.latestSignal ? (
                           <>
-                            <div style={{ background: catBg, color: catColor, padding: '2px 4px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.65rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
+                            <div style={{ background: catBg, color: catColor, padding: '2px 4px', borderRadius: '4px', fontWeight: 'normal', fontSize: '0.65rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
                               {categoryLabel}
                             </div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                            <div style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
                               {Math.round(stock.latestSignal.adx || 0)}
                             </div>
                           </>
@@ -519,7 +519,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                             ★★★★★
                           </div>
                         </div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>
+                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
                           {stock.total_score}점
                         </div>
                       </div>
@@ -554,7 +554,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   fontSize: '0.55rem',
-                                  fontWeight: 'bold',
+                                  fontWeight: 'normal',
                                   background: isHH ? '#FF1744' : (hasSignal ? '#00E676' : 'rgba(255,255,255,0.1)'),
                                   border: hasSignal ? `1px solid ${isHH ? '#FF1744' : '#00E676'}` : '1px solid rgba(255,255,255,0.15)',
                                   color: hasSignal ? (hasSignal && !isHH ? '#000' : '#fff') : 'rgba(255,255,255,0.5)'
@@ -570,7 +570,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap', padding: '0.4rem 0.2rem' }}>
                       {stock.latestSignal?.cond_up7 ? (
-                        <div style={{ background: '#2563EB', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.75rem', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>상승</div>
+                        <div style={{ background: '#2563EB', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'normal', fontSize: '0.75rem', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>상승</div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>-</span>
                       )}
@@ -589,12 +589,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                           if (target1H || target2H || target4H || target1D) {
                             return (
                               <>
-                                <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+                                <span style={{ color: '#fff', fontWeight: 'normal', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
                                   현재가: {curPrice > 0 ? Math.round(curPrice).toLocaleString() : '-'}원
                                   {renderKISChange(curPrice, dailyPrevClose, kisData)}
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
-                                <span style={{ color: '#FFD700', fontWeight: 'bold' }}>
+                                <span style={{ color: '#FFD700', fontWeight: 'normal' }}>
                                   1차 매수진입가 (1H): {target1H > 0 ? Math.round(target1H).toLocaleString() : '-'}원
                                   {curPrice > 0 && target1H > 0 ? (
                                     <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target1H >= curPrice ? '#ff6b6b' : '#339af0' }}>

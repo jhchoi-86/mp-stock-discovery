@@ -119,12 +119,12 @@ body {
 .dashboard-root .stat-label {
   font-size: 0.75rem;
   color: var(--text-muted);
-  font-weight: 500;
+  font-weight: 400;
 }
 
 .dashboard-root .stat-value {
-  font-size: 1.1rem;
-  font-weight: 700;
+  font-size: 1rem;
+  font-weight: 400;
 }
 
 .dashboard-root .card {

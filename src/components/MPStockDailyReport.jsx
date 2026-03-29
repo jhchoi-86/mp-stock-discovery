@@ -27,15 +27,15 @@ const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
       <div className="lp-summary-grid-v41">
         <div className="lp-summary-card-v41">
             <h4>누적 적중률</h4>
-            <div className="value">{summary.hit_rate || '0%'}</div>
+            <div className="value" style={{ fontWeight: 500 }}>{summary.hit_rate || '0%'}</div>
         </div>
         <div className="lp-summary-card-v41">
             <h4>평균 수익률</h4>
-            <div className="value">{summary.avg_yield || '0.0%'}</div>
+            <div className="value" style={{ fontWeight: 500 }}>{summary.avg_yield || '0.0%'}</div>
         </div>
         <div className="lp-summary-card-v41">
             <h4>활성 종목 수</h4>
-            <div className="value">{summary.portfolio_size || stocks.length}종목</div>
+            <div className="value" style={{ fontWeight: 500 }}>{summary.portfolio_size || stocks.length}종목</div>
         </div>
       </div>
 
@@ -99,17 +99,17 @@ const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
                                 </div>
                             </td>
                             <td>
-                                <div style={{fontSize: '1rem', fontWeight: 800, color: '#fff'}}>{stock.recommended_at}</div>
+                                <div style={{fontSize: '0.9rem', fontWeight: 400, color: '#fff'}}>{stock.recommended_at}</div>
                             </td>
                              <td style={{textAlign: 'right'}}>
-                                <div style={{fontSize: '1rem', fontWeight: 800, color: '#fff'}}>
+                                <div style={{fontSize: '0.9rem', fontWeight: 400, color: '#fff'}}>
                                     {(stock.current_price || 0).toLocaleString()}원
                                 </div>
                             </td>
                              <td style={{textAlign: 'right'}}>
                                 <div style={{
-                                    fontSize: '1.25rem', 
-                                    fontWeight: 900, 
+                                    fontSize: '1.1rem', 
+                                    fontWeight: 500, 
                                     color: stock.yield_pct > 0 ? '#ff4d4d' : (stock.yield_pct < 0 ? '#4da6ff' : '#888')
                                 }}>
                                     {stock.yield_pct > 0 ? '+' : ''}{stock.yield_pct}%

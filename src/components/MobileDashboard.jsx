@@ -175,7 +175,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
               const color = ms === 'live' ? 'var(--success)' : ms === 'afterhours' ? '#f59e0b' : '#6b7280';
               const label = ms === 'live' ? '실시간 가동중' : ms === 'afterhours' ? '시간외 거래' : '장 마감';
               return (
-                <div style={{ fontSize: '0.9rem', color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <div style={{ fontSize: '0.9rem', color, fontWeight: 'normal', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <div className="pulse-dot" style={{ 
                     width: '6px', height: '6px', 
                     background: ms !== 'live' ? color : '', 
@@ -193,11 +193,11 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
           </div>
           <div style={{ minWidth: '70px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>강력 신호</div>
-            <div style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--accent)' }}>{activeCount}</div>
+            <div style={{ fontSize: '0.9rem', fontWeight: 'normal', color: 'var(--accent)' }}>{activeCount}</div>
           </div>
           <div style={{ minWidth: '120px', flexShrink: 0 }}>
             <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>주도 섹터</div>
-            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--secondary)' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--secondary)' }}>
               {topSectors.length > 0 ? topSectors.join(' · ') : '분석중'}
             </div>
           </div>
