@@ -10,10 +10,9 @@ router.post('/run', authMiddleware, async (req, res) => {
     console.log(`[Backtest Request] User: ${req.user?.email}, Role: ${req.user?.role}`);
     
     // Check if user is ADMIN or the whitelisted management user (Extra Security)
-    const isAdmin = req.user?.role === 'ADMIN';
-    const isWhitelisted = req.user?.email === 'choisooki7@gmail.com';
+    const isManagementUser = req.user?.role === 'ADMIN';
 
-    if (!isAdmin && !isWhitelisted) {
+    if (!isManagementUser) {
         console.warn(`[Backtest Forbidden] Access denied for ${req.user?.email}`);
         return res.status(403).json({ error: '관리자 전용 기능입니다.' });
     }

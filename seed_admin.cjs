@@ -5,13 +5,13 @@ const prisma = new PrismaClient();
 
 async function main() {
   try {
-    const hash = await bcrypt.hash('admin123!', 10);
+    const hash = await bcrypt.hash(process.env.ADMIN_PASSWORD || 'admin123!', 10);
     const admin = await prisma.user.create({
       data: {
-        email: 'admin@mpstock.co.kr',
+        email: process.env.ADMIN_EMAIL || 'admin@mpstock.co.kr',
         passwordHash: hash,
         role: 'ADMIN', // Enum from schema.prisma
-        name: '슈퍼관리자'
+        name: process.env.ADMIN_NAME || '슈퍼관리자'
       }
     });
     console.log('Successfully seeded admin user:', admin.email);

@@ -6,7 +6,7 @@ async function verifyJWT(req, res, next) {
     const token = req.cookies?.accessToken || req.headers.authorization?.split(' ')[1];
     if (!token) return res.status(401).json({ error: 'No token' });
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret');
+    const payload = jwt.verify(token, process.env.JWT_SECRET);
 
     // [1] Blacklist check
     if (await redis.get(`blacklist:${payload.jti}`)) {

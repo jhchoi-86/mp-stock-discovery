@@ -7,9 +7,10 @@ const DATA_DIR = path.join(__dirname, 'data');
 const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
 const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
 
-// Hardcoded for final manual broadcast (from server .env)
-const TELEGRAM_BOT_TOKEN = "8629426971:AAGTzFaw9TqcF4V2PWY9dKCcX9tUIELzuM4";
-const TELEGRAM_CHAT_IDS = ["6741237663","-1003821536889"];
+// Load from environment
+require('dotenv').config();
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || "").split(",").filter(id => id.trim());
 
 async function runManualBroadcast() {
     console.log('[Manual-Broadcast] Starting Report Generation...');

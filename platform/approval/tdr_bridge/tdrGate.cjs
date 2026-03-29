@@ -3,7 +3,7 @@ const axios = require('axios');
 // const prisma = require('../../infra/db/prismaClient.cjs'); // Uncomment when DB is ready
 
 async function verifyAndApprove(candidate) {
-  const expectedHash = crypto.createHmac('sha256', process.env.TDR_SECRET || 'secret')
+  const expectedHash = crypto.createHmac('sha256', process.env.TDR_SECRET)
                              .update(JSON.stringify(candidate.raw_data || {}))
                              .digest('hex');
   

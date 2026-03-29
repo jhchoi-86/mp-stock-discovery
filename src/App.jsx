@@ -52,7 +52,7 @@ const App = () => {
     return <LandingPage onLoginClick={() => setShowLogin(true)} />;
   }
 
-  const isManagementUser = user && (user.role === 'ADMIN' || user.email === 'choisooki7@gmail.com');
+  const isManagementUser = user && user.role === 'ADMIN';
 
   if (isAuthenticated && !isManagementUser) {
     return (

@@ -2,7 +2,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function main() {
-  const email = 'choisooki7@gmail.com';
+  const email = process.env.ADMIN_EMAIL || 'choisooki7@gmail.com';
   const user = await prisma.user.findFirst({
     where: { 
       OR: [
@@ -13,7 +13,7 @@ async function main() {
   });
 
   if (!user) {
-    console.log('User not found: choisooki7@gmail.com / woo4245');
+    console.log(`User not found for email: ${email} or name: woo4245`);
     return;
   }
 
