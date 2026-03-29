@@ -5,9 +5,10 @@ echo         MP Stock Discovery Lite Deploy Script (v2.0)
 echo ========================================================
 echo.
 
-set "SSH_KEY=C:\Users\danbe\Documents\mp-key.pem"
-set "SSH_USER=ubuntu"
-set "SSH_HOST=15.134.243.209"
+:: Use environment variables if set, otherwise fallback to defaults (DEPRECATED: Please set these in your system environment)
+if "%MP_SSH_KEY%"=="" (set "SSH_KEY=C:\Users\danbe\Documents\mp-key.pem") else (set "SSH_KEY=%MP_SSH_KEY%")
+if "%MP_SSH_USER%"=="" (set "SSH_USER=ubuntu") else (set "SSH_USER=%MP_SSH_USER%")
+if "%MP_SSH_HOST%"=="" (set "SSH_HOST=15.134.243.209") else (set "SSH_HOST=%MP_SSH_HOST%")
 set "PROJECT_DIR=~/mp-stock-discovery"
 
 :: Record Deployment Start Time (Using PowerShell to fix Locale bugs)
@@ -26,7 +27,7 @@ ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJEC
 
 echo.
 echo [3/8] Syncing latest Git codebase on AWS Server...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && git reset --hard HEAD && git clean -fd && git pull"
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && git reset --hard HEAD && git clean -fd -e data/ && git pull"
 
 echo.
 echo [4/8] Uploading compiled dist folder to AWS Server...

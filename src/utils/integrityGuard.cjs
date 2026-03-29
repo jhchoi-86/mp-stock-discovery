@@ -11,7 +11,8 @@ function verifyIntegrity() {
 
   const filesToHash = [
     path.join(__dirname, '..', '..', 'server.cjs'),
-    path.join(__dirname, '..', '..', 'analyzer.cjs')
+    path.join(__dirname, '..', '..', 'analyzer.cjs'),
+    path.join(__dirname, 'fullUniversePoller.cjs')
   ];
 
   const hash = crypto.createHash('sha256');
