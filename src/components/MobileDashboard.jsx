@@ -176,7 +176,12 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
               const label = ms === 'live' ? '실시간 가동중' : ms === 'afterhours' ? '시간외 거래' : '장 마감';
               return (
                 <div style={{ fontSize: '0.9rem', color, fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <div className="pulse-dot" style={{ width: '6px', height: '6px', background: ms !== 'live' ? color : '', boxShadow: ms !== 'live' ? 'none' : '' }}></div>
+                  <div className="pulse-dot" style={{ 
+                    width: '6px', height: '6px', 
+                    background: ms !== 'live' ? color : '', 
+                    boxShadow: ms !== 'live' ? 'none' : '',
+                    '--pulse-color': ms === 'live' ? 'rgba(16, 185, 129, 0.7)' : ms === 'afterhours' ? 'rgba(245, 158, 11, 0.7)' : 'rgba(107, 114, 128, 0.4)'
+                  }}></div>
                   {label}
                 </div>
               );

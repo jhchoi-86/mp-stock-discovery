@@ -109,7 +109,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             }}>
               <div className="pulse-dot" style={{
                 background: marketStatus === 'live' ? '' : marketStatus === 'afterhours' ? '#f59e0b' : '#6b7280',
-                boxShadow: marketStatus === 'live' ? '' : 'none'
+                boxShadow: marketStatus === 'live' ? '' : 'none',
+                '--pulse-color': marketStatus === 'live' ? 'rgba(16, 185, 129, 0.7)' : marketStatus === 'afterhours' ? 'rgba(245, 158, 11, 0.7)' : 'rgba(107, 114, 128, 0.4)'
               }}></div>
               {marketStatus === 'live' && '실시간 가동중'}
               {marketStatus === 'afterhours' && '시간외 거래'}
