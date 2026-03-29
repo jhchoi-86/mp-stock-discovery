@@ -210,11 +210,15 @@ const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
 // 🔴 [Red Team 방어 - R2] signals.json 원자적(Atomic) 락 시스템
 let isSignalFileLocked = false;
 const signalWriteQueue = [];
+const MAX_QUEUE_SIZE = 50;
 
 async function withSignalLock(fn) {
     return new Promise((resolve, reject) => {
         const execute = async () => {
             if (isSignalFileLocked) {
+                if (signalWriteQueue.length >= MAX_QUEUE_SIZE) {
+                    return reject(new Error('Signal write queue overflow (MAX 50)'));
+                }
                 signalWriteQueue.push(execute);
                 return;
             }
@@ -303,6 +307,21 @@ setInterval(async () => {
         }
     } catch(e) {}
 }, 5000);
+
+function refreshCacheNow() {
+    try {
+        if (fs.existsSync(STOCK_MASTER_FILE)) {
+            CACHED_STOCKS = fs.readFileSync(STOCK_MASTER_FILE, 'utf8');
+            lastStocksMtimeMs = fs.statSync(STOCK_MASTER_FILE).mtimeMs;
+        }
+        if (fs.existsSync(SIGNALS_FILE)) {
+            CACHED_SIGNALS = fs.readFileSync(SIGNALS_FILE, 'utf8');
+            lastSignalsMtimeMs = fs.statSync(SIGNALS_FILE).mtimeMs;
+        }
+    } catch(e) {
+        console.error('[Cache Refresh] Error:', e.message);
+    }
+}
 
 // Phase 12-2 Zero-Day Patch: Lightweight Auth Guard (No DB Hits)
 const requireProAuth = (req, res, next) => {
@@ -606,6 +625,7 @@ app.post('/api/webhook', async (req, res) => {
         sendTelegramAlert(newSignal, stockName).catch(err => console.error(err));
     }
 
+    refreshCacheNow();
     // Notify clients instantly
     broadcastUpdate();
 
@@ -744,6 +764,7 @@ app.post('/api/import-csv', requireProAuth, async (req, res) => {
         });
 
         console.log(`[Batch Import] ${newSignals.length} signals imported via CSV.`);
+        refreshCacheNow();
         broadcastUpdate();
 
         res.status(200).json({ message: `${newSignals.length}개의 종목이 성공적으로 불러와졌습니다.`, count: newSignals.length });
@@ -1190,6 +1211,67 @@ if (isPrimaryWorker) {
         TELEGRAM_BOT_TOKEN,
         TELEGRAM_CHAT_IDS
     });
+
+    async function archiveOldSignals() {
+        console.log('[Archive] Starting old signals cleanup...');
+        const retentionDays = parseInt(process.env.SIGNAL_RETENTION_DAYS || '7');
+        const archiveRetentionDays = parseInt(process.env.ARCHIVE_RETENTION_DAYS || '90');
+        const maxFiles = 90;
+        
+        await withSignalLock(async () => {
+            const raw = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
+            const signals = JSON.parse(raw);
+            const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+            
+            const toKeep = signals.filter(s => s.timestamp >= cutoffTime);
+            const toArchive = signals.filter(s => s.timestamp < cutoffTime);
+            
+            if (toArchive.length > 0) {
+                const archiveDir = path.join(__dirname, 'data', 'archive');
+                if (!fs.existsSync(archiveDir)) fs.mkdirSync(archiveDir, { recursive: true });
+                
+                const d = new Date();
+                const pad = n => n.toString().padStart(2, '0');
+                const dateStr = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+                const archFile = path.join(archiveDir, `signals_${dateStr}.json`);
+                
+                let existing = [];
+                if (fs.existsSync(archFile)) existing = JSON.parse(await fs.promises.readFile(archFile, 'utf8'));
+                await fs.promises.writeFile(archFile, JSON.stringify([...existing, ...toArchive], null, 2));
+                
+                const tmpFile = SIGNALS_FILE + '.tmp';
+                await fs.promises.writeFile(tmpFile, JSON.stringify(toKeep, null, 2));
+                await fs.promises.rename(tmpFile, SIGNALS_FILE);
+                
+                console.log(`[Archive] Archived ${toArchive.length} signals. Remaining: ${toKeep.length}.`);
+                refreshCacheNow();
+            }
+            
+            // Clean up old archives
+            const archiveDir = path.join(__dirname, 'data', 'archive');
+            if (fs.existsSync(archiveDir)) {
+                let files = fs.readdirSync(archiveDir).filter(f => f.startsWith('signals_'));
+                const fileCutoff = Date.now() - (archiveRetentionDays * 24 * 60 * 60 * 1000);
+                
+                files = files.filter(f => {
+                    const stats = fs.statSync(path.join(archiveDir, f));
+                    if (stats.mtimeMs < fileCutoff) {
+                        fs.promises.unlink(path.join(archiveDir, f)).catch(()=>{});
+                        return false;
+                    }
+                    return true;
+                });
+                
+                if (files.length > maxFiles) {
+                    files.sort();
+                    const toDelete = files.slice(0, files.length - maxFiles);
+                    toDelete.forEach(f => fs.promises.unlink(path.join(archiveDir, f)).catch(()=>{}));
+                }
+            }
+        });
+    }
+
+    cron.schedule(process.env.ARCHIVE_CRON_TIME || '0 2 * * *', () => archiveOldSignals());
 
     cron.schedule('0 21 * * 1-5', async () => {
         console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
