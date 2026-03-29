@@ -94,11 +94,15 @@ async function generateReport() {
         }
 
         // --- Phase 3: Live Valuation & Formatting ---
-        const LIVE_PRICE_FILE = path.join(dataDir, 'live_prices.json');
+        // 데이터 소스 우선순위: live_prices_full.json (fullUniversePoller) > live_prices.json (nightlyMonitor)
+        const LIVE_PRICE_FILE_FULL = path.join(dataDir, 'live_prices_full.json');
+        const LIVE_PRICE_FILE_LEGACY = path.join(dataDir, 'live_prices.json');
         let livePriceData = {};
         try {
-            if (fs.existsSync(LIVE_PRICE_FILE)) {
-                livePriceData = JSON.parse(fs.readFileSync(LIVE_PRICE_FILE, 'utf8'));
+            const priceFile = fs.existsSync(LIVE_PRICE_FILE_FULL) ? LIVE_PRICE_FILE_FULL : LIVE_PRICE_FILE_LEGACY;
+            if (fs.existsSync(priceFile)) {
+                livePriceData = JSON.parse(fs.readFileSync(priceFile, 'utf8'));
+                console.log(`[ReportGen] Live price source: ${path.basename(priceFile)} (${Object.keys(livePriceData).length}종목)`);
             }
         } catch (e) {}
 
@@ -158,32 +162,7 @@ async function generateReport() {
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
         fs.writeFileSync(path.join(logDir, 'latest.json'), JSON.stringify(payload, null, 2));
 
-        // --- Phase 4: Automated Persistence to DailyStockSnapshot (v4.7.2.2) ---
-        console.log(`[ReportGen] Persisting ${formattedStocks.length} performance snapshots to DB...`);
-        try {
-            const snapshotData = formattedStocks.map(s => ({
-                code: s.code,
-                name: s.name,
-                category: s.status === '체결' ? '추천종목' : '스나이퍼 포착',
-                score: s.score || 95,
-                currentPrice: s.current_price,
-                entryPrice1: s.target_price,
-                yield: s.yield_pct,
-                isExecuted: s.status === '체결',
-                executedAt: s.execution_time
-            }));
-            
-            // Note: skipDuplicates ensures we don't spam identical entries on hourly intervals
-            // For production, we'll rely on the default 'createdAt' to separate days.
-            await prisma.dailyStockSnapshot.createMany({
-                data: snapshotData,
-                skipDuplicates: true
-            });
-            console.log(`[ReportGen] SUCCESS: DB persistence complete.`);
-        } catch (dbErr) {
-            console.error('[ReportGen] DB Persistence Error:', dbErr);
-        }
-
+        // --- Phase 4: Automated Persistence legacy logic removed (Moved to server.cjs cron) ---
         console.log(`[ReportGen] SUCCESS: v4.7.2.2 Precision Sync Complete. Total stocks: ${formattedStocks.length}`);
     } catch (e) {
         console.error('[ReportGen] v4.7.2.1 Critical Error:', e);

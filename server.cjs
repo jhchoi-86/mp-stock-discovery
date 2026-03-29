@@ -19,6 +19,7 @@ const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
 const { startNightlyMonitor } = require('./src/utils/nightlyMonitor.cjs');
+const { startFullUniversePoller, getFullPriceCache } = require('./src/utils/fullUniversePoller.cjs');
 const { Queue } = require('bullmq');
 const redisClient = require('./platform/infra/redis/client.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
@@ -74,7 +75,7 @@ async function sendTelegramAlert(signal, stockName) {
     
     // Save Realtime webhook alert to DB
     try {
-        const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
+        const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
         if (adminUser) {
             await prisma.report.create({
                 data: { content: text, authorId: adminUser.id }
@@ -254,6 +255,7 @@ if (!fs.existsSync(SIGNALS_FILE)) {
 app.use('/api/reports', require('./src/routes/archive.cjs'));
 app.use('/api/roi-ranking', require('./src/routes/roi.cjs'));
 app.use('/api/subscriptions', require('./src/routes/subscriptions.cjs'));
+app.use('/api/backtest', require('./src/routes/backtest.cjs'));
 
 // Routes
 app.get('/api/download-history', (req, res) => {
@@ -439,7 +441,7 @@ app.get('/api/admin/daily-snapshots', async (req, res) => {
         const token = authHeader.split(' ')[1];
         try {
             const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-            if (decoded.role === 'ADMIN' || decoded.email === 'choisooki7@gmail.com') isAdmin = true;
+            if (decoded.role === 'ADMIN') isAdmin = true;
         } catch(e) {}
     }
     if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
@@ -1410,6 +1412,29 @@ if (isPrimaryWorker) {
               savePastRecommendations(approvedStocks);
             }
 
+            // --- Phase 13: Full Universe Persistence to DailyStockSnapshot ---
+            console.log(`[Cron] Persisting ${candidates.length} performance snapshots to DB...`);
+            try {
+                const snapshotData = candidates.map(s => ({
+                    code: s.code,
+                    name: s.name,
+                    category: s.total_score >= 80 ? '추천종목' : '스나이퍼 포착',
+                    score: s.total_score,
+                    adx: s.latestSignal?.adx || 0,
+                    currentPrice: s.latestSignal?.current_price || s.latestSignal?.entry_price || 0,
+                    entryPrice1: s.latestSignal?.result_2 || 0,
+                    yield: s.latestSignal?.kis_change_data?.rate || 0,
+                    tradeAmount: s.latestSignal?.kis_change_data?.trade_amount ? BigInt(s.latestSignal.kis_change_data.trade_amount) : 0n,
+                    foreignBuy: String(s.latestSignal?.kis_change_data?.foreign_buy || '-'),
+                    instBuy: String(s.latestSignal?.kis_change_data?.inst_buy || '-')
+                }));
+                
+                await prisma.dailyStockSnapshot.createMany({ data: snapshotData });
+                console.log(`[Cron] Successfully persisted ${snapshotData.length} records to DB.`);
+            } catch (snapErr) {
+                console.error('[Cron] Snapshot Persistence Error:', snapErr);
+            }
+
             for (const chatId of TELEGRAM_CHAT_IDS) {
               try {
                 const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
@@ -1420,7 +1445,7 @@ if (isPrimaryWorker) {
             
             // Save Nightly cron alert to DB
             try {
-              const adminUser = await prisma.user.findFirst({ where: { email: 'admin@mpstock.co.kr' } });
+              const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
               if (adminUser) {
                   await prisma.report.create({
                       data: { content: content, authorId: adminUser.id }
@@ -1463,4 +1488,22 @@ app.listen(PORT, '0.0.0.0', () => {
     }
     // R4: 백그라운드 AI 엔진 웜업 핑 (1회성)
     setTimeout(pingAIService, 5000);
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // [Full Universe Poller] 장중 348종목 실시간 현재가 배치 폴러 시작 (KIS API 준수)
+    // ─────────────────────────────────────────────────────────────────────────
+    setTimeout(() => {
+        try {
+            const stockMaster = JSON.parse(CACHED_STOCKS).map(s => ({
+                code:        s.code,
+                entry_price: 0  // initialze to 0; hit detection uses nightlyMonitor's past_recommendations
+            }));
+            if (stockMaster.length > 0) {
+                startFullUniversePoller(stockMaster, getKisAccessToken);
+                console.log(`[FullPoller] 장중 실시간 폴러 등록 완료 — ${stockMaster.length}종목`);
+            }
+        } catch (e) {
+            console.error('[FullPoller] 초기화 실패:', e.message);
+        }
+    }, 3000); // 서버 기동 3초 후 시작 (캐시 로드 완료 대기)
 });
