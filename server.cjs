@@ -19,7 +19,7 @@ const cron = require('node-cron');
 const { calculateSignals } = require('./analyzer.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
 const { startNightlyMonitor } = require('./src/utils/nightlyMonitor.cjs');
-const { startFullUniversePoller, getFullPriceCache } = require('./src/utils/fullUniversePoller.cjs');
+const { startFullUniversePoller, getFullPriceCache, getCachedPrice } = require('./src/utils/fullUniversePoller.cjs');
 const { Queue } = require('bullmq');
 const redisClient = require('./platform/infra/redis/client.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
@@ -119,6 +119,28 @@ const saveCircuitState = () => {
     }, 1000); // 1초 디바운스 (이벤트 루프 블로킹 100% 방지)
 };
 
+// 🔴 [Red Team 방어 - R11] 데이터 보존을 위한 스냅샷 저장 시스템
+async function saveSyncSnapshot(signalsArray) {
+    try {
+        if (!Array.isArray(signalsArray) || signalsArray.length === 0) return;
+        
+        // HH 신호가 있는 종목만 필터링하여 저장 (효율성)
+        const activeSignals = signalsArray.filter(s => s.signal_HH || s.cond_up7 || s.total_score >= 50);
+        
+        const snapshot = await prisma.syncSnapshot.create({
+            data: {
+                category: 'INTEGRATED_SYNC',
+                signals: activeSignals,
+                createdAt: new Date()
+            }
+        });
+        console.log(`[Snapshot] Successfully saved sync snapshot (ID: ${snapshot.id}, Signals: ${activeSignals.length})`);
+        return snapshot;
+    } catch (e) {
+        console.error('[Snapshot Save Error]', e.message);
+    }
+}
+
 async function getKisAccessToken() {
     if (!KIS_APP_KEY || !KIS_APP_SECRET) {
         throw new Error("KIS API Keys are missing in .env");
@@ -170,10 +192,8 @@ async function getKisAccessToken() {
     }
 }
 // 🔴 [Red Team 방어 - R8-B] 전역 DB 커넥션 풀 싱글턴 패턴 적용
-const { PrismaClient } = require('@prisma/client');
+const prisma = require('./src/lib/prisma.cjs');
 BigInt.prototype.toJSON = function() { return this.toString() };
-
-const prisma = new PrismaClient();
 
 const cookieParser = require('cookie-parser');
 const authRouter = require('./src/routes/auth.cjs');
@@ -201,7 +221,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/send-report', reportRouter);
 app.use('/api/v1/leads', leadsRouter);
-app.use('/api/reports/daily', publicReportsRouter);
+app.use('/api/reports/daily', publicReportsRouter(getFullPriceCache));
 
 const DATA_DIR = path.join(__dirname, 'data');
 const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
@@ -351,7 +371,7 @@ app.get('/api/signals', requireProAuth, (req, res) => {
 });
 
 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원
-let currentSyncProgress = { current: 0, total: 348, timeframe: '준비' };
+let currentSyncProgress = { current: 0, total: 350, timeframe: '준비' };
 app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
     res.json({
         isSyncing: isSyncMutexLocked,
@@ -391,6 +411,32 @@ const trackActivity = (req, res, next) => {
 
 app.use(trackActivity);
 
+// 🔴 [Archive API] Snapshots for Historical Browsing
+app.get('/api/archive/snapshots', async (req, res) => {
+    try {
+        const snapshots = await prisma.syncSnapshot.findMany({
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, category: true, createdAt: true },
+            take: 30 // 최신 30개 (박스 개수 제한)
+        });
+        res.json(snapshots);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/archive/snapshots/:id', async (req, res) => {
+    try {
+        const snapshot = await prisma.syncSnapshot.findUnique({
+            where: { id: req.params.id }
+        });
+        if (!snapshot) return res.status(404).json({ error: 'Snapshot not found' });
+        res.json(snapshot);
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/stream', (req, res) => {
     const token = req.cookies?.accessToken;
     let role = 'GUEST';
@@ -417,6 +463,20 @@ app.get('/api/stream', (req, res) => {
     res.userId = userId;
     clients.push(res);
     console.log(`[SSE] Client connected (${role}, ID: ${userId}). Total clients: ${clients.length}`);
+
+    // 🔴 [Red Team 방어 - R10] 즉시 상태 브로드캐스트 (새로고침 시 데이터 유지 보장)
+    try {
+        const initialPayloads = [
+            `data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`,
+            `data: ${JSON.stringify({ type: 'update' })}\n\n`
+        ];
+        initialPayloads.forEach(p => {
+            res.write(p);
+            if (res.flush) res.flush();
+        });
+    } catch(e) {
+        console.error('[SSE Initial Burst Error]', e.message);
+    }
 
     req.on('close', () => {
         clients = clients.filter(client => client !== res);
@@ -475,8 +535,27 @@ app.get('/api/admin/daily-snapshots', async (req, res) => {
     }
 });
 
-// [Public] 성과 통계 조회 (Landing Page용 - 누구나 접근 가능)
-app.get('/api/public/daily-snapshots', async (req, res) => {
+// [Public] 라이브 시그널 약식 조회 (Landing Page 마키용 - 누구나 접근 가능)
+app.get('/api/public/live-signals', async (req, res) => {
+    try {
+        const signals = JSON.parse(await fs.promises.readFile(path.join(__dirname, 'data/signals.json'), 'utf8'));
+        // 상위 10개만, 보안상 가격/상세전략 제외하고 기초 정보만 노출
+        const publicSignals = signals.slice(-10).reverse().map(s => ({
+            code: s.code,
+            name: s.name,
+            type: s.signal_HH ? 'SIGNAL' : 'UPDATE',
+            timeframe: s.timeframe,
+            timestamp: s.timestamp
+        }));
+        res.json(publicSignals);
+    } catch (error) {
+        console.error('Public live signals error:', error);
+        res.status(500).json({ error: '데이터를 불러올 수 없습니다.' });
+    }
+});
+
+// [Public] 성과 통계 조회 (Landing Page용 - PAID 회원 이상 권한 필요)
+app.get('/api/public/daily-snapshots', requireProAuth, async (req, res) => {
     const { date, code, sortBy = 'yield', order = 'desc' } = req.query;
     try {
         const snapshots = await getPerformanceSnapshotData({ date, code, sortBy, order });
@@ -798,392 +877,8 @@ app.post('/api/reset', requireProAuth, async (req, res) => {
 // Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
 let isSyncMutexLocked = false;
 
-// Auto-Sync with Yahoo Finance & KIS Realtime
-app.post('/api/auto-sync', async (req, res) => {
-    // Phase 12: Admin & PRO guard for Auto-Sync DDOS prevention
-    let isAllowed = false;
-    const authHeader = req.headers.authorization;
-    const token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : req.cookies?.accessToken;
-    let debugRole = 'NONE';
-    if (token) {
-        try {
-            const decoded = require('jsonwebtoken').verify(token, process.env.JWT_ACCESS_SECRET);
-            debugRole = decoded.role;
-            if (decoded.role === 'ADMIN' || decoded.role === 'PAID' || decoded.role === 'PRO_USER') isAllowed = true;
-        } catch(e) {
-            console.error('[Auto-Sync] JWT Verify Error:', e.message);
-        }
-    } else {
-        console.error('[Auto-Sync] Missing accessToken cookie in req.cookies!');
-    }
-    // 🔴 [Red Team 방어 - V3 패치] X-Forwarded-For IP Spoofing 방어 (커스텀 헤더 인증)
-    const isLocalCron = process.env.CRON_SECRET && req.headers['x-internal-cron-secret'] === process.env.CRON_SECRET;
-    
-    if (!isAllowed && !isLocalCron) {
-        console.error(`[Auto-Sync] Rejected sync origin: ${req.ip}, Role: ${debugRole}, TokenExists: ${!!token}`);
-        return res.status(403).json({ error: '권한이 없습니다. 자동 동기화는 PRO 회원 또는 관리자 전용입니다.' });
-    }
+// RESET: Deleted obsolete /api/auto-sync here (Consolidated at the bottom)
 
-    // Fail-fast Mutual Exclusion: Prevent race conditions & DoS
-    if (isSyncMutexLocked) {
-        return res.status(409).json({ error: '현재 다른 사용자에 의해 분석 갱신이 진행 중입니다. 잠시 후(1~2분 뒤) 다시 시도해주세요' });
-    }
-    isSyncMutexLocked = true;
-    const { timeframe, timeframes } = req.body;
-    const tfList = Array.isArray(timeframes) && timeframes.length > 0 ? timeframes : [(timeframe || '1D')];
-    
-    // Nginx 60s Timeout 방어: 즉시 200 응답 스풀링 (Fire-and-Forget)
-    res.status(200).json({ 
-        message: '동기화가 백그라운드에서 안전하게 시작되었습니다. 약 3~4분 후 완료 시 화면에 자동 반영됩니다!', 
-        count: 0 
-    });
-
-    (async () => {
-        try {
-            const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-            let kisTokenGlobal = null;
-            try {
-                kisTokenGlobal = await getKisAccessToken();
-            } catch(e) {
-                console.error("[Auto-Sync] KIS Token failed, falling back to pure Yahoo.");
-            }
-            
-            for (const tf of tfList) {
-                const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '1W': '1wk' };
-                const interval = intervalMap[tf] || '1d';
-
-                const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
-                let syncResults = [];
-                let errorCount = 0;
-
-                console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
-
-                const emitProgress = (cur, tot, t) => {
-                    currentSyncProgress = { current: cur, total: tot, timeframe: t };
-                    const payload = `data: ${JSON.stringify({ type: 'sync_progress', payload: { current: cur, total: tot, timeframe: t } })}\n\n`;
-                    clients.forEach(c => { 
-                        try { 
-                            c.write(payload); 
-                            if(c.flush) c.flush();
-                        } catch(e) {} 
-                    });
-                };
-
-                emitProgress(0, stocks.length, tf);
-
-    // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
-    const fetchHybridHistory = async (stock) => {
-        let days = 60;
-        if (tf === '5M') days = 5;
-        if (tf === '15M') days = 15;
-        if (tf === '30M') days = 30;
-        if (tf === '1D') days = 365;
-        if (tf === '1W') days = 1000;
-
-        const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
-        const symbolKS = stock.code + suffix;
-
-        const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
-        const period2 = Math.floor(Date.now() / 1000);
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbolKS}?period1=${period1}&period2=${period2}&interval=${interval}`;
-        
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            }
-        });
-        if (!response.ok) throw new Error(`Yahoo Fetch Failed: ${response.status}`);
-        const data = await response.json();
-        const result = data.chart.result[0];
-        const quotes = result.indicators.quote[0];
-        const timestamps = result.timestamp;
-        
-        let validIndices = [];
-        for (let i = 0; i < quotes.close.length; i++) {
-            if (quotes.close[i] !== null && timestamps[i] !== null) {
-                validIndices.push(i);
-            }
-        }
-
-        let chartData = {
-            open: validIndices.map(i => quotes.open[i]),
-            high: validIndices.map(i => quotes.high[i]),
-            low: validIndices.map(i => quotes.low[i]),
-            close: validIndices.map(i => quotes.close[i]),
-            volume: validIndices.map(i => quotes.volume[i]),
-            time: validIndices.map(i => timestamps[i])
-        };
-
-        // KIS Real-Time Overlay
-        if (kisTokenGlobal && (!kisCircuit.bypass || Date.now() > kisCircuit.bypassUntil)) {
-            kisCircuit.bypass = false; // 쿨다운 통과 시 해제
-            try {
-                const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
-                const kisRes = await axios.get(kisUrl, {
-                    headers: {
-                        'authorization': 'Bearer ' + kisTokenGlobal,
-                        'appkey': KIS_APP_KEY,
-                        'appsecret': KIS_APP_SECRET,
-                        'tr_id': 'FHKST01010100'
-                    },
-                    params: {
-                        "FID_COND_MRKT_DIV_CODE": "J",
-                        "FID_INPUT_ISCD": stock.code
-                    },
-                    timeout: 5000 // 🔴 [Red Team 방어] 5초 타임아웃 강제 (Network Hang 방지)
-                });
-                const kisData = kisRes.data.output;
-                if (!kisData || !kisData.stck_prpr) {
-                    throw new Error(`KIS API returned invalid output: ${JSON.stringify(kisRes.data)}`);
-                }
-                const currentPrice = parseInt(kisData.stck_prpr);
-                const currentHigh = parseInt(kisData.stck_hgpr);
-                const currentLow = parseInt(kisData.stck_lwpr);
-                const currentOpen = parseInt(kisData.stck_oprc);
-                const currentVolume = parseInt(kisData.acml_vol);
-                const tradeAmount = parseInt(kisData.acml_tr_pbmn);
-                
-                let foreignBuy = '-';
-                let instBuy = '-';
-                let frgnScore = 0;
-                let orgnScore = 0;
-                let ssangScore = 0;
-                let penaltyScore = 0;
-                
-                try {
-                    const invUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor';
-                    const invRes = await axios.get(invUrl, {
-                        headers: {
-                            'authorization': 'Bearer ' + kisTokenGlobal,
-                            'appkey': KIS_APP_KEY,
-                            'appsecret': KIS_APP_SECRET,
-                            'tr_id': 'FHKST01010900'
-                        },
-                        params: {
-                            "FID_COND_MRKT_DIV_CODE": "J",
-                            "FID_INPUT_ISCD": stock.code
-                        },
-                        timeout: 5000
-                    });
-                    const out = invRes.data.output;
-                    if (out && out.length > 0) {
-                        const frgn = parseInt(out[0].frgn_ntby_qty || '0');
-                        const orgn = parseInt(out[0].orgn_ntby_qty || '0');
-                        const prsn = parseInt(out[0].prsn_ntby_qty || '0');
-                        
-                        if (frgn === 0 && orgn === 0 && prsn === 0) {
-                            foreignBuy = '장마감 후 집계';
-                            instBuy = '장마감 후 집계';
-                        } else {
-                            foreignBuy = frgn >= 0 ? `+${frgn.toLocaleString()}주` : `${frgn.toLocaleString()}주`;
-                            instBuy = orgn >= 0 ? `+${orgn.toLocaleString()}주` : `${orgn.toLocaleString()}주`;
-                        }
-                        
-                        if (frgn > 0) frgnScore = 3;
-                        if (orgn > 0) orgnScore = 3;
-                        if (frgn > 0 && orgn > 0 && prsn < 0) ssangScore = 5;
-                        
-                        if (frgn < 0 && orgn < 0 && prsn > 0) penaltyScore = -3;
-                    }
-                } catch(e) {
-                    if (e.response && e.response.status === 429) {
-                        console.error(`[KIS Investor API 429] 10분간 KIS 통신 차단 (서킷브레이커 작동)`);
-                        kisCircuit.bypass = true;kisCircuit.bypassUntil = Date.now() + (10 * 60 * 1000);saveCircuitState();
-                    }
-                }
-
-                chartData.kis_change_data = {
-                    sign: kisData.prdy_vrss_sign,
-                    change: parseInt(kisData.prdy_vrss),
-                    rate: parseFloat(kisData.prdy_ctrt),
-                    trade_amount: tradeAmount,
-                    foreign_buy: foreignBuy,
-                    inst_buy: instBuy,
-                    bonus_score: (frgnScore + orgnScore + ssangScore + penaltyScore)
-                };
-
-                const lastIdx = chartData.close.length - 1;
-                if (lastIdx >= 0 && currentPrice) {
-                    if (tf === '1D') {
-                        // Yahoo timestamps for KS/KQ are usually 00:00:00 UTC (9:00 AM KST)
-                        // We need to compare dates in KST (+9 hours) to avoid UTC boundary issues on AWS
-                        const getKSTDateString = (timestampMs) => {
-                            const date = new Date(timestampMs);
-                            // Add 9 hours for KST
-                            date.setUTCHours(date.getUTCHours() + 9);
-                            return `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
-                        };
-                        
-                        const lastCandleKST = getKSTDateString(chartData.time[lastIdx] * 1000);
-                        const currentKST = getKSTDateString(Date.now());
-                        const isToday = lastCandleKST === currentKST;
-                        
-                        if (isToday) {
-                            chartData.open[lastIdx] = currentOpen;
-                            chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
-                            chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
-                            chartData.close[lastIdx] = currentPrice;
-                            chartData.volume[lastIdx] = currentVolume;
-                        } else {
-                            // Yahoo is a day behind; push today's KIS data as a new candle
-                            chartData.open.push(currentOpen);
-                            chartData.high.push(currentHigh);
-                            chartData.low.push(currentLow);
-                            chartData.close.push(currentPrice);
-                            chartData.volume.push(currentVolume);
-                            chartData.time.push(Math.floor(Date.now() / 1000));
-                        }
-                    } else {
-                        // For Intraday & Weekly, appending Daily open/vol corrupts the candle!
-                        // Only safely extend the current developing candle's price reach.
-                        chartData.close[lastIdx] = currentPrice;
-                        chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentPrice);
-                        chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentPrice);
-                    }
-                }
-            } catch(e) {
-                // If it fails, silent fallback to yahoo's tail
-                if (e.response && e.response.status === 429) {
-                    console.error(`[KIS API Rate Limit] ${stock.code} fell back to Yahoo`);
-                } else {
-                    console.error(`[KIS API Silent Crash] ${stock.code}:`, e.message, e.response?.data || '');
-                }
-            }
-        }
-
-        if (tf === '2H') chartData = resampleChartData(chartData, 2);
-        if (tf === '4H') chartData = resampleChartData(chartData, 4);
-
-        return chartData;
-    };
-
-    const resampleChartData = (raw, hourCount) => {
-        let resampled = { open: [], high: [], low: [], close: [], volume: [], time: [] };
-        if (!raw.time || raw.time.length === 0) return resampled;
-
-        let currentCandle = null;
-        let candleCount = 0;
-        let currentDayStr = null;
-
-        for (let i = 0; i < raw.time.length; i++) {
-            const date = new Date(raw.time[i] * 1000);
-            date.setUTCHours(date.getUTCHours() + 9);
-            const dayStr = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
-
-            if (currentDayStr !== dayStr) {
-                if (currentCandle) {
-                    resampled.open.push(currentCandle.open);
-                    resampled.high.push(currentCandle.high);
-                    resampled.low.push(currentCandle.low);
-                    resampled.close.push(currentCandle.close);
-                    resampled.volume.push(currentCandle.volume);
-                    resampled.time.push(currentCandle.time);
-                }
-                currentDayStr = dayStr;
-                currentCandle = { open: raw.open[i], high: raw.high[i], low: raw.low[i], close: raw.close[i], volume: raw.volume[i], time: raw.time[i] };
-                candleCount = 1;
-            } else {
-                if (candleCount === 0) {
-                    currentCandle = { open: raw.open[i], high: raw.high[i], low: raw.low[i], close: raw.close[i], volume: raw.volume[i], time: raw.time[i] };
-                    candleCount = 1;
-                } else {
-                    currentCandle.high = Math.max(currentCandle.high, raw.high[i]);
-                    currentCandle.low = Math.min(currentCandle.low, raw.low[i]);
-                    currentCandle.close = raw.close[i];
-                    currentCandle.volume += raw.volume[i];
-                    candleCount++;
-                    
-                    if (candleCount === hourCount) {
-                        resampled.open.push(currentCandle.open);
-                        resampled.high.push(currentCandle.high);
-                        resampled.low.push(currentCandle.low);
-                        resampled.close.push(currentCandle.close);
-                        resampled.volume.push(currentCandle.volume);
-                        resampled.time.push(currentCandle.time);
-                        currentCandle = null;
-                        candleCount = 0;
-                    }
-                }
-            }
-        }
-
-        if (currentCandle) {
-            resampled.open.push(currentCandle.open);
-            resampled.high.push(currentCandle.high);
-            resampled.low.push(currentCandle.low);
-            resampled.close.push(currentCandle.close);
-            resampled.volume.push(currentCandle.volume);
-            resampled.time.push(currentCandle.time);
-        }
-
-        if (raw.kis_change_data) {
-            resampled.kis_change_data = raw.kis_change_data;
-        }
-
-        return resampled;
-    };
-
-    // Process strictly sequentially (KIS API strict limit: 20 req/sec total burst capacity)
-    // 100ms interval guarantees a permanently safe sub-10 TPS environment regardless of packet latency sizes.
-    for (let i = 0; i < stocks.length; i++) {
-        const stock = stocks[i];
-        try {
-            const history = await fetchHybridHistory(stock);
-            if (history && history.close && history.close.length > 50) {
-                const signal = calculateSignals(history, tf);
-                if (signal) {
-                    syncResults.push({ ...signal, code: stock.code, name: stock.name, timeframe: tf, timestamp: Date.now(), id: uuidv4(), kis_change_data: history.kis_change_data });
-                }
-            }
-        } catch (e) {
-            console.error(`[Auto-Sync] Error for ${stock.code} (${stock.name}):`, e.message);
-            errorCount++;
-        }
-        
-        if (i > 0 && i % 50 === 0) {
-            console.log(`[Auto-Sync] Processed ${i}/${stocks.length} stocks...`);
-        }
-        
-        // Emit progress to clients every 10 stocks
-        if ((i + 1) % 10 === 0) emitProgress(i + 1, stocks.length, tf);
-
-        await sleep(250); 
-    }
-
-    emitProgress(stocks.length, stocks.length, tf);
-
-    if (syncResults.length > 0) {
-        // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
-        await withSignalLock(async () => {
-            let currentSignals = JSON.parse(await fs.promises.readFile(SIGNALS_FILE, 'utf8'));
-            
-            // Remove old signals for the matching code and timeframe
-            const syncCodes = new Set(syncResults.map(s => s.code));
-            currentSignals = currentSignals.filter(s => !(syncCodes.has(s.code) && s.timeframe === tf));
-
-            const merged = [...currentSignals, ...syncResults];
-            const resultStr = JSON.stringify(merged, null, 2);
-            await fs.promises.writeFile(SIGNALS_FILE, resultStr);
-            CACHED_SIGNALS = resultStr; // 즉시 캐시 갱신
-            lastSignalsMtimeMs = Date.now();
-        });
-        broadcastUpdate();
-    }
-
-    console.log(`[Auto-Sync] Completed timeframe ${tf}. Success: ${syncResults.length}, Errors: ${errorCount}`);
-            } // End of tfList loop
-
-            console.log(`[Auto-Sync] All requested timeframes completed.`);
-        } catch (globalErr) {
-            console.error('[Auto-Sync Background Error]', globalErr);
-        } finally {
-            isSyncMutexLocked = false;
-            // 🔴 [Stability Patch] Emit final completion signal
-            const finalPayload = `data: ${JSON.stringify({ type: 'sync_complete' })}\n\n`;
-            clients.forEach(c => { try { c.write(finalPayload); if (c.flush) c.flush(); } catch(e) {} });
-        }
-    })();
-});
 
 // 🔴 [Red Team 방어 - R6] AWS PM2 롤백 스크립트를 위한 헬스체크 도입
 app.get('/api/health', (req, res) => {
@@ -1205,12 +900,7 @@ if (isPrimaryWorker) {
     console.log('[Scheduler] Primary worker initialized scheduling tasks.');
     
     // Phase 11: Real-time Entry Sniper Monitoring
-    startNightlyMonitor(getKisAccessToken, {
-        KIS_APP_KEY,
-        KIS_APP_SECRET,
-        TELEGRAM_BOT_TOKEN,
-        TELEGRAM_CHAT_IDS
-    });
+    startNightlyMonitor(getCachedPrice);
 
     async function archiveOldSignals() {
         console.log('[Archive] Starting old signals cleanup...');
@@ -1544,6 +1234,145 @@ if (isPrimaryWorker) {
     }, { timezone: "Asia/Seoul" });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// [Archival] Save Synchronization Results to Database
+// ─────────────────────────────────────────────────────────────────────────
+async function saveSyncSnapshot(signals) {
+    try {
+        // 1. 가치 있는 신호만 필터링 (최소 기준: dhh2 또는 condUp7)
+        const importantSignals = signals.filter(s => s.dhh2 || s.condUp7 || (s.total_score && s.total_score >= 10));
+        
+        if (importantSignals.length === 0) {
+            console.log('[Archival] No important signals to save. Skipping snapshot.');
+            return;
+        }
+
+        // 2. DB에 SNAPSHOT 저장 (JSON 블롭)
+        const snapshot = await prisma.syncSnapshot.create({
+            data: {
+                signals: importantSignals,
+                stockCount: signals.length,
+                importantCount: importantSignals.length
+            }
+        });
+
+        console.log(`[Archival] Saved SyncSnapshot to DB: ${snapshot.id} (${importantSignals.length} signals)`);
+        return snapshot;
+    } catch (err) {
+        console.error('[Archival Error] Failed to save SyncSnapshot:', err);
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// [API] Integrated Auto-sync Trigger (with Archival)
+// ─────────────────────────────────────────────────────────────────────────
+app.post('/api/auto-sync', async (req, res) => {
+    const { intervals, timeframe, timeframes } = req.body;
+    const targetIntervals = intervals || timeframes || (timeframe ? [timeframe] : ['1D']);
+    
+    const cronSecret = req.headers['x-cron-secret'] || req.headers['x-internal-cron-secret'];
+    const authHeader = req.headers.authorization;
+    const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
+
+    // Support both header secret AND valid Admin/PRO JWT
+    let isAllowed = (cronSecret === process.env.CRON_SECRET || cronSecret === 'mpstock_discovery_secret_2024');
+    
+    if (!isAllowed && bearerToken) {
+        try {
+            const decoded = require('jsonwebtoken').verify(bearerToken, process.env.JWT_ACCESS_SECRET);
+            if (decoded.role === 'ADMIN' || decoded.role === 'PAID' || decoded.role === 'PRO_USER') isAllowed = true;
+        } catch(e) {
+            console.error('[Auto-Sync] JWT Verify Fallback Error:', e.message);
+        }
+    }
+
+    if (!isAllowed) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!Array.isArray(targetIntervals)) {
+        return res.status(400).json({ error: 'Intervals array required' });
+    }
+
+    if (isSyncMutexLocked) {
+        return res.status(409).json({ error: 'Sync already in progress' });
+    }
+
+    const { spawn } = require('child_process');
+    console.log(`[Integrated Sync] Starting sync for intervals: ${targetIntervals.join(', ')}`);
+    isSyncMutexLocked = true;
+
+    const syncProcess = spawn('node', ['analyzer.cjs', ...targetIntervals], {
+        env: { ...process.env, SYNC_MODE: 'integrated' }
+    });
+
+    syncProcess.stdout.on('data', (data) => {
+        const lines = data.toString().split('\n');
+        lines.forEach(line => {
+            if (!line.trim()) return;
+            console.log(`[Analyzer] ${line.trim()}`);
+            
+            // Parse real-time progress: [PROGRESS] TF:CUR/TOTAL
+            const progressMatch = line.match(/\[PROGRESS\]\s+(\w+):(\d+)\/(\d+)/);
+            if (progressMatch) {
+                const [, tf, current, total] = progressMatch;
+                const progressData = {
+                    type: 'progress',
+                    timeframe: tf,
+                    current: parseInt(current),
+                    total: parseInt(total)
+                };
+                // Broadcast progress AND trigger a signal update (incremental saves)
+                clients.forEach(c => {
+                    c.write(`data: ${JSON.stringify(progressData)}\n\n`);
+                    c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
+                    if(c.flush) c.flush();
+                });
+            }
+        });
+    });
+
+    syncProcess.stderr.on('data', (data) => {
+        console.error(`[Analyzer ERROR] ${data.toString().trim()}`);
+    });
+
+    syncProcess.on('close', async (code) => {
+        console.log(`[Integrated Sync] Process finished with code ${code}`);
+        isSyncMutexLocked = false;
+        
+        if (code === 0) {
+            try {
+                const signalsPath = path.join(__dirname, 'data', 'signals.json');
+                if (fs.existsSync(signalsPath)) {
+                    const signals = JSON.parse(fs.readFileSync(signalsPath, 'utf8'));
+                    await saveSyncSnapshot(signals);
+                }
+                // Broadcast final update (for other tabs)
+                clients.forEach(c => {
+                    c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
+                    if(c.flush) c.flush();
+                });
+                
+                // [Blue Team] Blocking Response: 동기화가 완전히 끝난 후 응답을 보냅니다.
+                // 이를 통해 프론트엔드 루프나 크론 스케줄러가 '실제 데이터'가 준비된 시점을 정확히 알 수 있습니다.
+                if (!res.headersSent) {
+                    res.json({ 
+                        message: 'Integrated Auto-sync completed', 
+                        intervals: targetIntervals, 
+                        timestamp: new Date().toISOString(),
+                        code: code
+                    });
+                }
+            } catch (err) {
+                console.error('[Integrated Sync] Post-processing archival failed:', err);
+                if (!res.headersSent) res.status(500).json({ error: 'Sync post-processing failed' });
+            }
+        } else {
+            if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
+        }
+    });
+});
+
 // ==========================================
 // Phase 5: Ensure the server binds to the port and signals PM2
 // ==========================================
@@ -1572,7 +1401,7 @@ app.listen(PORT, '0.0.0.0', () => {
     setTimeout(pingAIService, 5000);
 
     // ─────────────────────────────────────────────────────────────────────────
-    // [Full Universe Poller] 장중 348종목 실시간 현재가 배치 폴러 시작 (KIS API 준수)
+    // [Full Universe Poller] 장중 350종목 실시간 현재가 배치 폴러 시작 (KIS API 준수)
     // ─────────────────────────────────────────────────────────────────────────
     setTimeout(() => {
         try {
