@@ -1276,18 +1276,23 @@ app.post('/api/auto-sync', async (req, res) => {
 
     // Support both header secret AND valid Admin/PRO JWT
     let isAllowed = (cronSecret === process.env.CRON_SECRET || cronSecret === 'mpstock_discovery_secret_2024');
+    let userRole = 'NONE';
     
-    if (!isAllowed && bearerToken) {
+    if (!isAllowed && bearerToken && bearerToken !== 'null' && bearerToken !== 'undefined') {
         try {
             const decoded = require('jsonwebtoken').verify(bearerToken, process.env.JWT_ACCESS_SECRET);
-            if (decoded.role === 'ADMIN' || decoded.role === 'PAID' || decoded.role === 'PRO_USER') isAllowed = true;
+            userRole = decoded.role || 'NONE';
+            if (userRole === 'ADMIN' || userRole === 'PAID' || userRole === 'PRO_USER') {
+                isAllowed = true;
+            }
         } catch(e) {
             console.error('[Auto-Sync] JWT Verify Fallback Error:', e.message);
         }
     }
 
     if (!isAllowed) {
-        return res.status(401).json({ error: 'Unauthorized' });
+        console.warn(`[Auto-Sync] Rejected sync origin: ${req.ip}, Role: ${userRole}, TokenExists: ${!!bearerToken}`);
+        return res.status(401).json({ error: 'Unauthorized: Admin or Pro permission required' });
     }
 
     if (!Array.isArray(targetIntervals)) {
