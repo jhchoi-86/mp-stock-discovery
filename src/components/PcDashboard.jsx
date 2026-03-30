@@ -8,6 +8,7 @@ import AdminDashboard from './AdminDashboard.jsx';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
+import ArchiveBrowser from './ArchiveBrowser.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
 import useSWR from 'swr';
@@ -54,11 +55,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       categoryFilter, setCategoryFilter,
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
-      selectedStocks, toggleSelectAll, toggleSelectStock,
+      selectedStocks, setSelectedStocks, toggleSelectAll, toggleSelectStock,
       isSyncing, isSendingTg, 
       candidates, topSectors, activeCount, 
       handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
-      handleDownloadReport, handleDownloadTVList, handleSendToTelegram
+      handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
+      handleSnapshotSelected, activeSnapshot
   } = manager;
 
   return (
@@ -117,15 +119,15 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               {marketStatus === 'closed' && '장 마감'}
             </div>
           </div>
-          <SyncProgressHeader onUpdateRequested={manager.fetchData} fallbackCount={signals.length} />
+          <SyncProgressHeader onUpdateRequested={manager.fetchData} fallbackCount={signals.length} localProgress={manager.syncProgress} />
           <div className="stat-item">
             <div className="stat-label">강력 신호 (HH)</div>
             <div className="stat-value" style={{ color: 'var(--accent)' }}>{activeCount}</div>
           </div>
           <div className="stat-item">
             <div className="stat-label" style={{ whiteSpace: 'nowrap' }}>🔥 주도 섹터 (HH 밀집)</div>
-            <div className="stat-value" style={{ fontSize: '0.85rem', color: 'var(--secondary)', whiteSpace: 'nowrap' }}>
-              {topSectors.length > 0 ? topSectors.join(' · ') : '분석중'}
+            <div className="stat-value" style={{ fontSize: '1.2rem', color: 'var(--secondary)', whiteSpace: 'nowrap', textAlign: 'center' }}>
+              {topSectors.length}
             </div>
           </div>
 
@@ -214,6 +216,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <div style={{ marginBottom: '1.5rem' }}>
                     <RoiRankingWidget />
                 </div>
+                <ArchiveBrowser 
+                    onSnapshotSelected={handleSnapshotSelected} 
+                    currentSnapshotId={activeSnapshot?.id} 
+                />
+
+                <div className="filter-group" style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.8rem' }}>
       <div className="controls fade-in" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>
         <input 
           type="text" 
@@ -331,6 +339,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             <Share2 size={18} className={isSendingTg ? "spin" : ""} /> {isSendingTg ? "전송중..." : "텔레그램 발송"}
           </button>
         )}
+      </div>
       </div>
 
       <div className="card fade-in" style={{ animationDelay: '0.1s' }}>
@@ -675,9 +684,9 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         </div>
         </div>
         </>
-            )}
-        </div>
       )}
+    </div>
+  )}
       <SignalNotificationWatcher />
 
       {/* Copyright Footer */}

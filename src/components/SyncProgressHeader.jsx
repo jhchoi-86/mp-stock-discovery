@@ -5,10 +5,13 @@ import { useSSE } from '../hooks/useSSE';
  * [AI NOTICE: SyncProgressHeader.jsx]
  * PcDashboard 메인 리렌더링 없이 SSE 진행률만 별도로 렌더링하는 전용 부품입니다.
  */
-const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
-    const { progress, isConnected, error } = useSSE();
+const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0, localProgress = null }) => {
+    const { progress: sseProgress, isConnected, error } = useSSE();
 
-    const isSyncing = progress.current > 0 && progress.current < progress.total;
+    // 로컬 진행률(동기화 중)이 있으면 그것을 우선 사용, 없으면 SSE 사용
+    const isActiveSync = localProgress && localProgress.current > 0;
+    const displayProgress = isActiveSync ? localProgress : sseProgress;
+    const isSyncing = displayProgress.current > 0 && (isActiveSync || displayProgress.current < displayProgress.total);
 
     return (
         <div className="stat-item" style={{ minWidth: '120px' }}>
@@ -17,7 +20,7 @@ const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
                 {isSyncing ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                            {progress.timeframe ? `[${progress.timeframe}] ` : ''}{progress.current} / {progress.total}
+                            {displayProgress.timeframe ? `[${displayProgress.timeframe}] ` : ''}{displayProgress.current} / {displayProgress.total}
                         </span>
                         {/* 미니 프로그레스 바 */}
                         <div style={{ 
@@ -28,7 +31,7 @@ const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
                             overflow: 'hidden'
                         }}>
                             <div style={{ 
-                                width: `${(progress.current / progress.total) * 100}%`, 
+                                width: `${(displayProgress.current / displayProgress.total) * 100}%`, 
                                 height: '100%', 
                                 background: 'var(--primary)',
                                 transition: 'width 0.3s ease-out'

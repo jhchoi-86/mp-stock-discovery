@@ -28,7 +28,12 @@ export const useStockManager = (isAuthenticated) => {
   const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
   
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 100, timeframe: '' });
   const [isSendingTg, setIsSendingTg] = useState(false);
+
+  // Archive Mode
+  const [activeSnapshot, setActiveSnapshot] = useState(null); // { id, signals, createdAt }
+  const [originalSignals, setOriginalSignals] = useState([]); // Backup of live signals
 
   // Selections
   const [selectedStocks, setSelectedStocks] = useState(new Set());
@@ -303,23 +308,57 @@ export const useStockManager = (isAuthenticated) => {
     if (!window.confirm(`1H, 2H, 4H, 1D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
-    setShowAll(false); // Top 5 노출 보장
+    setShowAll(false); 
     
-    // 순차적 동기화 순서 (1H -> 1W)
     const timeframes = ['1H', '2H', '4H', '1D', '1W'];
     
     try {
-      // 백엔드에서 배열 처리를 지원하므로 한 번만 요청 (Mutex Lock 우회 및 순차 처리 보장)
-      const response = await axiosClient.post('/api/auto-sync', { timeframes: timeframes }, { timeout: 300000 });
+      // [Blue Team] 이전 동기화 방식 복구: 프론트엔드 제어 순차 루프
+      // SSE가 불안정한 환경에서도 실시간 카운팅과 상태 업데이트가 가능하도록 합니다.
+      for (let i = 0; i < timeframes.length; i++) {
+        const tf = timeframes[i];
+        setSyncProgress({ current: i + 1, total: timeframes.length, timeframe: tf });
+        
+        // 개별 시간대 동기화 요청 (백엔드 Mutex를 고려하여 순차 대기)
+        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 120000 });
+        
+        // 각 시간대 완료 시점에 즉시 화면 갱신
+        await fetchData();
+      }
       
-      alert(response.data.message);
-      fetchData();
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 100, timeframe: '' });
+      alert("통합 자동 동기화가 완료되었습니다.");
     } catch (error) {
-      console.error("Integrated auto-sync error:", error);
+      console.error("Sequential sync error:", error);
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 100, timeframe: '' });
       if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
-      setIsSyncing(false);
+    }
+  };
+
+  const handleSnapshotSelected = async (snapshotHeader) => {
+    if (!snapshotHeader) {
+      // Return to Live Mode
+      setSignals(originalSignals);
+      setActiveSnapshot(null);
+      return;
+    }
+
+    try {
+      if (!activeSnapshot) setOriginalSignals(signals); // Backup live signals once
+      
+      const res = await axiosClient.get(`/api/archive/snapshots/${snapshotHeader.id}`);
+      const fullSnapshot = res.data;
+      
+      setSignals(fullSnapshot.signals);
+      setActiveSnapshot(fullSnapshot);
+      toast.success(`${new Date(fullSnapshot.createdAt).toLocaleString()} 스냅샷을 불러왔습니다.`);
+    } catch (e) {
+      console.error('Snapshot load failed', e);
+      toast.error('스냅샷 로드 실패');
     }
   };
 
@@ -434,7 +473,7 @@ export const useStockManager = (isAuthenticated) => {
     showAll, setShowAll,
     uploadTimeframe, setUploadTimeframe,
     selectedStocks, setSelectedStocks,
-    isSyncing, isSendingTg,
+    isSyncing, syncProgress, isSendingTg,
     
     // Derived
     candidates, topSectors, activeCount,
@@ -443,6 +482,7 @@ export const useStockManager = (isAuthenticated) => {
     fetchData,
     toggleSelectAll, toggleSelectStock,
     handleCsvUpload, handleReset, handleIntegratedSync,
-    handleDownloadReport, handleDownloadTVList, handleSendToTelegram
+    handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
+    handleSnapshotSelected, activeSnapshot
   };
 };
