@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import axiosClient from '../api/axiosClient';
 import { generateReportContent, generateTelegramContent } from '../utils/reportUtils';
 import toast from 'react-hot-toast';
@@ -52,7 +52,7 @@ export const useStockManager = (isAuthenticated) => {
     if (signals && signals.length > 0) localStorage.setItem('mp_signals', JSON.stringify(signals)); 
   }, [signals]);
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
       const [stocksRes, signalsRes] = await Promise.all([
@@ -73,7 +73,7 @@ export const useStockManager = (isAuthenticated) => {
     } catch (error) {
       console.error("Error fetching data:", error);
     }
-  };
+  }, []); // Stable reference since it doesn't depend on local state for the fetch
 
   useEffect(() => {
     if (!isAuthenticated) return;
