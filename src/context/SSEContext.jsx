@@ -79,11 +79,13 @@ export const SSEProvider = ({ children, onUpdateRequested, onSyncComplete }) => 
 
             eventSource.onerror = (e) => {
                 setIsConnected(false);
-                // 🔴 [Loop Prevention] Don't set error message too aggressively to reduce re-renders
                 eventSource.close();
+                
+                // 🔴 [Stability] 에러 시 재연결 주기를 더 보수적으로 잡고 무한 루프 방지
+                const delay = Math.min(10000, 2000 * retryCount);
                 if (retryCount < maxRetries) {
                     retryCount++;
-                    setTimeout(connect, 2000 * retryCount);
+                    setTimeout(connect, delay);
                 }
             };
         };

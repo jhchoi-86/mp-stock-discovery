@@ -55,10 +55,8 @@ export const useStockManager = (isAuthenticated) => {
   const fetchData = useCallback(async () => {
     try {
       const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
-      const [stocksRes, signalsRes] = await Promise.all([
-        fetch(`${API_URL}/api/stocks`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/signals`, { credentials: 'include' })
-      ]);
+      const stocksRes = await fetch(`${API_URL}/api/stocks?_=${Date.now()}`, { credentials: 'include' });
+      const signalsRes = await fetch(`${API_URL}/api/signals?_=${Date.now()}`, { credentials: 'include' });
       
       let stocksData = await stocksRes.json();
       let signalsData = await signalsRes.json();
