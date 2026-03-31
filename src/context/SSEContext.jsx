@@ -17,6 +17,12 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
     
     const progressRef = useRef(progress);
     const frameId = useRef(null);
+    const onUpdateRequestedRef = useRef(onUpdateRequested);
+
+    // Update callback ref when it changes
+    useEffect(() => {
+        onUpdateRequestedRef.current = onUpdateRequested;
+    }, [onUpdateRequested]);
 
     useEffect(() => {
         let eventSource = null;
@@ -39,7 +45,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                     const data = JSON.parse(event.data);
                     
                     if (data.type === 'update') {
-                        if (onUpdateRequested) onUpdateRequested();
+                        if (onUpdateRequestedRef.current) onUpdateRequestedRef.current();
                     } 
                     else if (data.type === 'sync_progress') {
                         const payload = data.payload || data;
@@ -57,7 +63,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                         }
 
                         if (payload.current === payload.total) {
-                            if (onUpdateRequested) onUpdateRequested();
+                            if (onUpdateRequestedRef.current) onUpdateRequestedRef.current();
                         }
                     } 
                     else if (data.type === 'sniper_alert') {
@@ -85,7 +91,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
             if (eventSource) eventSource.close();
             if (frameId.current) cancelAnimationFrame(frameId.current);
         };
-    }, [onUpdateRequested]);
+    }, []); // 🔴 Important: Stable dependency array to prevent reconnection loops
 
     return (
         <SSEContext.Provider value={{ progress, lastSignal, isConnected, error }}>
