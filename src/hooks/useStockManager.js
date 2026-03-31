@@ -314,11 +314,10 @@ export const useStockManager = (isAuthenticated) => {
     try {
       // One integrated request - Backend handles the loop and SSE
       await axiosClient.post('/api/auto-sync', { timeframe: timeframes }, { timeout: 600000 });
-      // Upon final completion
-      setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 100, timeframe: '' });
-      alert("통합 자동 동기화가 완료되었습니다.");
-      fetchData();
+      
+      // 🔴 [UX Patch] 즉시 완료 메시지를 띄우지 않습니다. 
+      // 이제 SSE를 통해 실제 수신 데이터가 100% 완료되었을 때 App.jsx에서 handleSyncCompletion을 호출합니다.
+      toast.success("동기화 프로세스가 시작되었습니다. 진행률을 확인해 주세요.");
     } catch (error) {
       console.error("Integrated sync error:", error);
       setIsSyncing(false);
@@ -328,6 +327,14 @@ export const useStockManager = (isAuthenticated) => {
       }
     }
   };
+  
+  // 🔴 [UX Patch] 실제 동기화가 완료되었을 때 호출되는 전용 핸들러
+  const handleSyncCompletion = useCallback(async () => {
+    setIsSyncing(false);
+    setSyncProgress({ current: 0, total: 100, timeframe: '' });
+    toast.success("통합 자동 동기화가 완전히 완료되었습니다!");
+    await fetchData();
+  }, [fetchData]);
 
   const handleSnapshotSelected = async (snapshotHeader) => {
     if (!snapshotHeader) {
@@ -470,6 +477,7 @@ export const useStockManager = (isAuthenticated) => {
     
     // Actions
     fetchData,
+    handleSyncCompletion,
     toggleSelectAll, toggleSelectStock,
     handleCsvUpload, handleReset, handleIntegratedSync,
     handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
