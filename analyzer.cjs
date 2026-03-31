@@ -490,8 +490,8 @@ if (require.main === module) {
         return token;
     }
 
-    async function fetchOhlc(token, code, tf = 'D') {
-        const tfMap = { '1M': '1', '5M': '5', '15M': '15', '30M': '30', '1H': '60', '2H': '120', '4H': '240', '1D': 'D', '1W': 'W' };
+    async function fetchOhlc(token, code, tf = '1D') {
+        const tfMap = { '1M': '1', '5M': '5', '15M': '15', '30M': '30', '1H': '60', '2H': '60', '4H': '60', '1D': 'D', '2D': 'D', '1W': 'W' };
         const mapping = tfMap[tf] || 'D';
         const isMinute = !['D', 'W', 'M'].includes(mapping);
         const url = isMinute 
@@ -513,15 +513,38 @@ if (require.main === module) {
             }
         });
 
-        const output = res.data.output2 || res.data.output || [];
-        return {
-            time: output.map(d => d.stck_cntg_hour || d.stck_bsop_date).reverse(),
-            close: output.map(d => parseFloat(d.stck_prpr)).reverse(),
-            open: output.map(d => parseFloat(d.stck_oprc)).reverse(),
-            high: output.map(d => parseFloat(d.stck_hgpr)).reverse(),
-            low: output.map(d => parseFloat(d.stck_lwpr)).reverse(),
-            volume: output.map(d => parseFloat(d.acml_vol)).reverse()
+        const output = (res.data.output2 || res.data.output || []).slice().reverse();
+        let data = {
+            time: output.map(d => d.stck_cntg_hour || d.stck_bsop_date),
+            close: output.map(d => parseFloat(d.stck_prpr)),
+            open: output.map(d => parseFloat(d.stck_oprc)),
+            high: output.map(d => parseFloat(d.stck_hgpr)),
+            low: output.map(d => parseFloat(d.stck_lwpr)),
+            volume: output.map(d => parseFloat(d.acml_vol))
         };
+
+        // --- Aggregation logic for unsupported timeframes (2H, 4H, 2D) ---
+        const aggFactor = (tf === '2H') ? 2 : (tf === '4H') ? 4 : (tf === '2D') ? 2 : 1;
+        if (aggFactor > 1) {
+            let agg = { time: [], close: [], open: [], high: [], low: [], volume: [] };
+            for (let i = 0; i < data.close.length; i += aggFactor) {
+                let end = Math.min(i + aggFactor, data.close.length);
+                let slice = {
+                    high: data.high.slice(i, end),
+                    low: data.low.slice(i, end),
+                    volume: data.volume.slice(i, end)
+                };
+                agg.time.push(data.time[end - 1]);
+                agg.open.push(data.open[i]);
+                agg.close.push(data.close[end - 1]);
+                agg.high.push(Math.max(...slice.high));
+                agg.low.push(Math.min(...slice.low));
+                agg.volume.push(slice.volume.reduce((a, b) => a + b, 0));
+            }
+            data = agg;
+        }
+
+        return data;
     }
 
     // --- Main Loop ---
