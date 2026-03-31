@@ -606,7 +606,8 @@ if (require.main === module) {
                         // KIS API TPS limit (approx 20/sec)
                         await new Promise(r => setTimeout(r, 60));
                     } catch (e) {
-                        console.error(`[Analyzer] Error processing ${stock.name} (${tf}):`, e.message);
+                        const errorMsg = e.response?.data?.msg1 || e.response?.data || e.message;
+                        console.error(`[Analyzer] Error processing ${stock.name} (${tf}):`, errorMsg);
                     }
                 }
             }
