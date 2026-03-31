@@ -306,27 +306,21 @@ export const useStockManager = (isAuthenticated) => {
     setSelectedStocks(new Set());
     setShowAll(false); 
     
+    // Initial UI state: Indicate preparing
+    setSyncProgress({ current: 0, total: 350, timeframe: '준비' });
+    
     const timeframes = ['1H', '2H', '4H', '1D', '1W'];
     
     try {
-      // [Blue Team] 이전 동기화 방식 복구: 프론트엔드 제어 순차 루프
-      // SSE가 불안정한 환경에서도 실시간 카운팅과 상태 업데이트가 가능하도록 합니다.
-      for (let i = 0; i < timeframes.length; i++) {
-        const tf = timeframes[i];
-        setSyncProgress({ current: i + 1, total: timeframes.length, timeframe: tf });
-        
-        // 개별 시간대 동기화 요청 (백엔드 Mutex를 고려하여 순차 대기)
-        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 120000 });
-        
-        // 각 시간대 완료 시점에 즉시 화면 갱신
-        await fetchData();
-      }
-      
+      // One integrated request - Backend handles the loop and SSE
+      await axiosClient.post('/api/auto-sync', { timeframe: timeframes }, { timeout: 600000 });
+      // Upon final completion
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 100, timeframe: '' });
       alert("통합 자동 동기화가 완료되었습니다.");
+      fetchData();
     } catch (error) {
-      console.error("Sequential sync error:", error);
+      console.error("Integrated sync error:", error);
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 100, timeframe: '' });
       if (error.response?.status !== 403 && error.response?.status !== 429) {

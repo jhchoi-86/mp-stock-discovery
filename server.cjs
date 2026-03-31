@@ -1352,7 +1352,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 };
                 // Broadcast progress AND trigger a signal update (incremental saves)
                 clients.forEach(c => {
-                    c.write(`data: ${JSON.stringify(progressData)}\n\n`);
+                    c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: progressData })}\n\n`);
                     c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
                     if(c.flush) c.flush();
                 });

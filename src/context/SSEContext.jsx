@@ -10,7 +10,7 @@ const SSEContext = createContext();
 const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
 
 export const SSEProvider = ({ children, onUpdateRequested }) => {
-    const [progress, setProgress] = useState({ current: 0, total: 348, timeframe: '' });
+    const [progress, setProgress] = useState({ current: 0, total: 350, timeframe: '' });
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
     const [lastSignal, setLastSignal] = useState(null);
