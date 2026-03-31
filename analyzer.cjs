@@ -509,7 +509,7 @@ if (require.main === module) {
                 'authorization': `Bearer ${token}`,
                 'appkey': KIS_APP_KEY,
                 'appsecret': KIS_APP_SECRET,
-                'tr_id': isMinute ? 'FHKST03010100' : 'FHKST03010100' // Simple mapping for now
+                'tr_id': isMinute ? 'FHKST03010200' : 'FHKST03010100'
             }
         });
 
