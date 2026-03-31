@@ -42,7 +42,7 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
       
       const data = await adminService.getPublicSnapshots(params);
       
-      // 중복 제거 (code 기준) - 전체 348종목 유지
+      // 중복 제거 (code 기준) - 전체 350종목 유지
       const uniqueData = (data || []).reduce((acc, current) => {
         const x = acc.find(item => item.code === current.code);
         if (!x) return acc.concat([current]);

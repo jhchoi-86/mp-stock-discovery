@@ -1427,8 +1427,8 @@ app.listen(PORT, '0.0.0.0', () => {
             else console.log(`[ReportGen Output] ${stdout}`);
         });
     };
-    runReportGenerator(); // Initial run
-    setInterval(runReportGenerator, 3600000); // 1-hour interval
+    // [DISABLED] runReportGenerator(); // Initial run
+    // [DISABLED] setInterval(runReportGenerator, 3600000); // 1-hour interval
 
     // PM2 배포 무중단 리로드를 위해 반드시 필요한 신호방출 코드
     if (process.send) {
@@ -1456,5 +1456,5 @@ app.listen(PORT, '0.0.0.0', () => {
             console.error('[FullPoller] 초기화 실패:', e.message);
         }
     }, 3000); // 서버 기동 3초 후 시작 (캐시 로드 완료 대기)
-    */
+    // [DISABLED] startNightlyMonitor(getKisAccessToken);
 });
