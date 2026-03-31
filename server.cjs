@@ -382,6 +382,18 @@ app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
 // SSE Clients & Heartbeat Activity Tracking
 let clients = [];
 
+// 🔴 [SSE Heartbeat - R11] 15초 주기 연결 유지 신호 (Nginx/Browser 타임아웃 방지)
+setInterval(() => {
+    clients.forEach(c => {
+        try {
+            c.write(': keep-alive\n\n'); // SSE comment format
+            if (c.flush) c.flush();
+        } catch(e) {
+            // Broken pipes are handled byreq.on('close')
+        }
+    });
+}, 15000);
+
 const broadcastUpdate = () => {
     const payload = `data: ${JSON.stringify({ type: 'signal_update' })}\n\n`;
     clients.forEach(c => {
@@ -1334,6 +1346,14 @@ app.post('/api/auto-sync', async (req, res) => {
     });
     currentSyncProcess = syncProcess;
 
+    // 🔴 [UX Patch] 대기 시간을 획기적으로 줄이기 위해 즉시 응답을 반환합니다. (202 Accepted)
+    // 실제 진행 상황은 SSE(/api/stream)를 통해 실시간으로 전달됩니다.
+    res.status(202).json({ 
+        message: 'Sync started successfully', 
+        isSyncing: true,
+        targetIntervals
+    });
+
     syncProcess.stdout.on('data', (data) => {
         const lines = data.toString().split('\n');
         lines.forEach(line => {
@@ -1371,7 +1391,7 @@ app.post('/api/auto-sync', async (req, res) => {
     syncProcess.on('error', (err) => {
         console.error(`[Integrated Sync] Failed to start analyzer process: ${err.message}`);
         isSyncMutexLocked = false;
-        if (!res.headersSent) res.status(500).json({ error: 'Failed to start analysis engine' });
+        // res.json was already sent (202 Accepted)
     });
 
     syncProcess.on('close', async (code, signal) => {
@@ -1394,30 +1414,11 @@ app.post('/api/auto-sync', async (req, res) => {
                     c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
                     if(c.flush) c.flush();
                 });
-                
-                // [Blue Team] Blocking Response: 동기화가 완전히 끝난 후 응답을 보냅니다.
-                // 이를 통해 프론트엔드 루프나 크론 스케줄러가 '실제 데이터'가 준비된 시점을 정확히 알 수 있습니다.
-                if (!res.headersSent) {
-                    res.json({ 
-                        message: 'Integrated Auto-sync completed', 
-                        intervals: targetIntervals, 
-                        timestamp: new Date().toISOString(),
-                        code: code
-                    });
-                }
             } catch (err) {
-                console.error('[Integrated Sync] Post-processing archival failed:', err);
-                if (!res.headersSent) res.status(500).json({ error: 'Sync post-processing failed' });
-            }
-        }
-        // [Blue Team] If code is null and signal is SIGINT/SIGTERM, it's likely a manual stop
-        else if (code === null && (signal === 'SIGINT' || signal === 'SIGTERM')) {
-            console.log('[Integrated Sync] Process was stopped manually (Reset/Stop request).');
-            if (!res.headersSent) {
-                res.json({ message: 'Sync stopped by user', stopped: true });
+                console.error('[Archival Error] Failed to save SyncSnapshot:', err);
             }
         } else {
-            if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
+            console.error(`[Integrated Sync] Process failed with code ${code}`);
         }
     });
 });
