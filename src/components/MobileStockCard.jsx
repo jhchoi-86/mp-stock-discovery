@@ -123,13 +123,22 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             <div style={{ background: catBg, color: catColor, padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'normal' }}>
               {categoryLabel}
             </div>
-            <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', display: 'flex', alignItems: 'center' }}>
-              점수: <span style={{ display: 'inline-block', position: 'relative', letterSpacing: '1px', marginLeft: '4px', marginRight: '4px', color: 'rgba(255,255,255,0.2)' }}>
-                ★★★★★
-                <span style={{ position: 'absolute', top: 0, left: 0, height: '100%', overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap' }}>
-                  ★★★★★
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '6px 10px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.1)', flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span style={{ fontSize: '1.2rem', fontWeight: 'bold', color: stock.total_score >= 80 ? '#FFD700' : '#fff' }}>
+                  {stock.total_score}<span style={{ fontSize: '0.8rem', marginLeft: '2px' }}>점</span>
                 </span>
-              </span> ({stock.total_score}점)
+                <div style={{ display: 'flex', gap: '2px', color: stock.total_score >= 80 ? '#FFD700' : stock.total_score >= 60 ? '#10b981' : '#aaa' }}>
+                  {[...Array(5)].map((_, i) => (
+                    <span key={i} style={{ fontSize: '0.8rem', opacity: i < Math.floor(stock.total_score / 20) ? 1 : 0.2 }}>★</span>
+                  ))}
+                </div>
+              </div>
+              <div style={{ display: 'flex', gap: '4px', marginTop: '4px' }}>
+                {stock.is_alignment && <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: '#10b98122', color: '#10b981', border: '1px solid #10b98144' }}>정배열</span>}
+                {stock.is_dip_area && <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: '#3b82f622', color: '#3b82f6', border: '1px solid #3b82f644' }}>눌림목</span>}
+                {stock.is_mtf_signal && <span style={{ fontSize: '0.65rem', padding: '1px 4px', borderRadius: '4px', background: '#f59e0b22', color: '#f59e0b', border: '1px solid #f59e0b44' }}>신호중첩</span>}
+              </div>
             </div>
             <div style={{ background: 'rgba(255,255,255,0.1)', color: '#fff', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem' }}>
               세력: {Math.round(s?.adx || 0)}

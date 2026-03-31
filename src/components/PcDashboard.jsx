@@ -63,6 +63,40 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       handleSnapshotSelected, activeSnapshot
   } = manager;
 
+  // 별점 렌더링 함수 (20점당 별 1개)
+  const renderStars = (score) => {
+    const stars = Math.min(5, Math.max(0, Math.floor(score / 20)));
+    return (
+      <div style={{ display: 'flex', gap: '2px', color: score >= 80 ? '#FFD700' : score >= 60 ? '#10b981' : '#aaa' }}>
+        {[...Array(5)].map((_, i) => (
+          <span key={i} style={{ fontSize: '0.8rem', opacity: i < stars ? 1 : 0.2 }}>★</span>
+        ))}
+      </div>
+    );
+  };
+
+  // 시너지 배지 렌더링
+  const renderSynergyBadges = (stock) => {
+    const badges = [];
+    if (stock.is_alignment) badges.push({ label: '정', color: '#10b981', title: '2시간봉 이평선 정배열' });
+    if (stock.is_dip_area) badges.push({ label: '눌', color: '#3b82f6', title: '눌림목 구간 진입' });
+    if (stock.is_mtf_signal) badges.push({ label: '신', color: '#f59e0b', title: '다중 시간대 매수 신호 중첩' });
+
+    return (
+      <div style={{ display: 'flex', gap: '2px', marginTop: '4px' }}>
+        {badges.map((b, i) => (
+          <span key={i} title={b.title} style={{ 
+            fontSize: '0.65rem', padding: '1px 3px', borderRadius: '2px', 
+            background: `${b.color}22`, color: b.color, border: `1px solid ${b.color}44`,
+            fontWeight: 'bold'
+          }}>
+            {b.label}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="container">
     <header className="fade-in">
@@ -487,20 +521,23 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span className="stock-name" style={{ fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{stock.name}</span>
+                          <span style={{ 
+                             fontSize: '0.7rem', fontWeight: 'bold', minWidth: '22px', height: '22px',
+                             display: 'flex', alignItems: 'center', justifyContent: 'center',
+                             borderRadius: '50%', background: idx < 3 ? 'rgba(255, 215, 0, 0.2)' : 'rgba(255, 255, 255, 0.1)',
+                             color: idx < 3 ? '#FFD700' : '#fff', border: idx < 3 ? '1px solid #FFD700' : '1px solid rgba(255,255,255,0.2)'
+                          }}>
+                            {idx + 1}
+                          </span>
+                          <span className="stock-name" style={{ fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap', color: '#fff' }}>{stock.name}</span>
                           {stock.latestSignal && stock.latestSignal.signal_HH && (
                             <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                              HH 강력신호
-                            </span>
-                          )}
-                          {stock.isTopSector && (
-                            <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                              🔥 주도섹터
+                              HH
                             </span>
                           )}
                         </div>
                         <span className="stock-code" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {stock.market} | {stock.code} {stock.sector && stock.sector !== '기타' ? `| ${stock.sector}` : ''}
+                          {stock.code} {stock.sector && stock.sector !== '기타' ? `| ${stock.sector}` : ''}
                         </span>
                       </div>
                     </td>
@@ -520,17 +557,16 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                        )}
                        </div>
                     </td>
-                    <td style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <div style={{ display: 'inline-block', position: 'relative', fontSize: '1.1rem', letterSpacing: '1px', color: 'rgba(255,255,255,0.2)' }}>
-                          ★★★★★
-                          <div style={{ position: 'absolute', top: 0, left: 0, overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
-                            ★★★★★
-                          </div>
+                    <td style={{ padding: '0.4rem 0.2rem' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem', alignItems: 'center' }}>
+                        <div style={{ 
+                          color: stock.total_score >= 80 ? '#FFD700' : stock.total_score >= 60 ? '#10b981' : '#fff', 
+                          fontWeight: 'bold', fontSize: '1.2rem', textShadow: stock.total_score >= 80 ? '0 0 10px rgba(255,215,0,0.3)' : 'none' 
+                        }}>
+                          {stock.total_score}
                         </div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                          {stock.total_score}점
-                        </div>
+                        {renderStars(stock.total_score)}
+                        {renderSynergyBadges(stock)}
                       </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>

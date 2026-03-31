@@ -152,67 +152,55 @@ export const useStockManager = (isAuthenticated) => {
 
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
     let score = 0;
+    const s2H = tfSigs['2H'];
+    const s1D = tfSigs['1D'];
     
-    // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점)
-    let coreScore = 0;
-    let bestTf = '1D'; // default
-    const coreTfs = ['1H', '2H', '4H', '1D', '1W'];
+    if (!s2H) return { score: 0, bestTf: '1D' };
+
+    // 1. 추세필터 (2H) - 15점
+    if (s2H.cond_up7) score += 15;
+
+    // 2. 눌림목감지 (2H) - 15점
+    if (s2H.DHH2) score += 15;
+
+    // 3. 이평선 정배열 (2H) - 30점 (5 > 10 > 20 > 60)
+    const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
+    if (isAligned) score += 30;
+
+    // 4. 이격도 A (2H) - 10점 (정배열 && 10 < Price < 5)
+    if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
+
+    // 5. 이격도 B (2H) - 5점 (정배열 && 20 < Price < 10)
+    if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
+
+    // Multi-TF 가산점 (1H, 2H, 4H, 1D, 2D)
+    const checkTfs = ['1H', '2H', '4H', '1D', '2D'];
     
-    let activeTfCount = 0;
-    coreTfs.forEach(tf => {
-      let tfScore = 0;
-      let hasCondUp7 = tfSigs[tf] && tfSigs[tf].cond_up7;
-      let hasSignal = tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2);
-      
-      if (hasCondUp7) tfScore += 20;
-      if (hasSignal) tfScore += 20;
-      
-      if (hasCondUp7 || hasSignal) {
-        activeTfCount++;
-      }
-      
-      if (tfScore >= coreScore) {
-        coreScore = tfScore; 
-        if (tfScore > 0) bestTf = tf;
-      }
+    // 6. 매수신호 중첩 - 각 2점 (Max 10)
+    checkTfs.forEach(tf => {
+      if (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2) score += 2;
     });
 
-    if (activeTfCount >= 2) {
-      coreScore += 10;
-    }
-    score += Math.min(coreScore, 50);
-    
-    // 2️⃣ 다중 시간대(MTF) 프랙탈 매수 보너스 (Max 30점)
-    let mtfScore = 0;
-    let mtfSignalCount = 0;
-    
-    coreTfs.forEach(tf => {
-      if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) {
-        mtfScore += 5;
-        mtfSignalCount++;
-      }
+    // 7. 추세신호 중첩 - 각 2점 (Max 10)
+    checkTfs.forEach(tf => {
+      if (tfSigs[tf]?.cond_up7) score += 2;
     });
-    
-    if (mtfSignalCount >= 3) {
-      mtfScore += 10;
-    } else if (mtfSignalCount === 2) {
-      mtfScore += 5;
+
+    // 8. 강력신호 보너스 - 각 1점 (Max 5)
+    checkTfs.forEach(tf => {
+      if (tfSigs[tf]?.cond_up7 && (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2)) score += 1;
+    });
+
+    // 9. 진입가 근접성 (2H) - 3점 (|현재가-result_2| < 1%)
+    if (s2H.result_2 > 0) {
+      const diff = Math.abs(s2H.current_price - s2H.result_2) / s2H.result_2;
+      if (diff <= 0.01) score += 3;
     }
-    score += Math.min(mtfScore, 30);
 
-    // 3️⃣ 장기 수급(거래량) 폭발 보너스 (Max 10점)
-    let volScore = 0;
-    if (tfSigs['2H'] && tfSigs['2H'].trigger_vol) volScore += 2;
-    if (tfSigs['4H'] && tfSigs['4H'].trigger_vol) volScore += 2;
-    if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) volScore += 4;
-    if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) volScore += 4;
-    score += Math.min(volScore, 10);
+    // 10. 거래량 급증 (1D) - 2점 (1.5배 이상)
+    if (s1D?.trigger_vol) score += 2;
 
-    // 5️⃣ 실시간 외국인/기관 수급 보너스 (최대 11점) - server.cjs에서 처리된 bonus_score
-    const bonus = latest?.kis_change_data?.bonus_score || 0;
-    score += bonus;
-
-    return { score: Math.min(score, 100), bestTf };
+    return { score: Math.min(score, 100), bestTf: '2H' };
   };
 
   const candidatesRaw = filteredStocks.map(stock => {
@@ -229,13 +217,16 @@ export const useStockManager = (isAuthenticated) => {
       bestSignal: bestSignal,
       bestTfLabel: scoreData.bestTf,
       isTopSector,
-      total_score: scoreData.score
+      total_score: scoreData.score,
+      is_alignment: tfSigs['2H']?.ema5 > tfSigs['2H']?.ema10 && tfSigs['2H']?.ema10 > tfSigs['2H']?.ema20 && tfSigs['2H']?.ema20 > tfSigs['2H']?.ema60,
+      is_dip_area: tfSigs['2H']?.DHH2,
+      is_mtf_signal: ['1H', '2H', '4H'].some(tf => tfSigs[tf]?.signal_HH)
     };
   });
 
-  const candidates = showAll 
-    ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
-    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
+  const candidates = [...candidatesRaw]
+    .sort((a, b) => b.total_score - a.total_score)
+    .slice(0, 10);
 
   const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
 

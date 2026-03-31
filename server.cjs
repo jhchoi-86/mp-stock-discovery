@@ -998,42 +998,47 @@ if (isPrimaryWorker) {
               let coreScore = 0;
               const tfs = ['2H', '1D', '1W'];
               
-              tfs.forEach(tf => {
-                let tfScore = 0;
-                if (tfSigs[tf] && tfSigs[tf].cond_up7) tfScore += 25;
-                if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) tfScore += 25;
-                if (tfScore > coreScore) coreScore = tfScore; 
-              });
-              score += coreScore;
+              let score = 0;
+              const s2H = tfSigs['2H'];
+              const s1D = tfSigs['1D'];
               
-              // 2️⃣ 장기 수급 폭발 보너스 (거래량) (Max 10점)
-              if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
-              if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) score += 5;
+              if (s2H) {
+                // 1. 추세필터 (2H) - 15점
+                if (s2H.cond_up7) score += 15;
 
-              // 3️⃣ 스나이퍼 진입 타점 정밀도 (Max 10점)
-              let bestDistScore = 0;
-              const curPrice = latest?.current_price || latest?.entry_price || 0;
-              if (curPrice > 0) {
-                tfs.forEach(tf => {
-                   if (tfSigs[tf] && tfSigs[tf].result_2) {
-                      const diffPct = ((curPrice - tfSigs[tf].result_2) / tfSigs[tf].result_2) * 100;
-                      if (diffPct >= 0 && diffPct <= 0.5) bestDistScore = Math.max(bestDistScore, 6);
-                      else if (diffPct > 0.5 && diffPct <= 1.0) bestDistScore = Math.max(bestDistScore, 4);
-                   }
-                });
+                // 2. 눌림목감지 (2H) - 15점
+                if (s2H.DHH2) score += 15;
+
+                // 3. 이평선 정배열 (2H) - 30점 (5 > 10 > 20 > 60)
+                const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
+                if (isAligned) score += 30;
+
+                // 4. 이격도 A (2H) - 10점
+                if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
+
+                // 5. 이격도 B (2H) - 5점
+                if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
+
+                // 9. 진입가 근접성 (2H) - 3점
+                if (s2H.result_2 > 0) {
+                  const diff = Math.abs(s2H.current_price - s2H.result_2) / s2H.result_2;
+                  if (diff <= 0.01) score += 3;
+                }
               }
-              score += bestDistScore;
 
-              // 4️⃣ 다중 시간대(MTF) 프랙탈 매수 보너스 (Max 30점)
-              if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) score += 10;
-              if (tfSigs['1D'] && (tfSigs['1D'].signal_HH || tfSigs['1D'].DHH2)) score += 10;
-              if (tfSigs['1W'] && (tfSigs['1W'].signal_HH || tfSigs['1W'].DHH2)) score += 10;
+              // Multi-TF 가산점 (1H, 2H, 4H, 1D, 2D)
+              const tfsList = ['1H', '2H', '4H', '1D', '2D'];
+              tfsList.forEach(tf => {
+                if (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2) score += 2; // 6. 매수신호
+                if (tfSigs[tf]?.cond_up7) score += 2; // 7. 추세신호
+                if (tfSigs[tf]?.cond_up7 && (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2)) score += 1; // 8. 강력신호
+              });
 
-              const bonus = latest?.kis_change_data?.bonus_score || 0;
-              score += bonus;
+              // 10. 거래량 급증 (1D) - 2점
+              if (s1D?.trigger_vol) score += 2;
 
               return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
-            }).filter(s => s.latestSignal);
+             }).filter(s => s.latestSignal);
 
             // All candidates are allowed without ADX and strict trend filters, relying only on final AI total_score sorting
 
