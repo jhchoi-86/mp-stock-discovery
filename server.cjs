@@ -1366,10 +1366,11 @@ app.post('/api/auto-sync', async (req, res) => {
         if (!res.headersSent) res.status(500).json({ error: 'Failed to start analysis engine' });
     });
 
-    syncProcess.on('close', async (code) => {
-        console.log(`[Integrated Sync] Process finished with code ${code}`);
+    syncProcess.on('close', async (code, signal) => {
+        console.log(`[Integrated Sync] Process finished with code ${code}, signal ${signal}`);
         isSyncMutexLocked = false;
         
+        // If the process exited normally (0)
         if (code === 0) {
             try {
                 const signalsPath = path.join(__dirname, 'data', 'signals.json');
@@ -1397,8 +1398,15 @@ app.post('/api/auto-sync', async (req, res) => {
                 console.error('[Integrated Sync] Post-processing archival failed:', err);
                 if (!res.headersSent) res.status(500).json({ error: 'Sync post-processing failed' });
             }
-        } else {
-            if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
+            // [Blue Team] If code is null and signal is SIGINT/SIGTERM, it's likely a manual stop
+            if (code === null && (signal === 'SIGINT' || signal === 'SIGTERM')) {
+                console.log('[Integrated Sync] Process was stopped manually (Reset/Stop request).');
+                if (!res.headersSent) {
+                    res.json({ message: 'Sync stopped by user', stopped: true });
+                }
+            } else {
+                if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
+            }
         }
     });
 });

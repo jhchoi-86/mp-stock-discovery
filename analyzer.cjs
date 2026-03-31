@@ -602,7 +602,16 @@ if (require.main === module) {
                             resultsMap.set(stock.code, entry);
                         }
 
-                        if (i % 20 === 0) console.log(`[PROGRESS] ${tf}:${i+1}/${stocks.length}`);
+                        // [UI/UX] Log progress every 5 stocks for smoother UI
+                        if ((i + 1) % 5 === 0 || i === 0 || i === stocks.length - 1) {
+                            console.log(`[PROGRESS] ${tf}:${i+1}/${stocks.length}`);
+                        }
+
+                        // [UI/UX] Incremental Save every 10 stocks so Dashboard sees 'Received Signals' count up
+                        if ((i + 1) % 10 === 0) {
+                            fs.writeFileSync(signalsPath, JSON.stringify(Array.from(resultsMap.values()), null, 2));
+                        }
+
                         // KIS API TPS limit (approx 20/sec shared). Using 250ms to yield to other pollers.
                         await new Promise(r => setTimeout(r, 250));
                     } catch (e) {
