@@ -68,7 +68,10 @@ const App = () => {
     return (
       <div className="dashboard-root">
         <Toaster position="bottom-right" />
-        <SSEProvider onUpdateRequested={manager.handleSyncCompletion}>
+        <SSEProvider 
+          onUpdateRequested={manager.fetchData} 
+          onSyncComplete={manager.handleSyncCompletion}
+        >
             {isMobile ? (
               <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
             ) : (

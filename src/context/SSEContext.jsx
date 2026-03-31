@@ -9,7 +9,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 const SSEContext = createContext();
 const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
 
-export const SSEProvider = ({ children, onUpdateRequested }) => {
+export const SSEProvider = ({ children, onUpdateRequested, onSyncComplete }) => {
     const [progress, setProgress] = useState({ current: 0, total: 350, timeframe: '' });
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
@@ -18,16 +18,18 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
     const progressRef = useRef(progress);
     const frameId = useRef(null);
     const onUpdateRequestedRef = useRef(onUpdateRequested);
+    const onSyncCompleteRef = useRef(onSyncComplete);
 
-    // Update callback ref when it changes
+    // Update refs when props change
     useEffect(() => {
         onUpdateRequestedRef.current = onUpdateRequested;
-    }, [onUpdateRequested]);
+        onSyncCompleteRef.current = onSyncComplete;
+    }, [onUpdateRequested, onSyncComplete]);
 
     useEffect(() => {
         let eventSource = null;
         let retryCount = 0;
-        const maxRetries = 5;
+        const maxRetries = 10; // 🔴 [Stability] Increase retries
 
         const connect = () => {
             if (eventSource) eventSource.close();
@@ -62,8 +64,9 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                             });
                         }
 
-                        if (payload.current === payload.total) {
-                            if (onUpdateRequestedRef.current) onUpdateRequestedRef.current();
+                        // 🔴 [UX Patch] 전용 완료 콜백 호출 (100% 도달 시)
+                        if (payload.current === payload.total && payload.current > 0) {
+                            if (onSyncCompleteRef.current) onSyncCompleteRef.current();
                         }
                     } 
                     else if (data.type === 'sniper_alert') {
@@ -76,7 +79,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
 
             eventSource.onerror = (e) => {
                 setIsConnected(false);
-                setError("연결 재시도 중...");
+                // 🔴 [Loop Prevention] Don't set error message too aggressively to reduce re-renders
                 eventSource.close();
                 if (retryCount < maxRetries) {
                     retryCount++;
@@ -91,7 +94,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
             if (eventSource) eventSource.close();
             if (frameId.current) cancelAnimationFrame(frameId.current);
         };
-    }, []); // 🔴 Important: Stable dependency array to prevent reconnection loops
+    }, []); // 🔴 Stable: Connection only runs once
 
     return (
         <SSEContext.Provider value={{ progress, lastSignal, isConnected, error }}>
