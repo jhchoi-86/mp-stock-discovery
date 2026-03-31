@@ -603,8 +603,8 @@ if (require.main === module) {
                         }
 
                         if (i % 20 === 0) console.log(`[PROGRESS] ${tf}:${i+1}/${stocks.length}`);
-                        // KIS API TPS limit (approx 20/sec)
-                        await new Promise(r => setTimeout(r, 60));
+                        // KIS API TPS limit (approx 20/sec shared). Using 120ms to stay safe.
+                        await new Promise(r => setTimeout(r, 120));
                     } catch (e) {
                         const errorMsg = e.response?.data?.msg1 || e.response?.data || e.message;
                         console.error(`[Analyzer] Error processing ${stock.name} (${tf}):`, errorMsg);
