@@ -191,12 +191,12 @@
   },
   {
     "code": "006260",
-    "name": "LS",
+    "name": "LS ELECTRIC",
     "market": "KOSPI 200"
   },
   {
     "code": "010120",
-    "name": "LS ELECTRIC",
+    "name": "LS",
     "market": "KOSPI 200"
   },
   {
@@ -231,7 +231,7 @@
   },
   {
     "code": "011790",
-    "name": "SKC",
+    "name": "SK네트웍스",
     "market": "KOSPI 200"
   },
   {
@@ -596,7 +596,7 @@
   },
   {
     "code": "012750",
-    "name": "에스원",
+    "name": "KOSPI_012750",
     "market": "KOSPI 200"
   },
   {
@@ -992,6 +992,11 @@
   {
     "code": "093370",
     "name": "후성",
+    "market": "KOSPI 200"
+  },
+  {
+    "code": "004800",
+    "name": "효성",
     "market": "KOSPI 200"
   },
   {
@@ -1737,6 +1742,11 @@
   {
     "code": "145020",
     "name": "휴젤",
+    "market": "KOSDAQ 150"
+  },
+  {
+    "code": "047920",
+    "name": "HLB제약",
     "market": "KOSDAQ 150"
   }
 ]

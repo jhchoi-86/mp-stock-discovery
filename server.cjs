@@ -856,26 +856,45 @@ app.post('/api/import-csv', requireProAuth, async (req, res) => {
 // Reset all tracking data
 app.post('/api/reset', requireProAuth, async (req, res) => {
     try {
+        // Kill any pending sync process during reset
+        if (currentSyncProcess) {
+            console.log('[Reset] Killing current sync process...');
+            currentSyncProcess.kill('SIGINT'); 
+            currentSyncProcess = null;
+            isSyncMutexLocked = false;
+        }
+
         // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
         await withSignalLock(async () => {
-            const resultStr = JSON.stringify([], null, 2);
-            await fs.promises.writeFile(SIGNALS_FILE, resultStr);
-            await fs.promises.writeFile(STOCK_MASTER_FILE, resultStr);
-            CACHED_SIGNALS = resultStr; // 즉시 캐시 갱신
-            CACHED_STOCKS = resultStr;
+            const emptySignals = JSON.stringify([], null, 2);
+            await fs.promises.writeFile(SIGNALS_FILE, emptySignals);
+            // ❌ STOCK_MASTER_FILE should NOT be cleared! It's the 350-stock index.
+            // Only clear signals.json
+            CACHED_SIGNALS = emptySignals; 
             lastSignalsMtimeMs = Date.now();
-            lastStocksMtimeMs = Date.now();
         });
         alertCache.clear();
-        res.json({ message: '모든 분석 데이터가 초기화되었습니다.' });
+        res.json({ message: '모든 분석 데이터가 초기화되었습니다. (종목 유니버스는 유지됨)' });
     } catch (error) {
         console.error("Reset Error:", error);
         res.status(500).json({ error: '초기화 중 오류가 발생했습니다.' });
     }
 });
 
+// Stop synchronization
+app.post('/api/auto-sync/stop', requireProAuth, (req, res) => {
+    if (currentSyncProcess) {
+        currentSyncProcess.kill('SIGINT');
+        currentSyncProcess = null;
+        isSyncMutexLocked = false;
+        return res.json({ message: '동기화가 중단되었습니다.' });
+    }
+    res.json({ message: '현재 실행 중인 동기화가 없습니다.' });
+});
+
 // Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
 let isSyncMutexLocked = false;
+let currentSyncProcess = null; // Track the current running analyzer process
 
 // RESET: Deleted obsolete /api/auto-sync here (Consolidated at the bottom)
 
@@ -900,7 +919,7 @@ if (isPrimaryWorker) {
     console.log('[Scheduler] Primary worker initialized scheduling tasks.');
     
     // Phase 11: Real-time Entry Sniper Monitoring
-    startNightlyMonitor(getCachedPrice);
+    // startNightlyMonitor(getCachedPrice); // [DISABLED]
 
     async function archiveOldSignals() {
         console.log('[Archive] Starting old signals cleanup...');
@@ -992,7 +1011,11 @@ if (isPrimaryWorker) {
               const tfSigs = getSignalsForStock(stock.code);
               const latest = getLatestGlobal(stock.code);
               
-              let score = 0;
+              let score = 0;              
+              
+              // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
+              let coreScore = 0;
+              const tfs = ['2H', '1D', '1W'];
               const s2H = tfSigs['2H'];
               const s1D = tfSigs['1D'];
               
@@ -1309,6 +1332,7 @@ app.post('/api/auto-sync', async (req, res) => {
     const syncProcess = spawn('node', ['analyzer.cjs', ...targetIntervals], {
         env: { ...process.env, SYNC_MODE: 'integrated' }
     });
+    currentSyncProcess = syncProcess;
 
     syncProcess.stdout.on('data', (data) => {
         const lines = data.toString().split('\n');
@@ -1404,11 +1428,12 @@ app.listen(PORT, '0.0.0.0', () => {
         console.log(`[PM2] Sent 'ready' signal for zero-downtime deployment.`);
     }
     // R4: 백그라운드 AI 엔진 웜업 핑 (1회성)
-    setTimeout(pingAIService, 5000);
+    // setTimeout(pingAIService, 5000); // [DISABLED]
 
     // ─────────────────────────────────────────────────────────────────────────
     // [Full Universe Poller] 장중 350종목 실시간 현재가 배치 폴러 시작 (KIS API 준수)
     // ─────────────────────────────────────────────────────────────────────────
+    /* [DISABLED]
     setTimeout(() => {
         try {
             const stockMaster = JSON.parse(CACHED_STOCKS).map(s => ({
@@ -1423,4 +1448,5 @@ app.listen(PORT, '0.0.0.0', () => {
             console.error('[FullPoller] 초기화 실패:', e.message);
         }
     }, 3000); // 서버 기동 3초 후 시작 (캐시 로드 완료 대기)
+    */
 });

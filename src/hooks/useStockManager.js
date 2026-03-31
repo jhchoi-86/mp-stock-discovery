@@ -224,9 +224,9 @@ export const useStockManager = (isAuthenticated) => {
     };
   });
 
-  const candidates = [...candidatesRaw]
-    .sort((a, b) => b.total_score - a.total_score)
-    .slice(0, 10);
+  const candidates = showAll 
+    ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
+    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 10);
 
   const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
 
@@ -282,9 +282,14 @@ export const useStockManager = (isAuthenticated) => {
       const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mpstock.co.kr`;
       const response = await fetch(`${API_URL}/api/reset`, { method: 'POST' });
       if (response.ok) {
+        // Also explicitly call stop-sync to be sure
+        await axiosClient.post('/api/auto-sync/stop').catch(() => {});
+        
         const result = await response.json();
         alert(result.message);
         setSelectedStocks(new Set());
+        setIsSyncing(false);
+        setShowAll(true); // Show all 350 stocks at 0 points
         fetchData();
       } else {
         alert("초기화 중 오류가 발생했습니다.");
