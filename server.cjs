@@ -992,12 +992,6 @@ if (isPrimaryWorker) {
               const tfSigs = getSignalsForStock(stock.code);
               const latest = getLatestGlobal(stock.code);
               
-              let score = 0;              
-              
-              // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
-              let coreScore = 0;
-              const tfs = ['2H', '1D', '1W'];
-              
               let score = 0;
               const s2H = tfSigs['2H'];
               const s1D = tfSigs['1D'];
