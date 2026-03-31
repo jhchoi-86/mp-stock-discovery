@@ -554,7 +554,7 @@ if (require.main === module) {
     (async () => {
         try {
             const token = await getKisAccessToken();
-            const masterPath = path.join(__dirname, 'data', 'stock_master.json');
+            const masterPath = "c:\\Users\\danbe\\Documents\\Antigravity\\주식종목발굴\\data\\test_stock_master.json";
             const stocks = JSON.parse(fs.readFileSync(masterPath, 'utf8'));
             const signalsPath = path.join(__dirname, 'data', 'signals.json');
             

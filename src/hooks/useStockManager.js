@@ -301,7 +301,7 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleIntegratedSync = async () => {
-    if (!window.confirm(`1H, 2H, 4H, 1D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
+    if (!window.confirm(`1H, 2H, 4H, 1D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(TPS 제한을 준수하기 위해 약 30분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
     setShowAll(false); 

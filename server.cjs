@@ -1350,6 +1350,14 @@ app.post('/api/auto-sync', async (req, res) => {
                     current: parseInt(current),
                     total: parseInt(total)
                 };
+                
+                // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원 (메모리 업데이트)
+                currentSyncProgress = {
+                    current: progressData.current,
+                    total: progressData.total,
+                    timeframe: progressData.timeframe
+                };
+
                 // Broadcast progress AND trigger a signal update (incremental saves)
                 clients.forEach(c => {
                     c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: progressData })}\n\n`);
@@ -1370,6 +1378,9 @@ app.post('/api/auto-sync', async (req, res) => {
         console.log(`[Integrated Sync] Process finished with code ${code}, signal ${signal}`);
         isSyncMutexLocked = false;
         
+        // 🔴 [Red Team 방어] 동기화 종료 시 상태 초기화
+        currentSyncProgress = { current: 0, total: 350, timeframe: '' };
+
         // If the process exited normally (0)
         if (code === 0) {
             try {
@@ -1398,15 +1409,15 @@ app.post('/api/auto-sync', async (req, res) => {
                 console.error('[Integrated Sync] Post-processing archival failed:', err);
                 if (!res.headersSent) res.status(500).json({ error: 'Sync post-processing failed' });
             }
-            // [Blue Team] If code is null and signal is SIGINT/SIGTERM, it's likely a manual stop
-            if (code === null && (signal === 'SIGINT' || signal === 'SIGTERM')) {
-                console.log('[Integrated Sync] Process was stopped manually (Reset/Stop request).');
-                if (!res.headersSent) {
-                    res.json({ message: 'Sync stopped by user', stopped: true });
-                }
-            } else {
-                if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
+        }
+        // [Blue Team] If code is null and signal is SIGINT/SIGTERM, it's likely a manual stop
+        else if (code === null && (signal === 'SIGINT' || signal === 'SIGTERM')) {
+            console.log('[Integrated Sync] Process was stopped manually (Reset/Stop request).');
+            if (!res.headersSent) {
+                res.json({ message: 'Sync stopped by user', stopped: true });
             }
+        } else {
+            if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
         }
     });
 });
@@ -1438,23 +1449,5 @@ app.listen(PORT, '0.0.0.0', () => {
     // R4: 백그라운드 AI 엔진 웜업 핑 (1회성)
     // setTimeout(pingAIService, 5000); // [DISABLED]
 
-    // ─────────────────────────────────────────────────────────────────────────
-    // [Full Universe Poller] 장중 350종목 실시간 현재가 배치 폴러 시작 (KIS API 준수)
-    // ─────────────────────────────────────────────────────────────────────────
-    /* [DISABLED]
-    setTimeout(() => {
-        try {
-            const stockMaster = JSON.parse(CACHED_STOCKS).map(s => ({
-                code:        s.code,
-                entry_price: 0  // initialze to 0; hit detection uses nightlyMonitor's past_recommendations
-            }));
-            if (stockMaster.length > 0) {
-                startFullUniversePoller(stockMaster, getKisAccessToken);
-                console.log(`[FullPoller] 장중 실시간 폴러 등록 완료 — ${stockMaster.length}종목`);
-            }
-        } catch (e) {
-            console.error('[FullPoller] 초기화 실패:', e.message);
-        }
-    }, 3000); // 서버 기동 3초 후 시작 (캐시 로드 완료 대기)
     // [DISABLED] startNightlyMonitor(getKisAccessToken);
 });

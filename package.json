@@ -1,7 +1,7 @@
 {
-  "name": "-",
+  "name": "mp-stock-discovery",
   "private": true,
-  "version": "0.0.0",
+  "version": "6.18.11",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -12,7 +12,6 @@
     "seal": "node seal.cjs"
   },
   "devDependencies": {
-    "@prisma/client": "^5.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "prisma": "^5.0.0",
     "typescript": "~5.9.3",
@@ -22,6 +21,7 @@
     "@aws-sdk/client-s3": "^3.1014.0",
     "@aws-sdk/lib-storage": "^3.1014.0",
     "@aws-sdk/s3-request-presigner": "^3.1014.0",
+    "@prisma/client": "^5.0.0",
     "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.2",
