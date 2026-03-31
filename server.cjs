@@ -1342,8 +1342,10 @@ app.post('/api/auto-sync', async (req, res) => {
         });
     });
 
-    syncProcess.stderr.on('data', (data) => {
-        console.error(`[Analyzer ERROR] ${data.toString().trim()}`);
+    syncProcess.on('error', (err) => {
+        console.error(`[Integrated Sync] Failed to start analyzer process: ${err.message}`);
+        isSyncMutexLocked = false;
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to start analysis engine' });
     });
 
     syncProcess.on('close', async (code) => {

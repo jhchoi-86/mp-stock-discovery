@@ -1,7 +1,7 @@
-/**
- * analyzer.cjs
- * Translates TradingView Pine Script logic into Node.js
- */
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+require('dotenv').config();
 
 // --- Math Utilities ---
 
@@ -457,3 +457,144 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
 }
 
 module.exports = { calculateSignals };
+
+// ─────────────────────────────────────────────────────────────────────────
+// [Integrated Sync Mode] Standalone Execution Logic
+// ─────────────────────────────────────────────────────────────────────────
+if (require.main === module) {
+    const args = process.argv.slice(2);
+    const targetTfs = args.length > 0 ? args : ['1H', '2H', '1D'];
+    
+    console.log(`[Standalone Analyzer] Starting analysis for TFs: ${targetTfs.join(', ')}`);
+
+    const KIS_APP_KEY = (process.env.KIS_APP_KEY || '').trim();
+    const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
+    const TOKEN_DIR = path.join(__dirname, 'data');
+    const KIS_TOKEN_FILE = path.join(TOKEN_DIR, 'kis_token.json');
+
+    async function getKisAccessToken() {
+        if (fs.existsSync(KIS_TOKEN_FILE)) {
+            try {
+                const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
+                if (saved.expiry > Date.now() + 3600000) return saved.token;
+            } catch (e) {}
+        }
+
+        const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
+            grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET
+        });
+        const token = response.data.access_token;
+        const expiry = Date.now() + (response.data.expires_in * 1000);
+        if (!fs.existsSync(TOKEN_DIR)) fs.mkdirSync(TOKEN_DIR);
+        fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({ token, expiry }));
+        return token;
+    }
+
+    async function fetchOhlc(token, code, tf = 'D') {
+        const tfMap = { '1M': '1', '5M': '5', '15M': '15', '30M': '30', '1H': '60', '2H': '120', '4H': '240', '1D': 'D', '1W': 'W' };
+        const mapping = tfMap[tf] || 'D';
+        const isMinute = !['D', 'W', 'M'].includes(mapping);
+        const url = isMinute 
+            ? 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice'
+            : 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice';
+
+        const params = isMinute 
+            ? { FID_ETC_CLS_CODE: '', FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code, FID_INPUT_HOUR_1: '', FID_PW_DATA_INCU_YN: 'Y', FID_UNIT_TIME: mapping }
+            : { FID_COND_MRKT_DIV_CODE: 'J', FID_INPUT_ISCD: code, FID_PERIOD_DIV_CODE: mapping, FID_ORG_ADJ_PRC: 'Y' };
+
+        const res = await axios.get(url, {
+            params,
+            headers: {
+                'content-type': 'application/json',
+                'authorization': `Bearer ${token}`,
+                'appkey': KIS_APP_KEY,
+                'appsecret': KIS_APP_SECRET,
+                'tr_id': isMinute ? 'FHKST03010100' : 'FHKST03010100' // Simple mapping for now
+            }
+        });
+
+        const output = res.data.output2 || res.data.output || [];
+        return {
+            time: output.map(d => d.stck_cntg_hour || d.stck_bsop_date).reverse(),
+            close: output.map(d => parseFloat(d.stck_prpr)).reverse(),
+            open: output.map(d => parseFloat(d.stck_oprc)).reverse(),
+            high: output.map(d => parseFloat(d.stck_hgpr)).reverse(),
+            low: output.map(d => parseFloat(d.stck_lwpr)).reverse(),
+            volume: output.map(d => parseFloat(d.acml_vol)).reverse()
+        };
+    }
+
+    // --- Main Loop ---
+    (async () => {
+        try {
+            const token = await getKisAccessToken();
+            const masterPath = path.join(__dirname, 'data', 'stock_master.json');
+            const stocks = JSON.parse(fs.readFileSync(masterPath, 'utf8'));
+            const signalsPath = path.join(__dirname, 'data', 'signals.json');
+            
+            let existingSignals = [];
+            if (fs.existsSync(signalsPath)) {
+                existingSignals = JSON.parse(fs.readFileSync(signalsPath, 'utf8'));
+            }
+
+            const resultsMap = new Map(existingSignals.map(s => [s.code, s]));
+
+            for (const tf of targetTfs) {
+                console.log(`[Analyzer] Processing Timeframe: ${tf}`);
+                for (let i = 0; i < stocks.length; i++) {
+                    const stock = stocks[i];
+                    try {
+                        const ohlc = await fetchOhlc(token, stock.code, tf);
+                        const sigs = calculateSignals(ohlc, tf);
+                        
+                        if (sigs) {
+                            let entry = resultsMap.get(stock.code) || { 
+                                code: stock.code, name: stock.name, type: stock.type, timeframeStatus: {} 
+                            };
+                            entry.timeframeStatus[tf] = sigs;
+                            
+                            // Re-calculate 10-point scoring
+                            let score = 0;
+                            const tfs = entry.timeframeStatus;
+                            const s2H = tfs['2H'];
+                            const s1D = tfs['1D'];
+
+                            if (s2H) {
+                                if (s2H.cond_up7) score += 15;
+                                if (s2H.DHH2) score += 15;
+                                const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
+                                if (isAligned) score += 30;
+                                if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
+                                if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
+                                if (s2H.result_2 > 0 && Math.abs(s2H.current_price - s2H.result_2)/s2H.result_2 <= 0.01) score += 3;
+                            }
+                            ['1H', '2H', '4H', '1D', '2D'].forEach(t => {
+                                if (tfs[t]?.signal_HH || tfs[t]?.DHH2) score += 2;
+                                if (tfs[t]?.cond_up7) score += 2;
+                                if (tfs[t]?.cond_up7 && (tfs[t]?.signal_HH || tfs[t]?.DHH2)) score += 1;
+                            });
+                            if (s1D?.trigger_vol) score += 2;
+
+                            entry.total_score = Math.min(score, 100);
+                            resultsMap.set(stock.code, entry);
+                        }
+
+                        if (i % 20 === 0) console.log(`[PROGRESS] ${tf}:${i+1}/${stocks.length}`);
+                        // KIS API TPS limit (approx 20/sec)
+                        await new Promise(r => setTimeout(r, 60));
+                    } catch (e) {
+                        console.error(`[Analyzer] Error processing ${stock.name} (${tf}):`, e.message);
+                    }
+                }
+            }
+
+            // Save results
+            fs.writeFileSync(signalsPath, JSON.stringify(Array.from(resultsMap.values()), null, 2));
+            console.log(`[Analyzer] Saved all signals to ${signalsPath}`);
+            process.exit(0);
+        } catch (err) {
+            console.error('[Analyzer Fatal]', err);
+            process.exit(1);
+        }
+    })();
+}
