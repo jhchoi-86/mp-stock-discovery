@@ -365,14 +365,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <th style={{ minWidth: '30px', textAlign: 'center', padding: '0.4rem 0.2rem' }}>
                   <input type="checkbox" onChange={toggleSelectAll} checked={candidates.length > 0 && selectedStocks.size === candidates.length} />
                 </th>
-                <th style={{ minWidth: '60px', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>종목명</th>
-                <th style={{ minWidth: '45px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>세력강도</th>
-                <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>점수</th>
-                <th style={{ minWidth: '60px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }} title="데일리(1D) 기준 이동평균선 가격">이평선 주가 💡</th>
-                <th style={{ minWidth: '70px', fontSize: '0.75rem', textAlign: 'center', padding: '0.4rem 0.2rem' }}>매수신호<br/>발생</th>
-                <th style={{ minWidth: '35px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추세</th>
-
-                <th style={{ minWidth: '95px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추천매매<br/><span style={{fontSize:'0.65rem'}}>(분할매수전략)</span></th>
+                <th style={{ minWidth: '80px', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem', textAlign: 'left' }}>종목명</th>
+                <th style={{ minWidth: '100px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>이평선배열(2H)</th>
+                <th style={{ minWidth: '160px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>신호발생구간</th>
+                <th style={{ minWidth: '120px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>추천매매</th>
                 <th style={{ minWidth: '40px', textAlign: 'center', whiteSpace: 'nowrap', fontSize: '0.75rem', padding: '0.4rem 0.2rem' }}>작업</th>
               </tr>
             </thead>
@@ -500,51 +496,21 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       />
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
-                      <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '0.1rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                          <span className="stock-name" style={{ fontSize: '0.95rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{stock.name}</span>
-                          {stock.latestSignal && stock.latestSignal.signal_HH && (
-                            <span title="고점 돌파 강력 신호" style={{ fontSize: '0.65rem', background: '#FF1744', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                              HH 강력신호
-                            </span>
-                          )}
-                          {stock.isTopSector && (
-                            <span title="HH 신호 밀집(주도 섹터)" style={{ fontSize: '0.65rem', background: 'var(--secondary)', color: '#fff', padding: '2px 5px', borderRadius: '4px', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                              🔥 주도섹터
-                            </span>
-                          )}
+                      <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap' }}>{stock.name}</div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+                          ({stock.market} | {stock.code})
                         </div>
-                        <span className="stock-code" style={{ fontSize: '0.75rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-                          {stock.market} | {stock.code} {stock.sector && stock.sector !== '기타' ? `| ${stock.sector}` : ''}
-                        </span>
-                      </div>
-                    </td>
-                    <td style={{ padding: '0.4rem 0.2rem' }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }}>
-                       {stock.latestSignal ? (
-                          <>
-                            <div style={{ background: catBg, color: catColor, padding: '2px 4px', borderRadius: '4px', fontWeight: 'normal', fontSize: '0.65rem', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                              {categoryLabel}
-                            </div>
-                            <div style={{ fontSize: '0.8rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                              {Math.round(stock.latestSignal.adx || 0)}
-                            </div>
-                          </>
-                       ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>-</span>
-                       )}
-                       </div>
-                    </td>
-                    <td style={{ padding: '0.4rem 0.2rem', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-                        <div style={{ display: 'inline-block', position: 'relative', fontSize: '1.1rem', letterSpacing: '1px', color: 'rgba(255,255,255,0.2)' }}>
-                          ★★★★★
-                          <div style={{ position: 'absolute', top: 0, left: 0, overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap', textShadow: '0 0 2px rgba(0,0,0,0.5)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' }}>
+                          <div style={{ display: 'inline-block', position: 'relative', fontSize: '1rem', letterSpacing: '1px', color: 'rgba(255,255,255,0.1)' }}>
                             ★★★★★
+                            <div style={{ position: 'absolute', top: 0, left: 0, overflow: 'hidden', width: `${stock.total_score || 0}%`, color: '#FFD700', whiteSpace: 'nowrap' }}>
+                              ★★★★★
+                            </div>
                           </div>
-                        </div>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 'normal', color: 'var(--text-muted)' }}>
-                          {stock.total_score}점
+                          <span style={{ fontSize: '0.7rem', fontWeight: 'bold', color: '#FFD700', background: 'rgba(255,215,0,0.1)', padding: '1px 4px', borderRadius: '4px' }}>
+                            {stock.total_score}점
+                          </span>
                         </div>
                       </div>
                     </td>
@@ -553,35 +519,33 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.65rem', background: 'rgba(255,193,7,0.05)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(255,193,7,0.15)' }}>
                           <div style={{ color: '#ffb86c', fontWeight: 'bold', marginBottom: '2px', borderBottom: '1px solid rgba(255,184,108,0.2)', paddingBottom: '2px' }}>2H 이평 정렬 💡</div>
                           {(() => {
-                            const mas = Object.entries(stock.t2H)
-                              .filter(([, v]) => v !== null)
-                              .sort(([, a], [, b]) => b - a);
-                            const elements = [];
-                            let priceInserted = false;
-                            const cur = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
-                            
-                            // Insert current price at the correct sorted position
-                            if (cur > mas[0][1]) {
-                              elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
-                              priceInserted = true;
-                            }
-                            mas.forEach(([name, price], midx) => {
-                              elements.push(
-                                <div key={name} style={{ opacity: 0.8, display: 'flex', justifyContent: 'space-between' }}>
-                                  <span>{name.toUpperCase()}:</span>
-                                  <span>{Math.round(price).toLocaleString()}원</span>
-                                </div>
-                              );
-                              const nextPrice = mas[midx + 1]?.[1] || 0;
-                              if (!priceInserted && cur <= price && cur > nextPrice) {
-                                elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
-                                priceInserted = true;
-                              }
-                            });
-                            if (!priceInserted && cur > 0) {
-                              elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
-                            }
-                            return elements;
+                            const maItems = [
+                              { label: '현재가', price: curPrice, highlight: true },
+                              { label: '5일', price: stock.t2H?.sma5 || null },
+                              { label: '10일', price: stock.t2H?.sma10 || null },
+                              { label: '20일', price: stock.t2H?.sma20 || null },
+                              { label: '60일', price: stock.t2H?.sma60 || null }
+                            ];
+                            const sorted = maItems
+                              .filter(item => item.price !== null)
+                              .sort((a, b) => b.price - a.price);
+
+                            return sorted.map((item, idx) => (
+                              <div key={idx} style={{ 
+                                fontSize: '0.65rem', 
+                                display: 'flex', 
+                                justifyContent: 'space-between', 
+                                gap: '8px',
+                                padding: '1px 4px',
+                                borderRadius: '2px',
+                                backgroundColor: item.highlight ? 'rgba(255,184,108,0.15)' : 'transparent',
+                                color: item.highlight ? '#ffb86c' : '#ccc',
+                                fontWeight: item.highlight ? 'bold' : 'normal'
+                              }}>
+                                <span>{Math.round(item.price).toLocaleString()}원</span>
+                                <span style={{ opacity: 0.6 }}>({item.label})</span>
+                              </div>
+                            ));
                           })()}
                         </div>
                       ) : (
@@ -589,49 +553,40 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       )}
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }}>
-
-                        <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '100px' }}>
-                          {["30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => {
-                            const isBuy = stock.buy_signal_timeframes?.includes(tf);
-                            const isStrong = stock.strong_signal_timeframes?.includes(tf);
-                            const isTrend = stock.trend_signal_timeframes?.includes(tf);
-                            
-                            const hasSignal = isBuy || isStrong;
-                            const activeColor = isStrong ? '#FF1744' : (isBuy ? '#00E676' : 'rgba(255,255,255,0.1)');
-                            
-                            return (
-                              <div 
-                                key={tf}
-                                style={{
-                                  width: '26px',
-                                  height: '20px',
-                                  borderRadius: '3px',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  fontSize: '0.55rem',
-                                  fontWeight: isTrend ? 'bold' : 'normal',
-                                  background: activeColor,
-                                  border: isTrend ? `1px solid #4A90E2` : (hasSignal ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.15)'),
-                                  color: hasSignal ? (isStrong ? '#fff' : '#000') : 'rgba(255,255,255,0.5)',
-                                  boxShadow: isTrend ? 'inset 0 0 4px rgba(74, 144, 226, 0.4)' : 'none'
-                                }}
-                                title={`${tf}: Buy=${isBuy}, Strong=${isStrong}, Trend=${isTrend}`}
-                              >
-                                {tf}
-                              </div>
-                            );
-                          })}
-                        </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'center' }}>
+                        {[
+                          { label: '매수신호', key: 'buy_signal_timeframes', color: '#10b981' },
+                          { label: '추세신호', key: 'trend_signal_timeframes', color: '#3b82f6' },
+                          { label: '강력신호', key: 'strong_signal_timeframes', color: '#ef4444' }
+                        ].map(row => (
+                          <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span style={{ fontSize: '0.65rem', fontWeight: 'bold', width: '42px', textAlign: 'left', color: row.color }}>{row.label}</span>
+                            <div style={{ display: 'flex', gap: '2px' }}>
+                              {["30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => {
+                                const isActive = stock[row.key]?.includes(tf);
+                                return (
+                                  <div
+                                    key={tf}
+                                    style={{
+                                      fontSize: '0.6rem',
+                                      width: '28px',
+                                      padding: '1px 0',
+                                      textAlign: 'center',
+                                      borderRadius: '2px',
+                                      fontWeight: 'bold',
+                                      backgroundColor: isActive ? row.color : 'rgba(255,255,255,0.05)',
+                                      color: isActive ? '#fff' : '#555',
+                                      border: isActive ? 'none' : '1px solid rgba(255,255,255,0.05)'
+                                    }}
+                                  >
+                                    {tf}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                    </td>
-                    <td style={{ textAlign: 'center', whiteSpace: 'nowrap', padding: '0.4rem 0.2rem' }}>
-                      {stock.trend_signal_timeframes?.includes('1D') ? (
-                        <div style={{ background: '#2563EB', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'normal', fontSize: '0.75rem', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>상승</div>
-                      ) : (
-                        <span style={{ color: 'var(--text-muted)' }}>-</span>
-                      )}
                     </td>
 
 
@@ -713,7 +668,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   </tr>
                   {stock.bestSignal && (
                     <tr key={`${stock.code}-indicator`} style={{ background: 'rgba(255,255,255,0.02)' }}>
-                      <td colSpan="9" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
+                      <td colSpan="6" style={{ padding: '0 1rem 1rem 1rem', borderTop: 'none' }}>
                         <SignalIndicator 
                           signal={stock.bestSignal} 
                           latestSignal={stock.latestSignal}
