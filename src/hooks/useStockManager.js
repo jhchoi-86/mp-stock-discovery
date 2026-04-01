@@ -115,6 +115,7 @@ export const useStockManager = (isAuthenticated) => {
     const buy = [];
     const trend = [];
     const strong = [];
+    const absolute = [];
     
     ALL_TIMEFRAMES.forEach(tf => {
       const s = tfSigs[tf];
@@ -128,13 +129,15 @@ export const useStockManager = (isAuthenticated) => {
         if (isBuy) buy.push(tf);
         if (isTrend) trend.push(tf);
         if (isStrong) strong.push(tf);
+        if (isBuy && isStrong) absolute.push(tf);
       }
     });
     
     return {
       buy_signal_timeframes: buy,
       trend_signal_timeframes: trend,
-      strong_signal_timeframes: strong
+      strong_signal_timeframes: strong,
+      absolute_signal_timeframes: absolute
     };
   };
 

@@ -557,7 +557,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                         {[
                           { label: '매수신호', key: 'buy_signal_timeframes', color: '#10b981' },
                           { label: '추세신호', key: 'trend_signal_timeframes', color: '#3b82f6' },
-                          { label: '강력신호', key: 'strong_signal_timeframes', color: '#ef4444' }
+                          { label: '강력신호', key: 'strong_signal_timeframes', color: '#ef4444' },
+                          { label: '절대신호', key: 'absolute_signal_timeframes', color: '#facc15' }
                         ].map(row => (
                           <div key={row.key} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                             <span style={{ fontSize: '0.65rem', fontWeight: 'bold', width: '42px', textAlign: 'left', color: row.color }}>{row.label}</span>
