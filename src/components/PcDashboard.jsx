@@ -15,6 +15,8 @@ import useSWR from 'swr';
 import { 
   UserCog, 
   Archive, 
+  History,
+  Clock,
   LogOut, 
   Activity, 
   RotateCcw, 
@@ -40,6 +42,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isReportArchiveOpen, setIsReportArchiveOpen] = useState(false);
   const [isSubscriptionOpen, setIsSubscriptionOpen] = useState(false);
+  const [showArchive, setShowArchive] = useState(false);
   const fileInputRef = useRef(null);
   const marketStatus = getMarketStatus();
 
@@ -323,8 +326,26 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         />
         
         {/* === Control Panel === */}
-        {(user?.role === 'ADMIN' || user?.role === 'PAID') && (
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.8rem', alignItems: 'center' }}>
+          <button 
+            className="card"
+            onClick={() => setShowArchive(!showArchive)}
+            style={{ 
+              padding: '0.75rem 1.25rem', 
+              background: showArchive ? 'var(--primary)' : 'var(--glass)', 
+              border: '1px solid var(--glass-border)', 
+              color: '#fff',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              cursor: 'pointer'
+            }}
+          >
+            <History size={18} />
+            {showArchive ? '타임머신 닫기' : '타임머신(과거 정보)'}
+          </button>
+
+          {(user?.role === 'ADMIN' || user?.role === 'PAID') && (
             <button 
               onClick={handleIntegratedSync}
               disabled={isSyncing}
@@ -333,18 +354,22 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             >
               <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 1H, 2H, 4H, 1D, 1W (5개)"}
             </button>
-          </div>
-        )}
-        
-        {user?.role === 'ADMIN' && (
-          <button 
-            onClick={handleReset}
-            className="card" 
-            style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-          >
-            <RotateCcw size={18} /> 초기화 리셋
-          </button>
-        )}
+          )}
+          
+          {user?.role === 'ADMIN' && (
+            <button 
+              onClick={() => {
+                handleReset();
+                setShowArchive(false);
+                if (activeSnapshot) handleSnapshotSelected(null);
+              }}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: 'rgba(239, 68, 68, 0.2)', border: '1px solid rgba(239, 68, 68, 0.5)', color: '#f87171', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <RotateCcw size={18} /> 초기화 리셋
+            </button>
+          )}
+        </div>
         
         {selectedStocks.size > 0 && (
           <button 
