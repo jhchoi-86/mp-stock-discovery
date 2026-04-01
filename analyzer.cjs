@@ -606,13 +606,17 @@ if (require.main === module) {
                         }
 
                         // [UI/UX] Log progress every 5 stocks for smoother UI
-                        if ((i + 1) % 5 === 0 || i === 0 || i === stocks.length - 1) {
+                        const isMilestone = (i + 1) % 5 === 0 || i === 0 || i === stocks.length - 1;
+                        const hasCriticalSignal = sigs && (sigs.DHH2 || sigs.signal_HH);
+
+                        if (isMilestone) {
                             console.log(`[PROGRESS] ${tf}:${i+1}/${stocks.length}`);
                         }
 
-                        // [UI/UX] Incremental Save every 10 stocks so Dashboard sees 'Received Signals' count up
-                        if ((i + 1) % 10 === 0) {
+                        // [UI/UX] Incremental Save every 5 stocks (aligned with progress) OR immediately on critical Signal
+                        if (isMilestone || hasCriticalSignal) {
                             fs.writeFileSync(signalsPath, JSON.stringify(Array.from(resultsMap.values()), null, 2));
+                            console.log(`[DATA_SAVED] ${stock.code} ${hasCriticalSignal ? '(Critical Signal)' : ''}`);
                         }
 
                         // KIS API TPS limit (approx 20/sec shared). 

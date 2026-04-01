@@ -1382,12 +1382,21 @@ app.post('/api/auto-sync', async (req, res) => {
                     timeframe: progressData.timeframe
                 };
 
-                // Broadcast progress AND trigger a signal update (incremental saves)
+                // Broadcast progress (Update is now handled by [DATA_SAVED] for reliability)
                 clients.forEach(c => {
                     c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: progressData })}\n\n`);
-                    c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
                     if(c.flush) c.flush();
                 });
+            }
+
+            // 🔴 [Real-time Fix] DATA_SAVED 이벤트를 감지하여 프론트엔드에 업데이트 핑 전송
+            if (line.includes('[DATA_SAVED]')) {
+                setTimeout(() => {
+                    clients.forEach(c => {
+                        c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
+                        if(c.flush) c.flush();
+                    });
+                }, 20); // 20ms OS I/O 플래시 대기
             }
         });
     });
