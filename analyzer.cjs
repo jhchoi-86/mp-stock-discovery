@@ -1,7 +1,152 @@
-/**
- * analyzer.cjs
- * Translates TradingView Pine Script logic into Node.js
- */
+require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
+const axios = require('axios');
+const { v4: uuidv4 } = require('uuid');
+
+// --- KIS Config & Token Logic (Top-level for module access) ---
+const DATA_DIR = path.join(__dirname, 'data');
+const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
+const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
+const KIS_TOKEN_FILE = path.join(DATA_DIR, 'kis_token.json');
+
+const KIS_APP_KEY = (process.env.KIS_APP_KEY || '').trim();
+const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
+
+let kisAccessToken = null;
+let kisTokenExpiry = 0;
+
+async function getKisAccessToken() {
+    if (!KIS_APP_KEY || !KIS_APP_SECRET) throw new Error("KIS API Keys missing");
+    if (!kisAccessToken && fs.existsSync(KIS_TOKEN_FILE)) {
+        try {
+            const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
+            kisAccessToken = saved.token;
+            kisTokenExpiry = saved.expiry;
+        } catch (e) {}
+    }
+    if (kisAccessToken && kisTokenExpiry > Date.now() + 3600000) return kisAccessToken;
+    
+    const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
+        grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET
+    });
+    kisAccessToken = response.data.access_token;
+    kisTokenExpiry = Date.now() + (response.data.expires_in * 1000);
+    fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({ token: kisAccessToken, expiry: kisTokenExpiry }));
+    return kisAccessToken;
+}
+
+// --- Chart Resampling Utility ---
+const resampleChartData = (raw, hourCount, tf) => {
+    let resampled = { open: [], high: [], low: [], close: [], volume: [], time: [] };
+    if (!raw.time || raw.time.length === 0) return resampled;
+    const isDayBased = (tf === '2D');
+    
+    let currentCandle = null;
+    let candleCount = 0;
+    let currentDayStr = null;
+
+    for (let i = 0; i < raw.time.length; i++) {
+        const date = new Date(raw.time[i] * 1000);
+        date.setUTCHours(date.getUTCHours() + 9);
+        const dayStr = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
+
+        if (!isDayBased && currentDayStr !== dayStr && currentCandle) {
+            resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+            resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+            resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+            currentCandle = null; candleCount = 0;
+        }
+
+        if (currentCandle === null) {
+            currentDayStr = dayStr;
+            currentCandle = { open: raw.open[i], high: raw.high[i], low: raw.low[i], close: raw.close[i], volume: raw.volume[i], time: raw.time[i] };
+            candleCount = 1;
+        } else {
+            currentCandle.high = Math.max(currentCandle.high, raw.high[i]);
+            currentCandle.low = Math.min(currentCandle.low, raw.low[i]);
+            currentCandle.close = raw.close[i]; currentCandle.volume += raw.volume[i];
+            candleCount++;
+        }
+
+        if (candleCount === hourCount) {
+            resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+            resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+            resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+            currentCandle = null; candleCount = 0;
+        }
+    }
+    if (currentCandle) {
+        resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+        resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+        resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+    }
+    if (raw.kis_change_data) resampled.kis_change_data = raw.kis_change_data;
+    return resampled;
+};
+
+// --- Hybrid History Fetcher ---
+const fetchHybridHistory = async (stock, days, interval, kisTokenGlobal) => {
+    const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
+    const symbolKS = stock.code + suffix;
+    const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
+    const period2 = Math.floor(Date.now() / 1000);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbolKS}?period1=${period1}&period2=${period2}&interval=${interval}`;
+    
+    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!response.ok) throw new Error(`Yahoo Fetch Failed: ${response.status}`);
+    const data = await response.json();
+    const result = data.chart.result[0];
+    const quotes = result.indicators.quote[0];
+    const timestamps = result.timestamp;
+    
+    let validIndices = [];
+    for (let i = 0; i < quotes.close.length; i++) {
+        if (quotes.close[i] !== null && timestamps[i] !== null) validIndices.push(i);
+    }
+
+    let chartData = {
+        open: validIndices.map(i => quotes.open[i]),
+        high: validIndices.map(i => quotes.high[i]),
+        low: validIndices.map(i => quotes.low[i]),
+        close: validIndices.map(i => quotes.close[i]),
+        volume: validIndices.map(i => quotes.volume[i]),
+        time: validIndices.map(i => timestamps[i])
+    };
+
+    if (kisTokenGlobal) {
+        try {
+            const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
+            const kisRes = await axios.get(kisUrl, {
+                headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
+                params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
+                timeout: 5000
+            });
+            const kisData = kisRes.data.output;
+            if (kisData && kisData.stck_prpr) {
+                const currentPrice = parseInt(kisData.stck_prpr);
+                const currentOpen = parseInt(kisData.stck_oprc);
+                const currentHigh = parseInt(kisData.stck_hgpr);
+                const currentLow = parseInt(kisData.stck_lwpr);
+                
+                chartData.kis_change_data = {
+                    sign: kisData.prdy_vrss_sign,
+                    change: parseInt(kisData.prdy_vrss),
+                    rate: parseFloat(kisData.prdy_ctrt),
+                    trade_amount: parseInt(kisData.acml_tr_pbmn)
+                };
+
+                const lastIdx = chartData.close.length - 1;
+                if (lastIdx >= 0) {
+                    chartData.close[lastIdx] = currentPrice;
+                    chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
+                    chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
+                }
+            }
+        } catch(e) {}
+    }
+    return chartData;
+};
 
 // --- Math Utilities ---
 
@@ -367,8 +512,10 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         '15M': 15 * 60 * 1000,
         '30M': 30 * 60 * 1000,
         '1H': 60 * 60 * 1000,
+        '2H': 2 * 60 * 60 * 1000,
         '4H': 4 * 60 * 60 * 1000,
         '1D': 24 * 60 * 60 * 1000,
+        '2D': 2 * 24 * 60 * 60 * 1000,
         '1W': 7 * 24 * 60 * 60 * 1000
     };
     const tfMs = timeframeMsMap[timeframeStr] || timeframeMsMap['1D'];
@@ -396,7 +543,56 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     const ema20_val = ema20[last_idx];
     const ema60_val = ema60[last_idx];
     
-    // Bollinger Bands (20, 2)
+    // SMA 5, 10 (Design v3.0)
+    const sma5_arr = sma(close, 5);
+    const sma10_arr = sma(close, 10);
+    const sma5_val = sma5_arr[last_idx];
+    const sma10_val = sma10_arr[last_idx];
+
+    // Bollinger Bands (25, 2) logic for BBW (Design v3.0)
+    const bbw_adj = 100.0;
+    const bbw_mult = 50.0;
+    const length_BBW = 25;
+    
+    const calculateBBWAndLowest = (src_close) => {
+        if (!src_close || src_close.length < length_BBW) return { val: 0, low5: 0, series: [] };
+        const b_sma = sma(src_close, length_BBW);
+        const b_stdev = stdev(src_close, length_BBW);
+        const series = b_sma.map((s, i) => {
+            if (s === 0 || s === null || b_stdev[i] === null) return null;
+            return (((s + 2 * b_stdev[i]) - (s - 2 * b_stdev[i])) / s) * 100 * bbw_mult + bbw_adj;
+        });
+        const val = series[series.length - 1] || 0;
+        let low5 = val;
+        if (series.length >= 6) {
+            let min_v = val;
+            for (let i = 1; i <= 5; i++) {
+                const v = series[series.length - 1 - i];
+                if (v !== null && v < min_v) min_v = v;
+            }
+            low5 = min_v;
+        }
+        return { val, low5, series };
+    };
+
+    const currentBBW = calculateBBWAndLowest(close);
+    
+    // [Design v3.0] Internal Resampling Logic: 
+    // Calculate MTF (Multi-Timeframe) BBW. 
+    // Double resampling occurs for 2H/2D (Input 2H -> MTF 4H, Input 2D -> MTF 4D).
+    // Standard MTF mapping (e.g. 4H->1D) is planned for next version.
+    const resampled2x = resampleChartData({ time: timeArr, open, high, low, close, volume }, 2, timeframeStr);
+    const mtfBBW = calculateBBWAndLowest(resampled2x.close);
+
+    // Pine Script '절대신호' (isStrong): 
+    // (bbw > bbw_mtf) and (bbw > plot_low) and (bbw_mtf > plot_con_mtf) and cond_up7 and signal_HH
+    const con_mtf = mtfBBW.low5;
+    const is_strong_signal = signal_HH && cond_up7 && 
+                            (currentBBW.val > mtfBBW.val) && 
+                            (currentBBW.val > currentBBW.low5) && 
+                            (mtfBBW.val > con_mtf);
+
+    // Standard BB (20, 2) for price targets
     const sma20 = sma(close, 20);
     const sma60 = sma(close, 60);
     const sma120 = sma(close, 120);
@@ -445,6 +641,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         ema10: ema10_val ? Math.round(ema10_val) : 0,
         ema20: ema20_val ? Math.round(ema20_val) : 0,
         ema60: ema60_val ? Math.round(ema60_val) : 0,
+        sma5: sma5_val ? Math.round(sma5_val) : 0,
+        sma10: sma10_val ? Math.round(sma10_val) : 0,
         sma20: sma20[last_idx] ? Math.round(sma20[last_idx]) : 0,
         sma60: sma60[last_idx] ? Math.round(sma60[last_idx]) : 0,
         sma120: sma120[last_idx] ? Math.round(sma120[last_idx]) : 0,
@@ -452,8 +650,162 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         current_price: close[last_idx] ? Math.round(close[last_idx]) : 0,
         open_price: open[last_idx] ? Math.round(open[last_idx]) : 0,
         prev_close: (last_idx > 0 && close[last_idx - 1]) ? Math.round(close[last_idx - 1]) : 0,
+        bbw: Number(currentBBW.val.toFixed(4)),
+        lowest_bbw_5: Number(currentBBW.low5.toFixed(4)),
+        is_strong_signal: is_strong_signal,
+        con_mtf: Number(mtfBBW.low5.toFixed(4)), // Export con_mtf for verification
+        bbw_mtf: Number(mtfBBW.val.toFixed(4)),  // Export bbw_mtf for verification
         kis_change_data: ohlcHistory.kis_change_data || null
     };
 }
 
 module.exports = { calculateSignals };
+
+// ─────────────────────────────────────────────────────────────────────────
+// [CLI Entry Point] Handle standalone execution (spawning from server.cjs)
+// ─────────────────────────────────────────────────────────────────────────
+
+if (require.main === module) {
+    async function runCliSync() {
+        const args = process.argv.slice(2);
+        const timeframes = args.length > 0 ? args : ['1D'];
+        const isIntegrated = process.env.SYNC_MODE === 'integrated';
+
+        console.log(`[Analyzer CLI] Starting sync for: ${timeframes.join(', ')}`);
+
+        if (!fs.existsSync(STOCK_MASTER_FILE)) {
+            console.error(`[Analyzer CLI] Error: stock_master.json not found at ${STOCK_MASTER_FILE}`);
+            process.exit(1);
+        }
+
+        try {
+            let kisToken = null;
+            try { 
+                kisToken = await getKisAccessToken(); 
+            } catch(e) { 
+                console.error("[Analyzer CLI] KIS Token failed, proceeding with Yahoo only."); 
+            }
+
+            let stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+            if (process.env.STOCK_FILTER) {
+                const codes = process.env.STOCK_FILTER.split(',').map(s => s.trim());
+                stocks = stocks.filter(s => codes.includes(s.code));
+                console.log(`[Analyzer CLI] Filtering stocks based on STOCK_FILTER: ${codes.join(', ')}`);
+            }
+            
+            const saveSignals = (newSignals, activeTimeframes) => {
+                if (!newSignals || newSignals.length === 0) {
+                    console.warn(`[Analyzer CLI] Warning: No new signals to save for timeframes: ${activeTimeframes.join(', ')}. Skipping save to prevent data loss.`);
+                    return;
+                }
+
+                let currentSignals = [];
+                if (fs.existsSync(SIGNALS_FILE)) {
+                    try { 
+                        currentSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8')); 
+                    } catch(e) { 
+                        console.error("[Analyzer CLI] Error reading signals.json, starting fresh.");
+                        currentSignals = []; 
+                    }
+                }
+                const tfSet = new Set(activeTimeframes);
+                let filtered;
+                if (process.env.ADDITIVE_SAVE === 'true') {
+                    // Additive mode: Only remove the specific (code, tf) we are updating
+                    const updatedKeys = new Set(newSignals.map(s => `${s.code}_${s.timeframe}`));
+                    filtered = currentSignals.filter(s => !updatedKeys.has(`${s.code}_${s.timeframe}`));
+                    console.log(`[Analyzer CLI] Additive Save Mode: Preserving other stocks for ${activeTimeframes.join(', ')}`);
+                } else {
+                    // Standard mode: Replace entire timeframe
+                    filtered = currentSignals.filter(s => !tfSet.has(s.timeframe));
+                }
+                const merged = [...filtered, ...newSignals];
+                
+                // Atomic Write (Temp file -> Rename)
+                const tempFile = SIGNALS_FILE + '.tmp';
+                try {
+                    fs.writeFileSync(tempFile, JSON.stringify(merged, null, 2));
+                    fs.renameSync(tempFile, SIGNALS_FILE);
+                } catch (err) {
+                    console.error("[Analyzer CLI] Atomic write failed:", err.message);
+                    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+                }
+            };
+
+            let allTimeframesResults = [];
+            const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
+            const globalHistoryCache = {};
+
+            for (const tf of timeframes) {
+                const interval = intervalMap[tf] || '1d';
+                console.log(`[Analyzer CLI] Syncing ${tf} (Using interval ${interval})...`);
+
+                const tfResults = [];
+                for (let i = 0; i < stocks.length; i++) {
+                    const stock = stocks[i];
+                    // Optimization: Cache by interval (e.g. 1d) so 1D and 2D share raw data
+                    const cacheKey = `${stock.code}_${interval}`;
+
+                    try {
+                        let rawHistory;
+                        if (globalHistoryCache[cacheKey]) {
+                            rawHistory = globalHistoryCache[cacheKey];
+                        } else {
+                            // Fetch max days needed for this interval across potential TFs
+                            let fetchDays = 60;
+                            if (interval === '5m') fetchDays = 5; 
+                            else if (interval === '15m') fetchDays = 15; 
+                            else if (interval === '30m') fetchDays = 30;
+                            else if (interval === '1h') fetchDays = 60;
+                            else if (interval === '1d') fetchDays = 365; // Cover 2D as well
+                            else if (interval === '1wk') fetchDays = 1000;
+
+                            rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
+                            if (rawHistory) globalHistoryCache[cacheKey] = rawHistory;
+                        }
+
+                        if (rawHistory && rawHistory.close && rawHistory.close.length > 50) {
+                            // Perform resampling EXPLICITLY before calculating signals
+                            let processedHistory = rawHistory;
+                            if (tf === '2H') processedHistory = resampleChartData(rawHistory, 2, tf);
+                            else if (tf === '4H') processedHistory = resampleChartData(rawHistory, 4, tf);
+                            else if (tf === '2D') processedHistory = resampleChartData(rawHistory, 2, tf);
+
+                            const signal = calculateSignals(processedHistory, tf);
+                            if (signal) {
+                                tfResults.push({ 
+                                    ...signal, 
+                                    code: stock.code, 
+                                    name: stock.name, 
+                                    timeframe: tf, 
+                                    timestamp: Date.now(), 
+                                    id: uuidv4(), 
+                                    kis_change_data: processedHistory.kis_change_data 
+                                });
+                            }
+                        }
+                    } catch (e) {
+                        console.error(`[Analyzer CLI] Error ${stock.code} (${stock.name}): ${e.message}`);
+                    }
+
+                    // Incremental progress and save
+                    if ((i + 1) % 50 === 0 || i === stocks.length - 1) {
+                        console.log(`[PROGRESS] ${tf}:${i + 1}/${stocks.length}`);
+                        saveSignals(tfResults, [tf]);
+                    }
+                    await new Promise(r => setTimeout(r, 100)); 
+                }
+                allTimeframesResults.push(...tfResults);
+            }
+
+            console.log(`[Analyzer CLI] Full synchronization completed for: ${timeframes.join(', ')}`);
+        } catch (e) {
+            console.error("[Analyzer CLI] Fatal Error:", e.message);
+        }
+    }
+
+    runCliSync().catch(err => {
+        console.error('[Analyzer CLI Error]', err);
+        process.exit(1);
+    });
+}

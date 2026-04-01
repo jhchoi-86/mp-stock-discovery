@@ -1277,8 +1277,8 @@ if (isPrimaryWorker) {
         console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
         try {
             const localApi = `http://127.0.0.1:${PORT}/api/auto-sync`;
-            console.log('[Cron] 1D 및 2H 일괄 동기화 시작...');
-            await axios.post(localApi, { timeframes: ['1D', '2H'] }, {
+            console.log('[Cron] 30M, 1D, 2D, 2H 일괄 동기화 시작...');
+            await axios.post(localApi, { timeframes: ['30M', '1D', '2D', '2H'] }, {
                 headers: { 'x-internal-cron-secret': process.env.CRON_SECRET }
             });
 
@@ -1287,7 +1287,7 @@ if (isPrimaryWorker) {
 
             const getSignalsForStock = (code) => {
               const stockSignals = signals.filter(s => s.code === code);
-              const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+              const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "2D", "1W"];
               const status = {};
               timeframes.forEach(tf => {
                 const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];

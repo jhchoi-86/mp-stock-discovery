@@ -1735,6 +1735,16 @@
     "market": "KOSDAQ 150"
   },
   {
+    "code": "004800",
+    "name": "효성",
+    "market": "KOSPI 200"
+  },
+  {
+    "code": "047920",
+    "name": "HLB제약",
+    "market": "KOSDAQ 150"
+  },
+  {
     "code": "145020",
     "name": "휴젤",
     "market": "KOSDAQ 150"

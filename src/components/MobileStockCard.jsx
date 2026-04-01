@@ -136,15 +136,67 @@ const MobileStockCard = ({ stock, manager, isSelected, toggleSelection }) => {
             </div>
           </div>
 
-          {/* Moving Averages (1D) */}
-          {t1D && (
-            <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: '#fff', background: 'rgba(255,193,7,0.1)', padding: '6px 8px', borderRadius: '6px', marginBottom: '8px', border: '1px solid rgba(255,193,7,0.3)', flexWrap: 'wrap', alignItems: 'center' }}>
-              <span style={{ fontWeight: 'normal', color: '#ffc107', marginRight: '4px' }}>이평선 주가💡</span>
-              <span style={{ fontSize: '0.7rem' }}>20일: {t1D.sma20 > 0 ? `${t1D.sma20.toLocaleString()}원` : '-'}</span>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
-              <span style={{ fontSize: '0.7rem' }}>60일: {t1D.sma60 > 0 ? `${t1D.sma60.toLocaleString()}원` : '-'}</span>
-              <span style={{ color: 'rgba(255,255,255,0.3)' }}>|</span>
-              <span style={{ fontSize: '0.7rem' }}>120일: {t1D.sma120 > 0 ? `${t1D.sma120.toLocaleString()}원` : '-'}</span>
+          {/* [Design v3.0] 타임프레임 신호 인디케이터 (Mobile) */}
+          <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', flexWrap: 'wrap' }}>
+            {["30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => {
+              const isBuy = stock.buy_signal_timeframes?.includes(tf);
+              const isStrong = stock.strong_signal_timeframes?.includes(tf);
+              const isTrend = stock.trend_signal_timeframes?.includes(tf);
+              const hasSignal = isBuy || isStrong;
+              const activeBg = isStrong ? '#FF1744' : (isBuy ? '#00E676' : 'rgba(255,255,255,0.1)');
+              
+              return (
+                <div key={tf} style={{
+                  padding: '2px 6px',
+                  borderRadius: '4px',
+                  fontSize: '0.65rem',
+                  background: activeBg,
+                  border: isTrend ? '1px solid #4A90E2' : (hasSignal ? `1px solid ${activeBg}` : '1px solid rgba(255,255,255,0.15)'),
+                  color: hasSignal ? (isStrong ? '#fff' : '#000') : 'rgba(255,255,255,0.5)',
+                  fontWeight: isTrend ? 'bold' : 'normal',
+                  minWidth: '28px',
+                  textAlign: 'center'
+                }}>
+                  {tf}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* [Design v3.0] 2H 이평 정렬 데이터 렌더링 (Refined) */}
+          {stock.t2H && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', fontSize: '0.75rem', color: '#fff', background: 'rgba(255,193,7,0.08)', padding: '10px', borderRadius: '10px', marginBottom: '8px', border: '1px solid rgba(255,193,7,0.25)' }}>
+              <div style={{ fontWeight: 'bold', color: '#ffc107', marginBottom: '4px', fontSize: '0.8rem', borderBottom: '1px solid rgba(255,193,7,0.2)', paddingBottom: '4px' }}>2H 이평선 정렬 💡</div>
+              {(() => {
+                const mas = Object.entries(stock.t2H)
+                  .filter(([, v]) => v !== null)
+                  .sort(([, a], [, b]) => b - a);
+                const elements = [];
+                let priceInserted = false;
+                const cur = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
+                
+                if (cur > mas[0][1]) {
+                  elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', padding: '2px 0' }}>📍 현재가: {Math.round(cur).toLocaleString()}원</div>);
+                  priceInserted = true;
+                }
+                mas.forEach(([name, price], midx) => {
+                  elements.push(
+                    <div key={name} style={{ opacity: 0.9, padding: '2px 0', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>{name.toUpperCase()}:</span>
+                      <span>{Math.round(price).toLocaleString()}원</span>
+                    </div>
+                  );
+                  const nextPrice = mas[midx + 1]?.[1] || 0;
+                  if (!priceInserted && cur <= price && cur > nextPrice) {
+                    elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', padding: '2px 0' }}>📍 현재가: {Math.round(cur).toLocaleString()}원</div>);
+                    priceInserted = true;
+                  }
+                });
+                if (!priceInserted && cur > 0) {
+                  elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', padding: '2px 0' }}>📍 현재가: {Math.round(cur).toLocaleString()}원</div>);
+                }
+                return elements;
+              })()}
             </div>
           )}
 

@@ -23,12 +23,17 @@ export const useStockManager = (isAuthenticated) => {
   const [marketFilter, setMarketFilter] = useState(() => localStorage.getItem('mp_marketFilter') || "ALL");
   const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('mp_categoryFilter') || 'ALL');
   const [showAll, setShowAll] = useState(() => localStorage.getItem('mp_showAll') === 'true');
-  const [showOnlyApproved, setShowOnlyApproved] = useState(false);
   const [showOnlyTopSectors, setShowOnlyTopSectors] = useState(false);
   const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
+  const [tfFilter, setTfFilter] = useState("ALL"); // 7-Timeframe Dynamic Filter
   
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncProgress, setSyncProgress] = useState({ current: 0, total: 100, timeframe: '' });
   const [isSendingTg, setIsSendingTg] = useState(false);
+
+  // Archive Mode
+  const [activeSnapshot, setActiveSnapshot] = useState(null); // { id, signals, createdAt }
+  const [originalSignals, setOriginalSignals] = useState([]); // Backup of live signals
 
   // Selections
   const [selectedStocks, setSelectedStocks] = useState(new Set());
@@ -92,7 +97,7 @@ export const useStockManager = (isAuthenticated) => {
 
   const getSignalsForStock = (code) => {
     const stockSignals = (Array.isArray(signals) ? signals : []).filter(s => s.code === code);
-    const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+    const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "2D", "1W"];
     const status = {};
     timeframes.forEach(tf => {
       const latest = (Array.isArray(stockSignals) ? stockSignals : [])
@@ -101,6 +106,36 @@ export const useStockManager = (isAuthenticated) => {
       status[tf] = latest;
     });
     return status;
+  };
+
+  const buildSignalTimeframes = (tfSigs) => {
+    // [Design v3.0] '30M' 키 표기 통일 및 2D(7개) 타임프레임 지원
+    const ALL_TIMEFRAMES = ["30M", "1H", "2H", "4H", "1D", "2D", "1W"];
+    
+    const buy = [];
+    const trend = [];
+    const strong = [];
+    
+    ALL_TIMEFRAMES.forEach(tf => {
+      const s = tfSigs[tf];
+      if (s) {
+        // [Design v3.0] 아키텍처 정상화: 백엔드(analyzer.cjs)에서 계산된 
+        // is_strong_signal(BBW MTF 절대신호) 플래그를 그대로 사용
+        const isBuy = s.signal_HH === true;
+        const isTrend = s.cond_up7 === true;
+        const isStrong = s.is_strong_signal === true;
+
+        if (isBuy) buy.push(tf);
+        if (isTrend) trend.push(tf);
+        if (isStrong) strong.push(tf);
+      }
+    });
+    
+    return {
+      buy_signal_timeframes: buy,
+      trend_signal_timeframes: trend,
+      strong_signal_timeframes: strong
+    };
   };
 
   const getLatestGlobal = (code) => {
@@ -142,7 +177,15 @@ export const useStockManager = (isAuthenticated) => {
       matchesCategory = (cat === categoryFilter);
     }
     
-    return matchesSearch && matchesMarket && matchesCategory;
+    let matchesTf = true;
+    if (tfFilter !== "ALL") {
+      const tfSigs = getSignalsForStock(stock.code);
+      const s = tfSigs[tfFilter];
+      // Filter for stocks that have a Buy or Strong signal in the selected TF
+      matchesTf = s && (s.signal_HH || s.is_strong_signal);
+    }
+    
+    return matchesSearch && matchesMarket && matchesCategory && matchesTf;
   });
 
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
@@ -151,7 +194,7 @@ export const useStockManager = (isAuthenticated) => {
     // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점)
     let coreScore = 0;
     let bestTf = '1D'; // default
-    const coreTfs = ['1H', '2H', '4H', '1D', '1W'];
+    const coreTfs = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
     
     let activeTfCount = 0;
     coreTfs.forEach(tf => {
@@ -217,8 +260,19 @@ export const useStockManager = (isAuthenticated) => {
     const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
     const bestSignal = tfSigs[scoreData.bestTf] || latest;
     
+    // [Design v3.0] 신호구간 배열 및 2H 이평선 병합
+    const signalTimeframes = buildSignalTimeframes(tfSigs);
+    const t2H = tfSigs['2H'] ? {
+      sma5: tfSigs['2H'].sma5 || null,
+      sma10: tfSigs['2H'].sma10 || null,
+      sma20: tfSigs['2H'].sma20 || null,
+      sma60: tfSigs['2H'].sma60 || null,
+    } : null;
+
     return {
       ...stock,
+      ...signalTimeframes,
+      t2H,
       timeframeStatus: tfSigs,
       latestSignal: latest,
       bestSignal: bestSignal,
@@ -300,26 +354,66 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleIntegratedSync = async () => {
-    if (!window.confirm(`1H, 2H, 4H, 1D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 2~3분 정도 소요됩니다.)`)) return;
+    if (!window.confirm(`30M, 1H, 2H, 4H, 1D, 2D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 3~4분 정도 소요됩니다.)`)) return;
     setIsSyncing(true);
     setSelectedStocks(new Set());
-    setShowAll(false); // Top 5 노출 보장
+    setShowAll(false); 
     
-    // 순차적 동기화 순서 (1H -> 1W)
-    const timeframes = ['1H', '2H', '4H', '1D', '1W'];
+    const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
     
     try {
-      // 백엔드에서 배열 처리를 지원하므로 한 번만 요청 (Mutex Lock 우회 및 순차 처리 보장)
-      const response = await axiosClient.post('/api/auto-sync', { timeframes: timeframes }, { timeout: 300000 });
+      // [Blue Team] 이전 동기화 방식 복구: 프론트엔드 제어 순차 루프
+      // SSE가 불안정한 환경에서도 실시간 카운팅과 상태 업데이트가 가능하도록 합니다.
+      for (let i = 0; i < timeframes.length; i++) {
+        const tf = timeframes[i];
+        setSyncProgress({ current: i + 1, total: timeframes.length, timeframe: tf });
+        
+        // 개별 시간대 동기화 요청 (백엔드 Mutex를 고려하여 순차 대기)
+        // 🔴 [Red Team 방어] 350종목 처리 시 120초를 초과하는 경우가 많아 300초(5분)로 증설
+        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 900000 });
+        
+        // 각 시간대 완료 시점에 즉시 화면 갱신
+        await fetchData();
+      }
       
-      alert(response.data.message);
-      fetchData();
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 100, timeframe: '' });
+      alert("통합 자동 동기화가 완료되었습니다.");
     } catch (error) {
-      console.error("Integrated auto-sync error:", error);
-      if (error.response?.status !== 403 && error.response?.status !== 429) {
+      console.error("Sequential sync error:", error);
+      setIsSyncing(false);
+      setSyncProgress({ current: 0, total: 100, timeframe: '' });
+      
+      if (error.response?.status === 409) {
+        alert("이미 분석이 진행 중입니다. 잠시만 기다려 주시면 자동으로 결과가 업데이트됩니다.");
+      } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        alert("분석 시간이 길어지고 있습니다. 백엔드에서 분석은 계속 진행 중이며, 잠시 후 대시보드에 결과가 나타납니다.");
+      } else if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
-      setIsSyncing(false);
+    }
+  };
+
+  const handleSnapshotSelected = async (snapshotHeader) => {
+    if (!snapshotHeader) {
+      // Return to Live Mode
+      setSignals(originalSignals);
+      setActiveSnapshot(null);
+      return;
+    }
+
+    try {
+      if (!activeSnapshot) setOriginalSignals(signals); // Backup live signals once
+      
+      const res = await axiosClient.get(`/api/archive/snapshots/${snapshotHeader.id}`);
+      const fullSnapshot = res.data;
+      
+      setSignals(fullSnapshot.signals);
+      setActiveSnapshot(fullSnapshot);
+      toast.success(`${new Date(fullSnapshot.createdAt).toLocaleString()} 스냅샷을 불러왔습니다.`);
+    } catch (e) {
+      console.error('Snapshot load failed', e);
+      toast.error('스냅샷 로드 실패');
     }
   };
 
@@ -434,7 +528,8 @@ export const useStockManager = (isAuthenticated) => {
     showAll, setShowAll,
     uploadTimeframe, setUploadTimeframe,
     selectedStocks, setSelectedStocks,
-    isSyncing, isSendingTg,
+    isSyncing, syncProgress, isSendingTg,
+    tfFilter, setTfFilter,
     
     // Derived
     candidates, topSectors, activeCount,
@@ -443,6 +538,7 @@ export const useStockManager = (isAuthenticated) => {
     fetchData,
     toggleSelectAll, toggleSelectStock,
     handleCsvUpload, handleReset, handleIntegratedSync,
-    handleDownloadReport, handleDownloadTVList, handleSendToTelegram
+    handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
+    handleSnapshotSelected, activeSnapshot
   };
 };

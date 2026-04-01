@@ -1,10 +1,10 @@
 export const generateReportContent = (candidates) => {
   // Collect all stocks that match current filter or at least have HH signal
   const reportStocks = candidates.filter(stock => {
-    const timeframeSignals = stock.timeframeStatus || {};
-    const hasSuSignal = Object.values(timeframeSignals).some(s => s && (s.signal_HH || s.DHH2));
+    // [Design v3.0] 객체 순환 대신 신호 배열 includes 체크로 변경
+    const hasSuSignal = stock.buy_signal_timeframes?.length > 0;
     const hasHighAdx = stock.latestSignal && stock.latestSignal.adx >= 30;
-    const isUpwardTrend = timeframeSignals['1D'] && timeframeSignals['1D'].cond_up7;
+    const isUpwardTrend = stock.trend_signal_timeframes?.includes('1D');
     const isExcludedCategory = stock.latestSignal && (stock.latestSignal.category === "하락 추세" || stock.latestSignal.category === "바닥권 반등");
     return (hasSuSignal && hasHighAdx && isUpwardTrend && !isExcludedCategory) || stock.latestSignal?.entry_approved;
   });
@@ -38,13 +38,15 @@ export const generateReportContent = (candidates) => {
   const rows = reportStocks.map(stock => {
     const tfSigs = stock.timeframeStatus || {};
     const getStatus = (tf) => {
-      const sig = tfSigs[tf];
-      if (!sig) return "-";
-      return sig.signal_HH ? "**수(HH)**" : (sig.DHH2 ? "수" : "-");
+      const isStrong = stock.strong_signal_timeframes?.includes(tf);
+      const isBuy = stock.buy_signal_timeframes?.includes(tf);
+      if (isStrong) return "**강력(HH)**";
+      if (isBuy) return "**수(HH)**";
+      return "-";
     };
 
-    const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관찰" : "-");
-    const prog = tfSigs['1D'] ? `${(tfSigs['1D'].progress * 100).toFixed(0)}%` : "-";
+    const trend = stock.trend_signal_timeframes?.includes('1D') ? "상승" : (stock.timeframeStatus?.['1D'] ? "관찰" : "-");
+    const prog = stock.timeframeStatus?.['1D'] ? `${(stock.timeframeStatus['1D'].progress * 100).toFixed(0)}%` : "-";
     let category = stock.latestSignal ? stock.latestSignal.category : '-';
     if (stock.isTopSector && category === "추세 지속형") category = "🔥주도주 눌림목🔥";
     
@@ -130,7 +132,7 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
     content += `🔹 ${s.name} (${s.code})\n`;
     content += `분류: ${s.latestSignal?.category || '-'} | 총점: ${stars} (${score}점)\n`;
     const adx = (s.latestSignal && typeof s.latestSignal.adx === 'number') ? Math.round(s.latestSignal.adx) : "-";
-    const trend = tfSigs['1D']?.cond_up7 ? "상승" : (tfSigs['1D'] ? "관망" : "-");
+    const trend = s.trend_signal_timeframes?.includes('1D') ? "상승" : (tfSigs['1D'] ? "관망" : "-");
     content += `주가 추세 강도: ${adx} | 추세 판별: ${trend}\n`;
     
     let kisVolumeText = '';

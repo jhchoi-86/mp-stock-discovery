@@ -246,6 +246,30 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           <option value="박스권 횡보">박스권 횡보</option>
           <option value="추천종목">⭐ 진입가 추천</option>
         </select>
+
+        {/* 7-Timeframe Dynamic Filter Button Group */}
+        <div className="card" style={{ display: 'flex', gap: '4px', padding: '0.4rem 0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '12px' }}>
+          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', alignSelf: 'center', marginRight: '4px' }}>TF 필터:</span>
+          {["ALL", "30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => (
+            <button
+              key={tf}
+              onClick={() => manager.setTfFilter(tf)}
+              style={{
+                padding: '0.4rem 0.8rem',
+                borderRadius: '6px',
+                border: 'none',
+                background: manager.tfFilter === tf ? 'var(--primary)' : 'transparent',
+                color: manager.tfFilter === tf ? '#fff' : 'var(--text-muted)',
+                cursor: 'pointer',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                transition: 'all 0.2s'
+              }}
+            >
+              {tf}
+            </button>
+          ))}
+        </div>
         
 
 
@@ -525,24 +549,57 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
-                      {stock.latestSignal && t1D ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
-                          <span style={{ color: '#fff' }}>20일: {t1D.sma20 > 0 ? `${t1D.sma20.toLocaleString()}원` : '-'}</span>
-                          <span style={{ color: '#fff' }}>60일: {t1D.sma60 > 0 ? `${t1D.sma60.toLocaleString()}원` : '-'}</span>
-                          <span style={{ color: '#fff' }}>120일: {t1D.sma120 > 0 ? `${t1D.sma120.toLocaleString()}원` : '-'}</span>
+                      {stock.t2H ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', fontSize: '0.65rem', background: 'rgba(255,193,7,0.05)', padding: '6px', borderRadius: '6px', border: '1px solid rgba(255,193,7,0.15)' }}>
+                          <div style={{ color: '#ffb86c', fontWeight: 'bold', marginBottom: '2px', borderBottom: '1px solid rgba(255,184,108,0.2)', paddingBottom: '2px' }}>2H 이평 정렬 💡</div>
+                          {(() => {
+                            const mas = Object.entries(stock.t2H)
+                              .filter(([, v]) => v !== null)
+                              .sort(([, a], [, b]) => b - a);
+                            const elements = [];
+                            let priceInserted = false;
+                            const cur = stock.latestSignal?.current_price || stock.latestSignal?.entry_price || 0;
+                            
+                            // Insert current price at the correct sorted position
+                            if (cur > mas[0][1]) {
+                              elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
+                              priceInserted = true;
+                            }
+                            mas.forEach(([name, price], midx) => {
+                              elements.push(
+                                <div key={name} style={{ opacity: 0.8, display: 'flex', justifyContent: 'space-between' }}>
+                                  <span>{name.toUpperCase()}:</span>
+                                  <span>{Math.round(price).toLocaleString()}원</span>
+                                </div>
+                              );
+                              const nextPrice = mas[midx + 1]?.[1] || 0;
+                              if (!priceInserted && cur <= price && cur > nextPrice) {
+                                elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
+                                priceInserted = true;
+                              }
+                            });
+                            if (!priceInserted && cur > 0) {
+                              elements.push(<div key="cur" style={{ color: 'var(--accent)', fontWeight: 'bold', fontSize: '0.75rem', padding: '2px 0' }}>📍 {Math.round(cur).toLocaleString()}원</div>);
+                            }
+                            return elements;
+                          })()}
                         </div>
                       ) : (
-                        <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>데이터 대기중</span>
+                        <span style={{ color: 'var(--text-muted)', fontSize: '0.75rem' }}>-</span>
                       )}
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', alignItems: 'center' }}>
 
-                        <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center' }}>
-                          {["1H", "2H", "4H", "1D", "1W"].map(tf => {
-                            const sig = stock.timeframeStatus[tf];
-                            const hasSignal = sig && sig.DHH2;
-                            const isHH = sig && sig.signal_HH;
+                        <div style={{ display: 'flex', gap: '0.2rem', justifyContent: 'center', flexWrap: 'wrap', maxWidth: '100px' }}>
+                          {["30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => {
+                            const isBuy = stock.buy_signal_timeframes?.includes(tf);
+                            const isStrong = stock.strong_signal_timeframes?.includes(tf);
+                            const isTrend = stock.trend_signal_timeframes?.includes(tf);
+                            
+                            const hasSignal = isBuy || isStrong;
+                            const activeColor = isStrong ? '#FF1744' : (isBuy ? '#00E676' : 'rgba(255,255,255,0.1)');
+                            
                             return (
                               <div 
                                 key={tf}
@@ -554,12 +611,13 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   alignItems: 'center',
                                   justifyContent: 'center',
                                   fontSize: '0.55rem',
-                                  fontWeight: 'normal',
-                                  background: isHH ? '#FF1744' : (hasSignal ? '#00E676' : 'rgba(255,255,255,0.1)'),
-                                  border: hasSignal ? `1px solid ${isHH ? '#FF1744' : '#00E676'}` : '1px solid rgba(255,255,255,0.15)',
-                                  color: hasSignal ? (hasSignal && !isHH ? '#000' : '#fff') : 'rgba(255,255,255,0.5)'
+                                  fontWeight: isTrend ? 'bold' : 'normal',
+                                  background: activeColor,
+                                  border: isTrend ? `1px solid #4A90E2` : (hasSignal ? `1px solid ${activeColor}` : '1px solid rgba(255,255,255,0.15)'),
+                                  color: hasSignal ? (isStrong ? '#fff' : '#000') : 'rgba(255,255,255,0.5)',
+                                  boxShadow: isTrend ? 'inset 0 0 4px rgba(74, 144, 226, 0.4)' : 'none'
                                 }}
-                                title={sig ? `${tf} 신호 - 진행률: ${(sig.progress * 100).toFixed(1)}%` : `${tf} 데이터 없음`}
+                                title={`${tf}: Buy=${isBuy}, Strong=${isStrong}, Trend=${isTrend}`}
                               >
                                 {tf}
                               </div>
@@ -569,7 +627,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
                     <td style={{ textAlign: 'center', whiteSpace: 'nowrap', padding: '0.4rem 0.2rem' }}>
-                      {stock.latestSignal?.cond_up7 ? (
+                      {stock.trend_signal_timeframes?.includes('1D') ? (
                         <div style={{ background: '#2563EB', color: '#fff', padding: '3px 8px', borderRadius: '4px', fontWeight: 'normal', fontSize: '0.75rem', display: 'inline-block', boxShadow: '0 2px 4px rgba(0,0,0,0.3)' }}>상승</div>
                       ) : (
                         <span style={{ color: 'var(--text-muted)' }}>-</span>
