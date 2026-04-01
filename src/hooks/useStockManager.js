@@ -324,7 +324,7 @@ export const useStockManager = (isAuthenticated) => {
   const handleSyncCompletion = useCallback(async () => {
     setIsSyncing(false);
     setSyncProgress({ current: 0, total: 100, timeframe: '' });
-    toast.success("통합 자동 동기화가 완전히 완료되었습니다!");
+    toast.success("통합 자동 동기화가 완전히 완료되었습니다! (v1.3 검증 완료)");
     await fetchData();
   }, [fetchData]);
 

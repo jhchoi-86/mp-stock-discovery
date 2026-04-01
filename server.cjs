@@ -1405,10 +1405,21 @@ app.post('/api/auto-sync', async (req, res) => {
         isSyncMutexLocked = false;
         
         // 🔴 [Red Team 방어] 동기화 종료 시 상태 초기화
-        currentSyncProgress = { current: 0, total: 350, timeframe: '' };
-
-        // If the process exited normally (0)
         if (code === 0) {
+            // 🔴 [BUG-11 Hotfix] 명시적 완료 신호 전송 (V1.3)
+            currentSyncProgress = { ...currentSyncProgress, current: currentSyncProgress.total, timeframe: '완료' };
+            clients.forEach(c => {
+                c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`);
+                c.write(`data: ${JSON.stringify({ type: 'sync_complete', message: "SUCCESS_V1_3" })}\n\n`);
+                if(c.flush) c.flush();
+            });
+            
+            // 🔴 캐시 즉시 업데이트
+            try {
+                const signalsData = fs.readFileSync(path.join(__dirname, 'data', 'signals.json'), 'utf8');
+                CACHED_SIGNALS = JSON.parse(signalsData);
+            } catch(e) {}
+            
             try {
                 const signalsPath = path.join(__dirname, 'data', 'signals.json');
                 if (fs.existsSync(signalsPath)) {
