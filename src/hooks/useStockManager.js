@@ -298,10 +298,12 @@ export const useStockManager = (isAuthenticated) => {
     setShowAll(false); 
     
     // Initial UI state: Indicate preparing
-    setSyncProgress({ current: 0, total: 350, timeframe: '준비' });
+    // Initial UI state: Indicate preparing (Total = Stocks * Timeframes)
+    const stockCount = stocks.length || 350;
+    setSyncProgress({ current: 0, total: stockCount * timeframes.length, timeframe: '준비' });
     
-    // 🔴 [BUG-06] 타임프레임 확장 (30M, 2D 추가)
-    const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
+    // Match the UI label: 1H, 2H, 4H, 1D, 1W
+    const timeframes = ['1H', '2H', '4H', '1D', '1W'];
     
     try {
       // 🔴 [BUG-01] 파라미터 키 'intervals'로 통일

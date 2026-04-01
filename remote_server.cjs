@@ -29,10 +29,6 @@ const aiScoringQueue = new Queue('aiScoringQueue', { connection: redisClient });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Global Mutex to prevent multiple auto-syncs from overlapping (NEW-02 Correction)
-let isSyncMutexLocked = false;
-let currentSyncProcess = null; 
-
 // --- Platform 1.0 신규 라우터 연동 (Phase 2 T2-05) ---
 app.use('/admin-api', require('./platform/interfaces/api_admin/index.cjs'));
 app.use('/user-api', require('./platform/interfaces/api_user/index.cjs'));
@@ -123,36 +119,25 @@ const saveCircuitState = () => {
     }, 1000); // 1초 디바운스 (이벤트 루프 블로킹 100% 방지)
 };
 
-// 🔴 [Red Team 방어 - R11] 데이터 보존을 위한 스냅샷 저장 시스템 (BUG-02 통합/수정)
-async function saveSyncSnapshot(signals) {
+// 🔴 [Red Team 방어 - R11] 데이터 보존을 위한 스냅샷 저장 시스템
+async function saveSyncSnapshot(signalsArray) {
     try {
-        if (!Array.isArray(signals) || signals.length === 0) return;
+        if (!Array.isArray(signalsArray) || signalsArray.length === 0) return;
         
-        // 필터 기준: signal_HH(최종추천) 또는 cond_up7(상승박스) 또는 일정 점수 이상
-        const importantSignals = signals.filter(s => 
-            s.signal_HH || 
-            s.cond_up7 || 
-            (s.total_score && s.total_score >= 10)
-        );
+        // HH 신호가 있는 종목만 필터링하여 저장 (효율성)
+        const activeSignals = signalsArray.filter(s => s.signal_HH || s.cond_up7 || s.total_score >= 50);
         
-        if (importantSignals.length === 0) {
-            console.log('[Archival] No important signals to save. Skipping snapshot.');
-            return;
-        }
-
         const snapshot = await prisma.syncSnapshot.create({
             data: {
                 category: 'INTEGRATED_SYNC',
-                signals: importantSignals,
-                stockCount: signals.length,
-                importantCount: importantSignals.length,
+                signals: activeSignals,
                 createdAt: new Date()
             }
         });
-        console.log(`[Archival] Successfully saved sync snapshot (ID: ${snapshot.id}, Signals: ${importantSignals.length})`);
+        console.log(`[Snapshot] Successfully saved sync snapshot (ID: ${snapshot.id}, Signals: ${activeSignals.length})`);
         return snapshot;
     } catch (e) {
-        console.error('[Archival Error] Failed to save SyncSnapshot:', e.message);
+        console.error('[Snapshot Save Error]', e.message);
     }
 }
 
@@ -382,14 +367,7 @@ app.get('/api/stocks', requireProAuth, (req, res) => {
 
 app.get('/api/signals', requireProAuth, (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    try {
-        // 🔴 [BUG-07 Hotfix] CACHED_SIGNALS가 파일 변경을 감지하지 못함
-        // 동기화 중에는 파일에서 직접 읽어서 최신 데이터를 반환하도록 수정
-        const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf8');
-        res.send(signalsData);
-    } catch (e) {
-        res.send(CACHED_SIGNALS); // 폴백
-    }
+    res.send(CACHED_SIGNALS);
 });
 
 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원
@@ -404,18 +382,8 @@ app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
 // SSE Clients & Heartbeat Activity Tracking
 let clients = [];
 
-// 🔴 [SSE Heartbeat - R11] 5초 주기 연결 유지 신호 (전력 효율보다 연결 안정성 우선)
-setInterval(() => {
-    clients.forEach(c => {
-        try {
-            c.write(': keep-alive\n\n'); 
-            if (c.flush) c.flush();
-        } catch(e) {}
-    });
-}, 5000);
-
 const broadcastUpdate = () => {
-    const payload = `data: ${JSON.stringify({ type: 'update' })}\n\n`;
+    const payload = `data: ${JSON.stringify({ type: 'signal_update' })}\n\n`;
     clients.forEach(c => {
         try {
             c.write(payload);
@@ -924,6 +892,9 @@ app.post('/api/auto-sync/stop', requireProAuth, (req, res) => {
     res.json({ message: '현재 실행 중인 동기화가 없습니다.' });
 });
 
+// Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
+let isSyncMutexLocked = false;
+let currentSyncProcess = null; // Track the current running analyzer process
 
 // RESET: Deleted obsolete /api/auto-sync here (Consolidated at the bottom)
 
@@ -959,9 +930,10 @@ if (isPrimaryWorker) {
         await withSignalLock(async () => {
             const raw = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
             const signals = JSON.parse(raw);
-            // 🔴 [NEW-04 Fix] 신규 중첩 구조는 timestamp가 없으므로 아카이브 대상에서 제외하고 항상 보존
-            const toKeep = signals.filter(s => s.timeframeStatus || (s.timestamp && s.timestamp >= cutoffTime));
-            const toArchive = signals.filter(s => !s.timeframeStatus && s.timestamp && s.timestamp < cutoffTime);
+            const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
+            
+            const toKeep = signals.filter(s => s.timestamp >= cutoffTime);
+            const toArchive = signals.filter(s => s.timestamp < cutoffTime);
             
             if (toArchive.length > 0) {
                 const archiveDir = path.join(__dirname, 'data', 'archive');
@@ -979,29 +951,6 @@ if (isPrimaryWorker) {
                 const tmpFile = SIGNALS_FILE + '.tmp';
                 await fs.promises.writeFile(tmpFile, JSON.stringify(toKeep, null, 2));
                 await fs.promises.rename(tmpFile, SIGNALS_FILE);
-                
-                child.on('close', (code) => {
-                    console.log(`Integrated Sync child process exited with code ${code}`);
-                    isSyncMutexLocked = false;
-                    currentSyncProcess = null;
-                    
-                    if (code === 0) {
-                        // 🔴 [BUG-11 Hotfix] 명시적 완료 신호 전송
-                        // 모든 타임프레임이 끝났을 때 확실하게 broadcast
-                        broadcast({ type: 'sync_progress', payload: { ...currentSyncProgress, current: currentSyncProgress.total, timeframe: '완료' } });
-                        broadcast({ type: 'sync_complete', message: "통합 자동 동기화가 모든 타임프레임에 대해 완료되었습니다." });
-                        
-                        // 캐시 업데이트
-                        try {
-                            const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf8');
-                            CACHED_SIGNALS = JSON.parse(signalsData);
-                        } catch (e) {
-                            console.error("Final cache update failed:", e);
-                        }
-                    } else {
-                        broadcast({ type: 'sync_error', message: `동기화 프로세스가 중단되었습니다 (코드: ${code})` });
-                    }
-                });
                 
                 console.log(`[Archive] Archived ${toArchive.length} signals. Remaining: ${toKeep.length}.`);
                 refreshCacheNow();
@@ -1045,45 +994,68 @@ if (isPrimaryWorker) {
             const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
             const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
 
-            // 🔴 [NEW-01 Fix] 백엔드 저장 구조(timeframeStatus)에 맞게 파싱 로직 수정 (BUG-04와 동일 구조)
             const getSignalsForStock = (code) => {
-              const allEntries = signals.filter(s => s.code === code);
-              // 1. 통합 동기화 구조 우선 확인
-              const integratedEntry = allEntries.find(s => s.timeframeStatus);
-              if (integratedEntry) return integratedEntry.timeframeStatus;
-              
-              // 2. Webhook/CSV 플랫 구조 폴백
+              const stockSignals = signals.filter(s => s.code === code);
+              const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
               const status = {};
-              const tfs = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
-              tfs.forEach(tf => {
-                status[tf] = allEntries
-                  .filter(s => s.timeframe === tf)
-                  .sort((a, b) => b.timestamp - a.timestamp)[0];
+              timeframes.forEach(tf => {
+                const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];
+                status[tf] = latest;
               });
               return status;
             };
 
-            const getStockEntry = (code) => signals.find(s => s.code === code);
+            const getLatestGlobal = (code) => signals.filter(s => s.code === code).sort((a, b) => b.timestamp - a.timestamp)[0];
 
             let candidates = stocks.map(stock => {
-              const stockEntry = getStockEntry(stock.code);
               const tfSigs = getSignalsForStock(stock.code);
+              const latest = getLatestGlobal(stock.code);
               
-              // 🔴 [BUG-05 Sync] 백엔드에서 이미 계산된 점수를 그대로 사용 (중복 계산 방지)
-              // 분석기(analyzer.cjs)가 이미 모든 로직을 반영하여 total_score를 산출함
-              const score = stockEntry?.total_score || 0;
+              let score = 0;              
               
-              // 리포트에 표시할 대표 신호 (2H -> 1D -> 4H 순으로 우선순위 탐색)
-              const bestTf = '2H';
-              const bestSignal = tfSigs[bestTf] || tfSigs['1D'] || tfSigs['4H'] || {};
+              // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
+              let coreScore = 0;
+              const tfs = ['2H', '1D', '1W'];
+              const s2H = tfSigs['2H'];
+              const s1D = tfSigs['1D'];
               
-              return { 
-                ...stock, 
-                timeframeStatus: tfSigs, 
-                latestSignal: bestSignal, 
-                total_score: score 
-              };
-            }).filter(s => s.latestSignal && Object.keys(s.latestSignal).length > 0);
+              if (s2H) {
+                // 1. 추세필터 (2H) - 15점
+                if (s2H.cond_up7) score += 15;
+
+                // 2. 눌림목감지 (2H) - 15점
+                if (s2H.DHH2) score += 15;
+
+                // 3. 이평선 정배열 (2H) - 30점 (5 > 10 > 20 > 60)
+                const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
+                if (isAligned) score += 30;
+
+                // 4. 이격도 A (2H) - 10점
+                if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
+
+                // 5. 이격도 B (2H) - 5점
+                if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
+
+                // 9. 진입가 근접성 (2H) - 3점
+                if (s2H.result_2 > 0) {
+                  const diff = Math.abs(s2H.current_price - s2H.result_2) / s2H.result_2;
+                  if (diff <= 0.01) score += 3;
+                }
+              }
+
+              // Multi-TF 가산점 (1H, 2H, 4H, 1D, 2D)
+              const tfsList = ['1H', '2H', '4H', '1D', '2D'];
+              tfsList.forEach(tf => {
+                if (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2) score += 2; // 6. 매수신호
+                if (tfSigs[tf]?.cond_up7) score += 2; // 7. 추세신호
+                if (tfSigs[tf]?.cond_up7 && (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2)) score += 1; // 8. 강력신호
+              });
+
+              // 10. 거래량 급증 (1D) - 2점
+              if (s1D?.trigger_vol) score += 2;
+
+              return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
+             }).filter(s => s.latestSignal);
 
             // All candidates are allowed without ADX and strict trend filters, relying only on final AI total_score sorting
 
@@ -1284,15 +1256,41 @@ if (isPrimaryWorker) {
     }, { timezone: "Asia/Seoul" });
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// [Archival] Save Synchronization Results to Database
+// ─────────────────────────────────────────────────────────────────────────
+async function saveSyncSnapshot(signals) {
+    try {
+        // 1. 가치 있는 신호만 필터링 (최소 기준: dhh2 또는 condUp7)
+        const importantSignals = signals.filter(s => s.dhh2 || s.condUp7 || (s.total_score && s.total_score >= 10));
+        
+        if (importantSignals.length === 0) {
+            console.log('[Archival] No important signals to save. Skipping snapshot.');
+            return;
+        }
+
+        // 2. DB에 SNAPSHOT 저장 (JSON 블롭)
+        const snapshot = await prisma.syncSnapshot.create({
+            data: {
+                signals: importantSignals,
+                stockCount: signals.length,
+                importantCount: importantSignals.length
+            }
+        });
+
+        console.log(`[Archival] Saved SyncSnapshot to DB: ${snapshot.id} (${importantSignals.length} signals)`);
+        return snapshot;
+    } catch (err) {
+        console.error('[Archival Error] Failed to save SyncSnapshot:', err);
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // [API] Integrated Auto-sync Trigger (with Archival)
 // ─────────────────────────────────────────────────────────────────────────
 app.post('/api/auto-sync', async (req, res) => {
     const { intervals, timeframe, timeframes } = req.body;
-    // 🔴 [BUG-01 Red Team Fix] 2중 배열 방지: timeframe/timeframes/intervals 중 하나를 평탄한 배열로 변환
-    let source = intervals || timeframes || timeframe || ['1D'];
-    const targetIntervals = Array.isArray(source) ? source.flat() : [source];
+    const targetIntervals = intervals || timeframes || (timeframe ? [timeframe] : ['1D']);
     
     const cronSecret = req.headers['x-cron-secret'] || req.headers['x-internal-cron-secret'];
     const authHeader = req.headers.authorization;
@@ -1331,48 +1329,26 @@ app.post('/api/auto-sync', async (req, res) => {
     console.log(`[Integrated Sync] Starting sync for intervals: ${targetIntervals.join(', ')}`);
     isSyncMutexLocked = true;
 
-    // 🔴 [BUG-09 Hotfix] 즉시 진행률 초기화 및 전송 (하드코딩 350 제거)
-    const stockCount = JSON.parse(CACHED_STOCKS).length || 350;
-    currentSyncProgress = { current: 0, total: targetIntervals.length * stockCount, timeframe: '준비' };
-    clients.forEach(c => c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`));
-
     const syncProcess = spawn('node', ['analyzer.cjs', ...targetIntervals], {
         env: { ...process.env, SYNC_MODE: 'integrated' }
     });
     currentSyncProcess = syncProcess;
 
-    res.status(202).json({ 
-        message: 'Sync started successfully', 
-        isSyncing: true,
-        targetIntervals
-    });
-
-    let lineBuffer = '';
     syncProcess.stdout.on('data', (data) => {
-        lineBuffer += data.toString();
-        const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop();
-
+        const lines = data.toString().split('\n');
         lines.forEach(line => {
             if (!line.trim()) return;
             console.log(`[Analyzer] ${line.trim()}`);
             
+            // Parse real-time progress: [PROGRESS] TF:CUR/TOTAL
             const progressMatch = line.match(/\[PROGRESS\]\s+(\w+):(\d+)\/(\d+)/);
             if (progressMatch) {
                 const [, tf, current, total] = progressMatch;
-                
-                // 🔴 [BUG-03 Red Team Fix] 전체 타임프레임을 고려한 누적 진행률 계산 (하드코딩 350 제거)
-                const stockCount = JSON.parse(CACHED_STOCKS).length || 350;
-                const tfIndex = targetIntervals.indexOf(tf);
-                const totalTfCount = targetIntervals.length;
-                const absoluteCurrent = (tfIndex >= 0 ? tfIndex * stockCount : 0) + parseInt(current);
-                const absoluteTotal = stockCount * totalTfCount;
-
                 const progressData = {
                     type: 'progress',
                     timeframe: tf,
-                    current: absoluteCurrent,
-                    total: absoluteTotal
+                    current: parseInt(current),
+                    total: parseInt(total)
                 };
                 
                 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원 (메모리 업데이트)
@@ -1392,14 +1368,10 @@ app.post('/api/auto-sync', async (req, res) => {
         });
     });
 
-    // 🔴 [NEW-02 Fix] 프로세스 시작/실행 실패 시 SSE로 에러 브로드캐스트 (UI 고착 방지)
     syncProcess.on('error', (err) => {
         console.error(`[Integrated Sync] Failed to start analyzer process: ${err.message}`);
         isSyncMutexLocked = false;
-        clients.forEach(c => {
-            c.write(`data: ${JSON.stringify({ type: 'sync_error', message: err.message })}\n\n`);
-            if(c.flush) c.flush();
-        });
+        if (!res.headersSent) res.status(500).json({ error: 'Failed to start analysis engine' });
     });
 
     syncProcess.on('close', async (code, signal) => {
@@ -1407,37 +1379,45 @@ app.post('/api/auto-sync', async (req, res) => {
         isSyncMutexLocked = false;
         
         // 🔴 [Red Team 방어] 동기화 종료 시 상태 초기화
+        currentSyncProgress = { current: 0, total: 350, timeframe: '' };
+
+        // If the process exited normally (0)
         if (code === 0) {
-            // 🔴 1. 캐시 즉시 업데이트 (완료 신호 전 최신 데이터 확보)
             try {
                 const signalsPath = path.join(__dirname, 'data', 'signals.json');
-                const signalsData = fs.readFileSync(signalsPath, 'utf8');
-                CACHED_SIGNALS = JSON.parse(signalsData);
-                const signals = JSON.parse(signalsData);
+                if (fs.existsSync(signalsPath)) {
+                    const signals = JSON.parse(fs.readFileSync(signalsPath, 'utf8'));
+                    await saveSyncSnapshot(signals);
+                }
+                // Broadcast final update (for other tabs)
+                clients.forEach(c => {
+                    c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
+                    if(c.flush) c.flush();
+                });
                 
-                // 🔴 2. 스냅샷 저장
-                await saveSyncSnapshot(signals);
-            } catch(e) {
-                console.error('[Sync Finish] Refresh/Snapshot error:', e.message);
+                // [Blue Team] Blocking Response: 동기화가 완전히 끝난 후 응답을 보냅니다.
+                // 이를 통해 프론트엔드 루프나 크론 스케줄러가 '실제 데이터'가 준비된 시점을 정확히 알 수 있습니다.
+                if (!res.headersSent) {
+                    res.json({ 
+                        message: 'Integrated Auto-sync completed', 
+                        intervals: targetIntervals, 
+                        timestamp: new Date().toISOString(),
+                        code: code
+                    });
+                }
+            } catch (err) {
+                console.error('[Integrated Sync] Post-processing archival failed:', err);
+                if (!res.headersSent) res.status(500).json({ error: 'Sync post-processing failed' });
             }
-
-            // 🔴 3. 명시적 완료 신호 전송 (V1.3)
-            // 모든 데이터 처리가 끝난 후 마지막에 전송
-            currentSyncProgress = { ...currentSyncProgress, current: currentSyncProgress.total, timeframe: '완료' };
-            clients.forEach(c => {
-                c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`);
-                c.write(`data: ${JSON.stringify({ type: 'sync_complete', message: "SUCCESS_V1_3" })}\n\n`);
-                c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`); // 마지막 업데이트 강제 트리거
-                if(c.flush) c.flush();
-            });
-            
-            console.log(`[Integrated Sync] Final signal and cache refresh broadcasted.`);
+        }
+        // [Blue Team] If code is null and signal is SIGINT/SIGTERM, it's likely a manual stop
+        else if (code === null && (signal === 'SIGINT' || signal === 'SIGTERM')) {
+            console.log('[Integrated Sync] Process was stopped manually (Reset/Stop request).');
+            if (!res.headersSent) {
+                res.json({ message: 'Sync stopped by user', stopped: true });
+            }
         } else {
-            console.error(`[Integrated Sync] Process failed with code ${code}`);
-            clients.forEach(c => {
-                c.write(`data: ${JSON.stringify({ type: 'sync_error', message: `동기화 비정상 종료 (Code: ${code})` })}\n\n`);
-                if(c.flush) c.flush();
-            });
+            if (!res.headersSent) res.status(500).json({ error: `Sync process failed with code ${code}` });
         }
     });
 });

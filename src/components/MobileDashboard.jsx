@@ -9,7 +9,7 @@ import SubscriptionModal from './SubscriptionModal.jsx';
 import ReportArchive from './ReportArchive.jsx';
 import reportService from '../api/reportService';
 import useSWR from 'swr';
-import { Activity, Share2, Filter, Layout, LogOut } from 'lucide-react';
+import { Activity, Share2, Filter, Layout, LogOut, Archive, UserCog, RotateCcw } from 'lucide-react';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -34,7 +34,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       candidates, topSectors, activeCount, signals, selectedStocks,
       handleIntegratedSync, handleSendToTelegram,
       toggleSelectStock, toggleSelectAll,
-      fetchData
+      fetchData, handleReset
   } = manager;
 
   const [isProfileOpen, setIsProfileOpen] = useState(false);
@@ -130,9 +130,14 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         )}
 
         {user?.role === 'ADMIN' && (
-          <button onClick={() => setShowAdminPanel(!showAdminPanel)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(0, 136, 204, 0.15)', border: '1px solid rgba(0, 136, 204, 0.3)', color: '#0088cc', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
-            <UserCog size={14} /> {showAdminPanel ? '메인 화면' : '관리자 패널'}
-          </button>
+          <>
+            <button onClick={handleReset} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', color: '#f87171', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+              <RotateCcw size={14} /> 초기화
+            </button>
+            <button onClick={() => setShowAdminPanel(!showAdminPanel)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(0, 136, 204, 0.15)', border: '1px solid rgba(0, 136, 204, 0.3)', color: '#0088cc', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>
+              <UserCog size={14} /> {showAdminPanel ? '메인 화면' : '관리자 패널'}
+            </button>
+          </>
         )}
 
         <button onClick={clearAuth} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'rgba(231, 76, 60, 0.15)', border: '1px solid rgba(231, 76, 60, 0.3)', color: '#e74c3c', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer' }}>

@@ -323,7 +323,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               className="card" 
               style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 1H, 2H, 4H, 1D, 1W"}
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 1H, 2H, 4H, 1D, 1W (5개)"}
             </button>
           </div>
         )}
