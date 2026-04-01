@@ -185,8 +185,7 @@ export const useStockManager = (isAuthenticated) => {
 
 
   const candidatesRaw = filteredStocks.map(stock => {
-    const stockEntry = getStockEntry(stock.code);
-    const tfSigs = stockEntry?.timeframeStatus || {};
+    const tfSigs = getSignalsForStock(stock.code);
     const isTopSector = topSectors.includes(stock.sector);
     
     // 🔴 [BUG-12 Hotfix] 동적 신호 폴백 체인 (실시간 업데이트 가시성 확보)
