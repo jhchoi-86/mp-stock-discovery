@@ -574,9 +574,16 @@ if (require.main === module) {
                         const sigs = calculateSignals(ohlc, tf);
                         
                         if (sigs) {
-                            let entry = resultsMap.get(stock.code) || { 
-                                code: stock.code, name: stock.name, type: stock.type, timeframeStatus: {} 
-                            };
+                            // 🔴 [Structure Fix] 기존 플랫 구조 데이터가 있을 경우 통합 구조로 강제 전환
+                            let entry = resultsMap.get(stock.code);
+                            if (!entry || !entry.timeframeStatus) {
+                                entry = { 
+                                    code: stock.code, 
+                                    name: stock.name, 
+                                    type: stock.type || 'KOSPI', 
+                                    timeframeStatus: {} 
+                                };
+                            }
                             entry.timeframeStatus[tf] = sigs;
                             
                             // Re-calculate 10-point scoring
