@@ -26,7 +26,38 @@ const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs
 
 const aiScoringQueue = new Queue('aiScoringQueue', { connection: redisClient });
 
-const app = express();
+// 🔴 [Cluster Multi-Worker Sync] Redis Pub/Sub Setup
+const Redis = require('ioredis');
+const redisSub = new Redis(process.env.REDIS_URL || 'redis://127.0.0.1:6379');
+const SSE_CHANNEL = 'MP_STOCK_SSE_CHANNEL';
+
+redisSub.subscribe(SSE_CHANNEL, (err) => {
+    if (err) console.error('[Redis Sub] Failed to subscribe:', err.message);
+    else console.log(`[Redis Sub] Subscribed to ${SSE_CHANNEL}`);
+});
+
+redisSub.on('message', (channel, message) => {
+    if (channel === SSE_CHANNEL) {
+        try {
+            const { type, payload, message: msg } = JSON.parse(message);
+            
+            // Local broadcast to clients connected to THIS worker
+            const sseData = `data: ${JSON.stringify({ type, payload, message: msg })}\n\n`;
+            clients.forEach(c => {
+                try {
+                    c.write(sseData);
+                    if (c.flush) c.flush();
+                } catch(e) {}
+            });
+        } catch (e) {
+            console.error('[Redis Sub] Parse error:', e.message);
+        }
+    }
+});
+
+const publishSSE = (data) => {
+    redisClient.publish(SSE_CHANNEL, JSON.stringify(data));
+};
 const PORT = process.env.PORT || 3001;
 
 // Global Mutex to prevent multiple auto-syncs from overlapping (NEW-02 Correction)
@@ -415,13 +446,7 @@ setInterval(() => {
 }, 5000);
 
 const broadcastUpdate = () => {
-    const payload = `data: ${JSON.stringify({ type: 'update' })}\n\n`;
-    clients.forEach(c => {
-        try {
-            c.write(payload);
-            if (c.flush) c.flush();
-        } catch(e) {}
-    });
+    publishSSE({ type: 'update' });
 };
 
 const lastActiveMap = new Map(); // userId -> lastActiveTimestamp
@@ -1334,7 +1359,7 @@ app.post('/api/auto-sync', async (req, res) => {
     // 🔴 [BUG-09 Hotfix] 즉시 진행률 초기화 및 전송 (하드코딩 350 제거)
     const stockCount = JSON.parse(CACHED_STOCKS).length || 350;
     currentSyncProgress = { current: 0, total: targetIntervals.length * stockCount, timeframe: '준비' };
-    clients.forEach(c => c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`));
+    publishSSE({ type: 'sync_progress', payload: currentSyncProgress });
 
     const syncProcess = spawn('node', ['analyzer.cjs', ...targetIntervals], {
         env: { ...process.env, SYNC_MODE: 'integrated' }
@@ -1382,20 +1407,14 @@ app.post('/api/auto-sync', async (req, res) => {
                     timeframe: progressData.timeframe
                 };
 
-                // Broadcast progress (Update is now handled by [DATA_SAVED] for reliability)
-                clients.forEach(c => {
-                    c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: progressData })}\n\n`);
-                    if(c.flush) c.flush();
-                });
+                // 🔴 [Cluster Fix] Publish to Redis instead of local broadcast
+                publishSSE({ type: 'sync_progress', payload: progressData });
             }
 
             // 🔴 [Real-time Fix] DATA_SAVED 이벤트를 감지하여 프론트엔드에 업데이트 핑 전송
             if (line.includes('[DATA_SAVED]')) {
                 setTimeout(() => {
-                    clients.forEach(c => {
-                        c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`);
-                        if(c.flush) c.flush();
-                    });
+                    publishSSE({ type: 'update' });
                 }, 20); // 20ms OS I/O 플래시 대기
             }
         });
@@ -1405,10 +1424,7 @@ app.post('/api/auto-sync', async (req, res) => {
     syncProcess.on('error', (err) => {
         console.error(`[Integrated Sync] Failed to start analyzer process: ${err.message}`);
         isSyncMutexLocked = false;
-        clients.forEach(c => {
-            c.write(`data: ${JSON.stringify({ type: 'sync_error', message: err.message })}\n\n`);
-            if(c.flush) c.flush();
-        });
+        publishSSE({ type: 'sync_error', message: err.message });
     });
 
     syncProcess.on('close', async (code, signal) => {
@@ -1433,12 +1449,9 @@ app.post('/api/auto-sync', async (req, res) => {
             // 🔴 3. 명시적 완료 신호 전송 (V1.3)
             // 모든 데이터 처리가 끝난 후 마지막에 전송
             currentSyncProgress = { ...currentSyncProgress, current: currentSyncProgress.total, timeframe: '완료' };
-            clients.forEach(c => {
-                c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`);
-                c.write(`data: ${JSON.stringify({ type: 'sync_complete', message: "SUCCESS_V1_3" })}\n\n`);
-                c.write(`data: ${JSON.stringify({ type: 'update' })}\n\n`); // 마지막 업데이트 강제 트리거
-                if(c.flush) c.flush();
-            });
+            publishSSE({ type: 'sync_progress', payload: currentSyncProgress });
+            publishSSE({ type: 'sync_complete', message: "SUCCESS_V1_3" });
+            publishSSE({ type: 'update' }); // 마지막 업데이트 강제 트리거
             
             console.log(`[Integrated Sync] Final signal and cache refresh broadcasted.`);
         } else {
