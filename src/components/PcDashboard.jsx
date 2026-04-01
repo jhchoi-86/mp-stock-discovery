@@ -250,10 +250,18 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 <div style={{ marginBottom: '1.5rem' }}>
                     <RoiRankingWidget />
                 </div>
-                <ArchiveBrowser 
-                    onSnapshotSelected={handleSnapshotSelected} 
-                    currentSnapshotId={activeSnapshot?.id} 
-                />
+                {showArchive && (
+                    <div className="fade-in" style={{ marginBottom: '1.5rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', marginBottom: '0.8rem', color: 'var(--primary)' }}>
+                            <History size={18} />
+                            <h3 style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>타임머신 (과거 데이터 조회)</h3>
+                        </div>
+                        <ArchiveBrowser 
+                            onSnapshotSelected={handleSnapshotSelected} 
+                            currentSnapshotId={activeSnapshot?.id} 
+                        />
+                    </div>
+                )}
 
                 <div className="filter-group" style={{ marginBottom: '1.5rem', display: 'flex', flexWrap: 'wrap', gap: '0.8rem' }}>
       <div className="controls fade-in" style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'center', flexWrap: 'wrap' }}>

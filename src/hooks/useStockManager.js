@@ -185,13 +185,14 @@ export const useStockManager = (isAuthenticated) => {
 
 
   const candidatesRaw = filteredStocks.map(stock => {
+    const stockEntry = getStockEntry(stock.code);
     const tfSigs = getSignalsForStock(stock.code);
     const isTopSector = topSectors.includes(stock.sector);
     
     // 🔴 [BUG-12 Hotfix] 동적 신호 폴백 체인 (실시간 업데이트 가시성 확보)
     // 2H나 1D가 아직 분석되지 않았더라도, 현재 분석 중인 타임프레임 데이터를 우선 표시
-    const bestTf = ['2H', '1D', '4H', '1H', '30M'].find(tf => tfSigs[tf] !== undefined) || '2H';
-    const bestSignal = tfSigs[bestTf] || {};
+    const bestTf = ['2H', '1D', '4H', '1H', '30M'].find(tf => tfSigs[tf] !== undefined);
+    const bestSignal = bestTf ? tfSigs[bestTf] : null;
     const score = stockEntry?.total_score || 0;
     
     return {
