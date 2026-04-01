@@ -61,7 +61,6 @@ export const useStockManager = (isAuthenticated) => {
       let stocksData = await stocksRes.json();
       let signalsData = await signalsRes.json();
       
-      // 방어 코드: 401/403 등 에러 JSON 객체가 반환되었을 경우 빈 배열로 강제 처리하여 React UI Crash(White Screen) 방지
       if (!Array.isArray(stocksData)) stocksData = [];
       if (!Array.isArray(signalsData)) signalsData = [];
       
@@ -71,7 +70,22 @@ export const useStockManager = (isAuthenticated) => {
     } catch (error) {
       console.error("Error fetching data:", error);
     }
-  }, []); // Stable reference since it doesn't depend on local state for the fetch
+  }, []);
+
+  // 🔴 [BUG-13 Hotfix] 고주기 업데이트 시 성능 저하 방지를 위한 데드타임/디바운스 적용
+  const lastFetchTime = useRef(0);
+  const fetchTimeout = useRef(null);
+  
+  const debouncedFetchData = useCallback(() => {
+     const now = Date.now();
+     if (now - lastFetchTime.current < 2000) { // 2초 데드타임
+        if (fetchTimeout.current) clearTimeout(fetchTimeout.current);
+        fetchTimeout.current = setTimeout(fetchData, 2000);
+        return;
+     }
+     lastFetchTime.current = now;
+     fetchData();
+  }, [fetchData]);
 
   // 🔴 [BUG-08 Red Team Fix] 서버 상태와 동기화 (고착 방지)
   const checkSyncStatus = async () => {
@@ -175,12 +189,11 @@ export const useStockManager = (isAuthenticated) => {
     const tfSigs = stockEntry?.timeframeStatus || {};
     const isTopSector = topSectors.includes(stock.sector);
     
-    // 🔴 [BUG-05] 백엔드에서 계산된 점수 직접 사용
+    // 🔴 [BUG-12 Hotfix] 동적 신호 폴백 체인 (실시간 업데이트 가시성 확보)
+    // 2H나 1D가 아직 분석되지 않았더라도, 현재 분석 중인 타임프레임 데이터를 우선 표시
+    const bestTf = ['2H', '1D', '4H', '1H', '30M'].find(tf => tfSigs[tf] !== undefined) || '2H';
+    const bestSignal = tfSigs[bestTf] || {};
     const score = stockEntry?.total_score || 0;
-    
-    // 🔴 [BUG-04] 데이터 접근 방식 수정
-    const bestTf = '2H'; // 기본 분석 기준
-    const bestSignal = tfSigs[bestTf] || tfSigs['1D'] || {};
     
     return {
       ...stock,

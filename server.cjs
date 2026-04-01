@@ -980,6 +980,29 @@ if (isPrimaryWorker) {
                 await fs.promises.writeFile(tmpFile, JSON.stringify(toKeep, null, 2));
                 await fs.promises.rename(tmpFile, SIGNALS_FILE);
                 
+                child.on('close', (code) => {
+                    console.log(`Integrated Sync child process exited with code ${code}`);
+                    isSyncMutexLocked = false;
+                    currentSyncProcess = null;
+                    
+                    if (code === 0) {
+                        // 🔴 [BUG-11 Hotfix] 명시적 완료 신호 전송
+                        // 모든 타임프레임이 끝났을 때 확실하게 broadcast
+                        broadcast({ type: 'sync_progress', payload: { ...currentSyncProgress, current: currentSyncProgress.total, timeframe: '완료' } });
+                        broadcast({ type: 'sync_complete', message: "통합 자동 동기화가 모든 타임프레임에 대해 완료되었습니다." });
+                        
+                        // 캐시 업데이트
+                        try {
+                            const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf8');
+                            CACHED_SIGNALS = JSON.parse(signalsData);
+                        } catch (e) {
+                            console.error("Final cache update failed:", e);
+                        }
+                    } else {
+                        broadcast({ type: 'sync_error', message: `동기화 프로세스가 중단되었습니다 (코드: ${code})` });
+                    }
+                });
+                
                 console.log(`[Archive] Archived ${toArchive.length} signals. Remaining: ${toKeep.length}.`);
                 refreshCacheNow();
             }
@@ -1308,31 +1331,31 @@ app.post('/api/auto-sync', async (req, res) => {
     console.log(`[Integrated Sync] Starting sync for intervals: ${targetIntervals.join(', ')}`);
     isSyncMutexLocked = true;
 
+    // 🔴 [BUG-09 Hotfix] 즉시 진행률 초기화 및 전송
+    currentSyncProgress = { current: 0, total: targetIntervals.length * 350, timeframe: '준비' };
+    clients.forEach(c => c.write(`data: ${JSON.stringify({ type: 'sync_progress', payload: currentSyncProgress })}\n\n`));
+
     const syncProcess = spawn('node', ['analyzer.cjs', ...targetIntervals], {
         env: { ...process.env, SYNC_MODE: 'integrated' }
     });
     currentSyncProcess = syncProcess;
 
-    // 🔴 [UX Patch] 대기 시간을 획기적으로 줄이기 위해 즉시 응답을 반환합니다. (202 Accepted)
-    // 실제 진행 상황은 SSE(/api/stream)를 통해 실시간으로 전달됩니다.
     res.status(202).json({ 
         message: 'Sync started successfully', 
         isSyncing: true,
         targetIntervals
     });
 
-    // 🔴 [BUG-03 Fix] stdout 청크 쪼개짐 방지를 위한 라인 버퍼 추가
     let lineBuffer = '';
     syncProcess.stdout.on('data', (data) => {
         lineBuffer += data.toString();
         const lines = lineBuffer.split('\n');
-        lineBuffer = lines.pop(); // 마지막 미완성 라인은 버퍼에 유지
+        lineBuffer = lines.pop();
 
         lines.forEach(line => {
             if (!line.trim()) return;
             console.log(`[Analyzer] ${line.trim()}`);
             
-            // Parse real-time progress: [PROGRESS] TF:CUR/TOTAL
             const progressMatch = line.match(/\[PROGRESS\]\s+(\w+):(\d+)\/(\d+)/);
             if (progressMatch) {
                 const [, tf, current, total] = progressMatch;
