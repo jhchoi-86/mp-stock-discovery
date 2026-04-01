@@ -69,6 +69,11 @@ export const SSEProvider = ({ children, onUpdateRequested, onSyncComplete }) => 
                             if (onSyncCompleteRef.current) onSyncCompleteRef.current();
                         }
                     } 
+                    else if (data.type === 'sync_error') {
+                        console.error("[SSE] Sync Process Error:", data.message);
+                        // 에러 발생 시에도 동기화가 '끝난 것'으로 간주하여 UI 잠금을 해제해야 함
+                        if (onSyncCompleteRef.current) onSyncCompleteRef.current();
+                    }
                     else if (data.type === 'sniper_alert') {
                         setLastSignal(data.payload);
                     }

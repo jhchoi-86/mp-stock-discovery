@@ -29,6 +29,10 @@ const aiScoringQueue = new Queue('aiScoringQueue', { connection: redisClient });
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Global Mutex to prevent multiple auto-syncs from overlapping (NEW-02 Correction)
+let isSyncMutexLocked = false;
+let currentSyncProcess = null; 
+
 // --- Platform 1.0 신규 라우터 연동 (Phase 2 T2-05) ---
 app.use('/admin-api', require('./platform/interfaces/api_admin/index.cjs'));
 app.use('/user-api', require('./platform/interfaces/api_user/index.cjs'));
@@ -119,25 +123,36 @@ const saveCircuitState = () => {
     }, 1000); // 1초 디바운스 (이벤트 루프 블로킹 100% 방지)
 };
 
-// 🔴 [Red Team 방어 - R11] 데이터 보존을 위한 스냅샷 저장 시스템
-async function saveSyncSnapshot(signalsArray) {
+// 🔴 [Red Team 방어 - R11] 데이터 보존을 위한 스냅샷 저장 시스템 (BUG-02 통합/수정)
+async function saveSyncSnapshot(signals) {
     try {
-        if (!Array.isArray(signalsArray) || signalsArray.length === 0) return;
+        if (!Array.isArray(signals) || signals.length === 0) return;
         
-        // HH 신호가 있는 종목만 필터링하여 저장 (효율성)
-        const activeSignals = signalsArray.filter(s => s.signal_HH || s.cond_up7 || s.total_score >= 50);
+        // 필터 기준: signal_HH(최종추천) 또는 cond_up7(상승박스) 또는 일정 점수 이상
+        const importantSignals = signals.filter(s => 
+            s.signal_HH || 
+            s.cond_up7 || 
+            (s.total_score && s.total_score >= 10)
+        );
         
+        if (importantSignals.length === 0) {
+            console.log('[Archival] No important signals to save. Skipping snapshot.');
+            return;
+        }
+
         const snapshot = await prisma.syncSnapshot.create({
             data: {
                 category: 'INTEGRATED_SYNC',
-                signals: activeSignals,
+                signals: importantSignals,
+                stockCount: signals.length,
+                importantCount: importantSignals.length,
                 createdAt: new Date()
             }
         });
-        console.log(`[Snapshot] Successfully saved sync snapshot (ID: ${snapshot.id}, Signals: ${activeSignals.length})`);
+        console.log(`[Archival] Successfully saved sync snapshot (ID: ${snapshot.id}, Signals: ${importantSignals.length})`);
         return snapshot;
     } catch (e) {
-        console.error('[Snapshot Save Error]', e.message);
+        console.error('[Archival Error] Failed to save SyncSnapshot:', e.message);
     }
 }
 
@@ -382,20 +397,18 @@ app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
 // SSE Clients & Heartbeat Activity Tracking
 let clients = [];
 
-// 🔴 [SSE Heartbeat - R11] 15초 주기 연결 유지 신호 (Nginx/Browser 타임아웃 방지)
+// 🔴 [SSE Heartbeat - R11] 5초 주기 연결 유지 신호 (전력 효율보다 연결 안정성 우선)
 setInterval(() => {
     clients.forEach(c => {
         try {
-            c.write(': keep-alive\n\n'); // SSE comment format
+            c.write(': keep-alive\n\n'); 
             if (c.flush) c.flush();
-        } catch(e) {
-            // Broken pipes are handled byreq.on('close')
-        }
+        } catch(e) {}
     });
-}, 15000);
+}, 5000);
 
 const broadcastUpdate = () => {
-    const payload = `data: ${JSON.stringify({ type: 'signal_update' })}\n\n`;
+    const payload = `data: ${JSON.stringify({ type: 'update' })}\n\n`;
     clients.forEach(c => {
         try {
             c.write(payload);
@@ -904,9 +917,6 @@ app.post('/api/auto-sync/stop', requireProAuth, (req, res) => {
     res.json({ message: '현재 실행 중인 동기화가 없습니다.' });
 });
 
-// Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
-let isSyncMutexLocked = false;
-let currentSyncProcess = null; // Track the current running analyzer process
 
 // RESET: Deleted obsolete /api/auto-sync here (Consolidated at the bottom)
 
@@ -942,10 +952,9 @@ if (isPrimaryWorker) {
         await withSignalLock(async () => {
             const raw = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
             const signals = JSON.parse(raw);
-            const cutoffTime = Date.now() - (retentionDays * 24 * 60 * 60 * 1000);
-            
-            const toKeep = signals.filter(s => s.timestamp >= cutoffTime);
-            const toArchive = signals.filter(s => s.timestamp < cutoffTime);
+            // 🔴 [NEW-04 Fix] 신규 중첩 구조는 timestamp가 없으므로 아카이브 대상에서 제외하고 항상 보존
+            const toKeep = signals.filter(s => s.timeframeStatus || (s.timestamp && s.timestamp >= cutoffTime));
+            const toArchive = signals.filter(s => !s.timeframeStatus && s.timestamp && s.timestamp < cutoffTime);
             
             if (toArchive.length > 0) {
                 const archiveDir = path.join(__dirname, 'data', 'archive');
@@ -1006,68 +1015,45 @@ if (isPrimaryWorker) {
             const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
             const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
 
+            // 🔴 [NEW-01 Fix] 백엔드 저장 구조(timeframeStatus)에 맞게 파싱 로직 수정 (BUG-04와 동일 구조)
             const getSignalsForStock = (code) => {
-              const stockSignals = signals.filter(s => s.code === code);
-              const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+              const allEntries = signals.filter(s => s.code === code);
+              // 1. 통합 동기화 구조 우선 확인
+              const integratedEntry = allEntries.find(s => s.timeframeStatus);
+              if (integratedEntry) return integratedEntry.timeframeStatus;
+              
+              // 2. Webhook/CSV 플랫 구조 폴백
               const status = {};
-              timeframes.forEach(tf => {
-                const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];
-                status[tf] = latest;
+              const tfs = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+              tfs.forEach(tf => {
+                status[tf] = allEntries
+                  .filter(s => s.timeframe === tf)
+                  .sort((a, b) => b.timestamp - a.timestamp)[0];
               });
               return status;
             };
 
-            const getLatestGlobal = (code) => signals.filter(s => s.code === code).sort((a, b) => b.timestamp - a.timestamp)[0];
+            const getStockEntry = (code) => signals.find(s => s.code === code);
 
             let candidates = stocks.map(stock => {
+              const stockEntry = getStockEntry(stock.code);
               const tfSigs = getSignalsForStock(stock.code);
-              const latest = getLatestGlobal(stock.code);
               
-              let score = 0;              
+              // 🔴 [BUG-05 Sync] 백엔드에서 이미 계산된 점수를 그대로 사용 (중복 계산 방지)
+              // 분석기(analyzer.cjs)가 이미 모든 로직을 반영하여 total_score를 산출함
+              const score = stockEntry?.total_score || 0;
               
-              // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점) - 최우선 평가
-              let coreScore = 0;
-              const tfs = ['2H', '1D', '1W'];
-              const s2H = tfSigs['2H'];
-              const s1D = tfSigs['1D'];
+              // 리포트에 표시할 대표 신호 (2H -> 1D -> 4H 순으로 우선순위 탐색)
+              const bestTf = '2H';
+              const bestSignal = tfSigs[bestTf] || tfSigs['1D'] || tfSigs['4H'] || {};
               
-              if (s2H) {
-                // 1. 추세필터 (2H) - 15점
-                if (s2H.cond_up7) score += 15;
-
-                // 2. 눌림목감지 (2H) - 15점
-                if (s2H.DHH2) score += 15;
-
-                // 3. 이평선 정배열 (2H) - 30점 (5 > 10 > 20 > 60)
-                const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
-                if (isAligned) score += 30;
-
-                // 4. 이격도 A (2H) - 10점
-                if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
-
-                // 5. 이격도 B (2H) - 5점
-                if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
-
-                // 9. 진입가 근접성 (2H) - 3점
-                if (s2H.result_2 > 0) {
-                  const diff = Math.abs(s2H.current_price - s2H.result_2) / s2H.result_2;
-                  if (diff <= 0.01) score += 3;
-                }
-              }
-
-              // Multi-TF 가산점 (1H, 2H, 4H, 1D, 2D)
-              const tfsList = ['1H', '2H', '4H', '1D', '2D'];
-              tfsList.forEach(tf => {
-                if (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2) score += 2; // 6. 매수신호
-                if (tfSigs[tf]?.cond_up7) score += 2; // 7. 추세신호
-                if (tfSigs[tf]?.cond_up7 && (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2)) score += 1; // 8. 강력신호
-              });
-
-              // 10. 거래량 급증 (1D) - 2점
-              if (s1D?.trigger_vol) score += 2;
-
-              return { ...stock, timeframeStatus: tfSigs, latestSignal: latest, total_score: Math.min(score, 100) };
-             }).filter(s => s.latestSignal);
+              return { 
+                ...stock, 
+                timeframeStatus: tfSigs, 
+                latestSignal: bestSignal, 
+                total_score: score 
+              };
+            }).filter(s => s.latestSignal && Object.keys(s.latestSignal).length > 0);
 
             // All candidates are allowed without ADX and strict trend filters, relying only on final AI total_score sorting
 
@@ -1268,41 +1254,15 @@ if (isPrimaryWorker) {
     }, { timezone: "Asia/Seoul" });
 }
 
-// ─────────────────────────────────────────────────────────────────────────
-// [Archival] Save Synchronization Results to Database
-// ─────────────────────────────────────────────────────────────────────────
-async function saveSyncSnapshot(signals) {
-    try {
-        // 1. 가치 있는 신호만 필터링 (최소 기준: dhh2 또는 condUp7)
-        const importantSignals = signals.filter(s => s.dhh2 || s.condUp7 || (s.total_score && s.total_score >= 10));
-        
-        if (importantSignals.length === 0) {
-            console.log('[Archival] No important signals to save. Skipping snapshot.');
-            return;
-        }
-
-        // 2. DB에 SNAPSHOT 저장 (JSON 블롭)
-        const snapshot = await prisma.syncSnapshot.create({
-            data: {
-                signals: importantSignals,
-                stockCount: signals.length,
-                importantCount: importantSignals.length
-            }
-        });
-
-        console.log(`[Archival] Saved SyncSnapshot to DB: ${snapshot.id} (${importantSignals.length} signals)`);
-        return snapshot;
-    } catch (err) {
-        console.error('[Archival Error] Failed to save SyncSnapshot:', err);
-    }
-}
 
 // ─────────────────────────────────────────────────────────────────────────
 // [API] Integrated Auto-sync Trigger (with Archival)
 // ─────────────────────────────────────────────────────────────────────────
 app.post('/api/auto-sync', async (req, res) => {
     const { intervals, timeframe, timeframes } = req.body;
-    const targetIntervals = intervals || timeframes || (timeframe ? [timeframe] : ['1D']);
+    // 🔴 [BUG-01 Red Team Fix] 2중 배열 방지: timeframe/timeframes/intervals 중 하나를 평탄한 배열로 변환
+    let source = intervals || timeframes || timeframe || ['1D'];
+    const targetIntervals = Array.isArray(source) ? source.flat() : [source];
     
     const cronSecret = req.headers['x-cron-secret'] || req.headers['x-internal-cron-secret'];
     const authHeader = req.headers.authorization;
@@ -1354,8 +1314,13 @@ app.post('/api/auto-sync', async (req, res) => {
         targetIntervals
     });
 
+    // 🔴 [BUG-03 Fix] stdout 청크 쪼개짐 방지를 위한 라인 버퍼 추가
+    let lineBuffer = '';
     syncProcess.stdout.on('data', (data) => {
-        const lines = data.toString().split('\n');
+        lineBuffer += data.toString();
+        const lines = lineBuffer.split('\n');
+        lineBuffer = lines.pop(); // 마지막 미완성 라인은 버퍼에 유지
+
         lines.forEach(line => {
             if (!line.trim()) return;
             console.log(`[Analyzer] ${line.trim()}`);
@@ -1364,11 +1329,18 @@ app.post('/api/auto-sync', async (req, res) => {
             const progressMatch = line.match(/\[PROGRESS\]\s+(\w+):(\d+)\/(\d+)/);
             if (progressMatch) {
                 const [, tf, current, total] = progressMatch;
+                
+                // 🔴 [BUG-03 Red Team Fix] 전체 타임프레임을 고려한 누적 진행률 계산 (조기 완료 방지)
+                const tfIndex = targetIntervals.indexOf(tf);
+                const totalTfCount = targetIntervals.length;
+                const absoluteCurrent = (tfIndex >= 0 ? tfIndex * 350 : 0) + parseInt(current);
+                const absoluteTotal = 350 * totalTfCount;
+
                 const progressData = {
                     type: 'progress',
                     timeframe: tf,
-                    current: parseInt(current),
-                    total: parseInt(total)
+                    current: absoluteCurrent,
+                    total: absoluteTotal
                 };
                 
                 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원 (메모리 업데이트)
@@ -1388,10 +1360,14 @@ app.post('/api/auto-sync', async (req, res) => {
         });
     });
 
+    // 🔴 [NEW-02 Fix] 프로세스 시작/실행 실패 시 SSE로 에러 브로드캐스트 (UI 고착 방지)
     syncProcess.on('error', (err) => {
         console.error(`[Integrated Sync] Failed to start analyzer process: ${err.message}`);
         isSyncMutexLocked = false;
-        // res.json was already sent (202 Accepted)
+        clients.forEach(c => {
+            c.write(`data: ${JSON.stringify({ type: 'sync_error', message: err.message })}\n\n`);
+            if(c.flush) c.flush();
+        });
     });
 
     syncProcess.on('close', async (code, signal) => {

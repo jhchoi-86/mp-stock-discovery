@@ -73,32 +73,51 @@ export const useStockManager = (isAuthenticated) => {
     }
   }, []); // Stable reference since it doesn't depend on local state for the fetch
 
+  // 🔴 [BUG-08 Red Team Fix] 서버 상태와 동기화 (고착 방지)
+  const checkSyncStatus = async () => {
+    try {
+      const res = await axiosClient.get('/api/auto-sync/status');
+      if (res.data && res.data.isSyncing !== undefined) {
+          if (!res.data.isSyncing && isSyncing) {
+              setIsSyncing(false);
+          }
+      }
+    } catch (e) {
+      console.error("[Status Sync Error]", e);
+    }
+  };
+
   useEffect(() => {
-    if (!isAuthenticated) return;
+    if (isAuthenticated) {
+        fetchData();
+        checkSyncStatus(); // 초기 로드 시 확인
+        
+        // 🔴 30초마다 서버 상태 재확인 (혹시 모를 상태 불일치 해결)
+        const timer = setInterval(checkSyncStatus, 30000);
+        
+        // 포커스 복귀 시에도 확인
+        window.addEventListener('focus', checkSyncStatus);
+        
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener('focus', checkSyncStatus);
+        };
+    }
+  }, [isAuthenticated, isSyncing]); // isSyncing 변화 시에도 체크 로직 활성화
 
-    fetchData(); // Initial data load
-    
-    // 🔴 [Red Team 방어] 동기화 상태 복구 로직
-    const checkSyncStatus = async () => {
-      try {
-        const res = await axiosClient.get('/api/auto-sync/status');
-        if (res.data?.isSyncing) {
-            setIsSyncing(true);
-            // syncProgress는 이제 전역 SSEContext에서 관리함
-        }
-      } catch(e) { console.error('Sync status check failed:', e); }
-    };
-    checkSyncStatus();
-    
-    // SSE 관리 로직은 SSEContext.jsx로 이동됨 (중복 연결 방지)
-  }, [isAuthenticated]);
-
+  // 🔴 [BUG-04 Red Team Revise] 통합 동기화(중첩)와 Webhook(플랫) 구조 모두 지원
   const getSignalsForStock = (code) => {
-    const stockSignals = (Array.isArray(signals) ? signals : []).filter(s => s.code === code);
-    const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+    const allEntries = (Array.isArray(signals) ? signals : []).filter(s => s.code === code);
+    
+    // 1. 통합 동기화 구조 우선 확인 (timeframeStatus 중첩)
+    const integratedEntry = allEntries.find(s => s.timeframeStatus);
+    if (integratedEntry) return integratedEntry.timeframeStatus;
+    
+    // 2. Webhook/CSV 플랫 구조 폴백 (하위 호환 및 신규 Webhook 대응)
     const status = {};
-    timeframes.forEach(tf => {
-      const latest = (Array.isArray(stockSignals) ? stockSignals : [])
+    const tfs = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+    tfs.forEach(tf => {
+      const latest = allEntries
         .filter(s => s.timeframe === tf)
         .sort((a, b) => b.timestamp - a.timestamp)[0];
       status[tf] = latest;
@@ -106,18 +125,19 @@ export const useStockManager = (isAuthenticated) => {
     return status;
   };
 
-  const getLatestGlobal = (code) => {
-    return (Array.isArray(signals) ? signals : [])
-      .filter(s => s.code === code)
-      .sort((a, b) => b.timestamp - a.timestamp)[0];
+  const getStockEntry = (code) => {
+    return (Array.isArray(signals) ? signals : []).find(s => s.code === code);
   };
 
   const topSectors = useMemo(() => {
     const sectorCounts = {};
     if (Array.isArray(stocks)) {
       stocks.forEach(stock => {
-        const latest = getLatestGlobal(stock.code);
-        if (latest && latest.signal_HH) {
+        const entry = getStockEntry(stock.code);
+        // 어떤 타임프레임에서든 HH 신호가 있으면 해당 상위 섹터에 집계
+        const hasSignal = entry?.timeframeStatus && Object.values(entry.timeframeStatus).some(sig => sig.signal_HH);
+        
+        if (hasSignal) {
           const sector = stock.sector || '기타';
           if (sector !== '기타') {
             sectorCounts[sector] = (sectorCounts[sector] || 0) + 1;
@@ -140,82 +160,36 @@ export const useStockManager = (isAuthenticated) => {
     if (categoryFilter === '추천종목') {
       matchesCategory = selectedStocks.has(stock.code);
     } else if (categoryFilter !== 'ALL') {
-      const latest = getLatestGlobal(stock.code);
-      const cat = latest ? latest.category : '';
+      const entry = getStockEntry(stock.code);
+      // 가장 유의미한 타임프레임(1D)에서 카테고리 추출
+      const cat = entry?.timeframeStatus?.['1D']?.category || '';
       matchesCategory = (cat === categoryFilter);
     }
     
     return matchesSearch && matchesMarket && matchesCategory;
   });
 
-  const calculateTotalScore = (tfSigs, latest, isTopSector) => {
-    let score = 0;
-    const s2H = tfSigs['2H'];
-    const s1D = tfSigs['1D'];
-    
-    if (!s2H) return { score: 0, bestTf: '1D' };
-
-    // 1. 추세필터 (2H) - 15점
-    if (s2H.cond_up7) score += 15;
-
-    // 2. 눌림목감지 (2H) - 15점
-    if (s2H.DHH2) score += 15;
-
-    // 3. 이평선 정배열 (2H) - 30점 (5 > 10 > 20 > 60)
-    const isAligned = s2H.ema5 > s2H.ema10 && s2H.ema10 > s2H.ema20 && s2H.ema20 > s2H.ema60;
-    if (isAligned) score += 30;
-
-    // 4. 이격도 A (2H) - 10점 (정배열 && 10 < Price < 5)
-    if (isAligned && s2H.current_price < s2H.ema5 && s2H.current_price > s2H.ema10) score += 10;
-
-    // 5. 이격도 B (2H) - 5점 (정배열 && 20 < Price < 10)
-    if (isAligned && s2H.current_price < s2H.ema10 && s2H.current_price > s2H.ema20) score += 5;
-
-    // Multi-TF 가산점 (1H, 2H, 4H, 1D, 2D)
-    const checkTfs = ['1H', '2H', '4H', '1D', '2D'];
-    
-    // 6. 매수신호 중첩 - 각 2점 (Max 10)
-    checkTfs.forEach(tf => {
-      if (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2) score += 2;
-    });
-
-    // 7. 추세신호 중첩 - 각 2점 (Max 10)
-    checkTfs.forEach(tf => {
-      if (tfSigs[tf]?.cond_up7) score += 2;
-    });
-
-    // 8. 강력신호 보너스 - 각 1점 (Max 5)
-    checkTfs.forEach(tf => {
-      if (tfSigs[tf]?.cond_up7 && (tfSigs[tf]?.signal_HH || tfSigs[tf]?.DHH2)) score += 1;
-    });
-
-    // 9. 진입가 근접성 (2H) - 3점 (|현재가-result_2| < 1%)
-    if (s2H.result_2 > 0) {
-      const diff = Math.abs(s2H.current_price - s2H.result_2) / s2H.result_2;
-      if (diff <= 0.01) score += 3;
-    }
-
-    // 10. 거래량 급증 (1D) - 2점 (1.5배 이상)
-    if (s1D?.trigger_vol) score += 2;
-
-    return { score: Math.min(score, 100), bestTf: '2H' };
-  };
 
   const candidatesRaw = filteredStocks.map(stock => {
-    const tfSigs = getSignalsForStock(stock.code);
-    const latest = getLatestGlobal(stock.code);
+    const stockEntry = getStockEntry(stock.code);
+    const tfSigs = stockEntry?.timeframeStatus || {};
     const isTopSector = topSectors.includes(stock.sector);
-    const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
-    const bestSignal = tfSigs[scoreData.bestTf] || latest;
+    
+    // 🔴 [BUG-05] 백엔드에서 계산된 점수 직접 사용
+    const score = stockEntry?.total_score || 0;
+    
+    // 🔴 [BUG-04] 데이터 접근 방식 수정
+    const bestTf = '2H'; // 기본 분석 기준
+    const bestSignal = tfSigs[bestTf] || tfSigs['1D'] || {};
     
     return {
       ...stock,
       timeframeStatus: tfSigs,
-      latestSignal: latest,
+      latestSignal: bestSignal, 
       bestSignal: bestSignal,
-      bestTfLabel: scoreData.bestTf,
+      bestTfLabel: bestTf,
       isTopSector,
-      total_score: scoreData.score,
+      total_score: score,
       is_alignment: tfSigs['2H']?.ema5 > tfSigs['2H']?.ema10 && tfSigs['2H']?.ema10 > tfSigs['2H']?.ema20 && tfSigs['2H']?.ema20 > tfSigs['2H']?.ema60,
       is_dip_area: tfSigs['2H']?.DHH2,
       is_mtf_signal: ['1H', '2H', '4H'].some(tf => tfSigs[tf]?.signal_HH)
@@ -226,7 +200,13 @@ export const useStockManager = (isAuthenticated) => {
     ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
     : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 10);
 
-  const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
+  // 🔴 [NEW-03 Fix] 중첩 구조와 플랫 구조 모두에서 HH 신호 개수 정확히 측정
+  const activeCount = (Array.isArray(signals) ? signals : []).filter(s => {
+    if (s.timeframeStatus) {
+      return Object.values(s.timeframeStatus).some(tf => tf?.signal_HH);
+    }
+    return s.signal_HH;
+  }).length;
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {
@@ -307,11 +287,12 @@ export const useStockManager = (isAuthenticated) => {
     // Initial UI state: Indicate preparing
     setSyncProgress({ current: 0, total: 350, timeframe: '준비' });
     
-    const timeframes = ['1H', '2H', '4H', '1D', '1W'];
+    // 🔴 [BUG-06] 타임프레임 확장 (30M, 2D 추가)
+    const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
     
     try {
-      // One integrated request - Backend handles the loop and SSE
-      await axiosClient.post('/api/auto-sync', { timeframe: timeframes }, { timeout: 600000 });
+      // 🔴 [BUG-01] 파라미터 키 'intervals'로 통일
+      await axiosClient.post('/api/auto-sync', { intervals: timeframes }, { timeout: 600000 });
       
       // 🔴 [UX Patch] 즉시 완료 메시지를 띄우지 않습니다. 
       // 이제 SSE를 통해 실제 수신 데이터가 100% 완료되었을 때 App.jsx에서 handleSyncCompletion을 호출합니다.
