@@ -198,7 +198,7 @@ export const useStockManager = (isAuthenticated) => {
 
   const candidates = showAll 
     ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
-    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 10);
+    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 20);
 
   // 🔴 [NEW-03 Fix] 중첩 구조와 플랫 구조 모두에서 HH 신호 개수 정확히 측정
   const activeCount = (Array.isArray(signals) ? signals : []).filter(s => {

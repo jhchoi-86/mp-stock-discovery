@@ -382,7 +382,14 @@ app.get('/api/stocks', requireProAuth, (req, res) => {
 
 app.get('/api/signals', requireProAuth, (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    res.send(CACHED_SIGNALS);
+    try {
+        // 🔴 [BUG-07 Hotfix] CACHED_SIGNALS가 파일 변경을 감지하지 못함
+        // 동기화 중에는 파일에서 직접 읽어서 최신 데이터를 반환하도록 수정
+        const signalsData = fs.readFileSync(SIGNALS_FILE, 'utf8');
+        res.send(signalsData);
+    } catch (e) {
+        res.send(CACHED_SIGNALS); // 폴백
+    }
 });
 
 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원

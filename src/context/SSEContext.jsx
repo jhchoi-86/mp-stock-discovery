@@ -64,9 +64,12 @@ export const SSEProvider = ({ children, onUpdateRequested, onSyncComplete }) => 
                             });
                         }
 
-                        // 🔴 [UX Patch] 전용 완료 콜백 호출 (100% 도달 시)
+                        // 🔴 [UX Patch] 전용 완료 콜백 호출 (0% -> 100% 도달 시에만 트리거)
+                        // stale한 기존 완료 상태(100/100)가 첫 연결 시 들어와서 완료 메시지가 뜨는 것을 방지
                         if (payload.current === payload.total && payload.current > 0) {
-                            if (onSyncCompleteRef.current) onSyncCompleteRef.current();
+                            if (progressRef.current && progressRef.current.current < payload.total) {
+                                if (onSyncCompleteRef.current) onSyncCompleteRef.current();
+                            }
                         }
                     } 
                     else if (data.type === 'sync_error') {
