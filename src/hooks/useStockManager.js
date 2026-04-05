@@ -275,8 +275,10 @@ export const useStockManager = (isAuthenticated) => {
       const tfSigs = getSignalsForStock(stock.code);
       const latest = getLatestGlobal(stock.code);
       const isTopSector = topSectors.includes(stock.sector);
+      
+      // [v7.7.22] Restore consistency: Use backend score if available, fallback to frontend only if missing
+      const backendScore = latest?.score || 0;
       const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
-      const bestSignal = tfSigs[scoreData.bestTf] || latest;
       
       const signalTimeframes = buildSignalTimeframes(tfSigs);
       const t2H = tfSigs['2H'] ? {
@@ -292,10 +294,7 @@ export const useStockManager = (isAuthenticated) => {
         t2H,
         timeframeStatus: tfSigs,
         latestSignal: latest,
-        bestSignal: bestSignal,
-        bestTfLabel: scoreData.bestTf,
-        isTopSector,
-        total_score: scoreData.score
+        total_score: backendScore || scoreData.score
       };
     });
 

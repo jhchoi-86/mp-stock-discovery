@@ -623,7 +623,17 @@ app.get('/api/stocks', requireProAuth, (req, res) => {
 
 app.get('/api/signals', requireProAuth, (req, res) => {
     res.setHeader('Content-Type', 'application/json');
-    res.send(CACHED_SIGNALS);
+    // Ensure scores are present (Fresh fallback if not yet updated in cache)
+    try {
+        const sigs = JSON.parse(CACHED_SIGNALS);
+        const scored = sigs.map(s => ({
+            ...s,
+            score: s.score || scoreSignal(s, s.kis_change_data?.bonus_score || 0)
+        }));
+        res.json(scored);
+    } catch(e) {
+        res.send(CACHED_SIGNALS);
+    }
 });
 
 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원
@@ -1610,11 +1620,12 @@ app.post('/api/auto-sync', async (req, res) => {
             }
             
             // Remove old signals for the matching code and timeframe
-            const syncCodes = new Set(syncResults.map(s => s.code));
-            currentSignals = currentSignals.filter(s => !(syncCodes.has(s.code) && s.timeframe === tf));
-
             const merged = [...currentSignals, ...syncResults];
-            const resultStr = JSON.stringify(merged, null, 2);
+            const scored = merged.map(s => ({
+                ...s,
+                score: scoreSignal(s, s.kis_change_data?.bonus_score || 0)
+            }));
+            const resultStr = JSON.stringify(scored, null, 2);
             await fs.promises.writeFile(SIGNALS_FILE, resultStr);
             CACHED_SIGNALS = resultStr; // 즉시 캐시 갱신
             lastSignalsMtimeMs = Date.now();
