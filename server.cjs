@@ -306,35 +306,24 @@ async function addLiveNotification(message) {
     }
 }
 
-// 🔴 [Red Team 방어 - R2] signals.json 원자적(Atomic) 락 시스템
+// 🔴 [Red Team 방어 - R2] signals.json 원자적(Atomic) 락 시스템 (v7.7.21)
 let isSignalFileLocked = false;
-const signalWriteQueue = [];
-const MAX_QUEUE_SIZE = 50;
 
 async function withSignalLock(fn) {
-    return new Promise((resolve, reject) => {
-        const execute = async () => {
-            if (isSignalFileLocked) {
-                if (signalWriteQueue.length >= MAX_QUEUE_SIZE) {
-                    return reject(new Error('Signal write queue overflow (MAX 50)'));
-                }
-                signalWriteQueue.push(execute);
-                return;
-            }
-            isSignalFileLocked = true;
-            try {
-                resolve(await fn());
-            } catch (e) {
-                reject(e);
-            } finally {
-                isSignalFileLocked = false;
-                if (signalWriteQueue.length > 0) {
-                    signalWriteQueue.shift()();
-                }
-            }
-        };
-        execute();
-    });
+    // 큐 제한이 없는 무한 비동기 폴링 대기 구조로 전환 (Deadlock 차단)
+    while (isSignalFileLocked) {
+        await new Promise(resolve => setTimeout(resolve, 50)); // 50ms 간격으로 빈자리 확인
+    }
+    
+    isSignalFileLocked = true;
+    try {
+        return await fn();
+    } catch (e) {
+        console.error('[SignalLock] Error inside locked function:', e.message);
+        throw e;
+    } finally {
+        isSignalFileLocked = false;
+    }
 }
 
 // [v5.0.0] Live Signal Board Poller Functions
@@ -1611,7 +1600,14 @@ app.post('/api/auto-sync', async (req, res) => {
     if (syncResults.length > 0) {
         // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
         await withSignalLock(async () => {
-            let currentSignals = JSON.parse(await fs.promises.readFile(SIGNALS_FILE, 'utf8'));
+            let currentSignals = [];
+            try {
+                const rawData = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
+                currentSignals = JSON.parse(rawData);
+            } catch (parseErr) {
+                console.error('[Auto-Sync] signals.json parse error, using empty array:', parseErr.message);
+                currentSignals = [];
+            }
             
             // Remove old signals for the matching code and timeframe
             const syncCodes = new Set(syncResults.map(s => s.code));
