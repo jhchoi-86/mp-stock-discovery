@@ -1630,15 +1630,9 @@ app.post('/api/auto-sync', async (req, res) => {
         } // v7.7.13 FIX
     } // End of tfList loop
 
-    // [MP-DEBUG-HIGH-006] Use currentSyncProgress for safe final emit
-    emitProgress(currentSyncProgress.total, currentSyncProgress.total, "완전완료");
+    // [MP-DEBUG-HIGH-006] Bulk Sync Success Notification
+    emitProgress(currentSyncProgress.total, currentSyncProgress.total, "전체완료");
 
-    // [MP-DEBUG-LOW-002] Sleep time helper moved outside loop
-    const getSleepTime = (tf) => {
-        if (['2M', '5M', '15M', '30M'].includes(tf)) return 100;
-        if (['1D', '2D', '1W'].includes(tf)) return 200;
-        return 150;
-    };
 
     // --- NEW: Final Persistence after ALL timeframes (v7.7.12) ---
     try {

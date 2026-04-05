@@ -370,45 +370,33 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleIntegratedSync = async () => {
-    if (!window.confirm(`30M, 1H, 2H, 4H, 1D, 2D, 1W 시간대 데이터를 차례대로 자동 동기화하시겠습니까?\n(이 작업은 약 3~4분 정도 소요됩니다.)`)) return;
+    const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
+    if (!window.confirm(`${timeframes.join(', ')} 시간대 데이터를 일괄 동기화하시겠습니까?\n(분석량이 많아 약 3~5분 정도 소요될 수 있습니다.)`)) return;
+    
     setIsSyncing(true);
     setSelectedStocks(new Set());
     setShowAll(false); 
     
-    const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
-    
     try {
-      // [Blue Team] 이전 동기화 방식 복구: 프론트엔드 제어 순차 루프
-      // SSE가 불안정한 환경에서도 실시간 카운팅과 상태 업데이트가 가능하도록 합니다.
-      for (let i = 0; i < timeframes.length; i++) {
-        const tf = timeframes[i];
-        setSyncProgress({ current: i + 1, total: timeframes.length, timeframe: tf });
-        
-        // 개별 시간대 동기화 요청 (백엔드 Mutex를 고려하여 순차 대기)
-        // 🔴 [Red Team 방어] 350종목 처리 시 120초를 초과하는 경우가 많아 300초(5분)로 증설
-        await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 900000 });
-        
-        // [v3.9.1] Resource Protection: Sleep 30s to let server rest between heavy bursts
-        if (i < timeframes.length - 1) {
-            setSyncProgress(prev => ({ ...prev, timeframe: `[휴식 중...30초] ${tf} 완료` }));
-            await new Promise(resolve => setTimeout(resolve, 30000));
-        }
-        
-        await fetchData();
-      }
+      // [v7.7.20] Bulk Sync: Send ALL timeframes in one single request to avoid UI stall
+      setSyncProgress({ current: 0, total: 100, timeframe: '준비 중...' });
       
+      // 🔴 [Red Team 방어] 350종목 x 7개 TF 처리 시 최대 15분 이상 소요될 수 있으므로 20분(1,200초) 설정
+      await axiosClient.post('/api/auto-sync', { timeframes }, { timeout: 1200000 });
+      
+      await fetchData();
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 100, timeframe: '' });
-      alert("통합 자동 동기화가 완료되었습니다.");
+      alert("통합 자동 동기화가 성공적으로 완료되었습니다.");
     } catch (error) {
-      console.error("Sequential sync error:", error);
+      console.error("Bulk sync error:", error);
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 100, timeframe: '' });
       
       if (error.response?.status === 409) {
         alert("이미 분석이 진행 중입니다. 잠시만 기다려 주시면 자동으로 결과가 업데이트됩니다.");
       } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        alert("분석 시간이 길어지고 있습니다. 백엔드에서 분석은 계속 진행 중이며, 잠시 후 대시보드에 결과가 나타납니다.");
+        alert("분석 작업이 길어지고 있습니다. 백엔드에서 분석은 계속 진행 중이며, 잠시 후 대시보드에 결과가 나타납니다.");
       } else if (error.response?.status !== 403 && error.response?.status !== 429) {
         alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
