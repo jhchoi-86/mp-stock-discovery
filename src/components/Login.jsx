@@ -2,9 +2,16 @@ import React, { useState } from 'react';
 import authService from '../api/authService';
 import useAuthStore from '../store/authStore';
 import { Bot, Zap, Target } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 const Login = ({ onBack }) => {
   const setAuth = useAuthStore(state => state.setAuth);
+  const navigate = useNavigate();
+  
+  const handleBack = () => {
+    if (onBack) onBack();
+    else navigate('/');
+  };
   
   const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [email, setEmail] = useState('');
@@ -38,6 +45,7 @@ const Login = ({ onBack }) => {
         const response = await authService.login(email, password);
         // Login returns User object
         setAuth(response.user);
+        navigate('/');
       }
     } catch (err) {
       console.error(err);
@@ -70,7 +78,7 @@ const Login = ({ onBack }) => {
       {/* Go Back to Landing (New) */}
       {onBack && (
         <button 
-          onClick={onBack}
+          onClick={handleBack}
           style={{ position: 'absolute', top: '20px', right: '20px', zIndex: 100, color: 'rgba(255,255,255,0.6)', cursor: 'pointer', background: 'none', border: '1px solid rgba(255,255,255,0.2)', padding: '6px 12px', borderRadius: '4px', fontSize: '0.8rem' }}
           className="hover:text-white transition-colors"
         >

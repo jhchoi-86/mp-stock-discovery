@@ -5,6 +5,8 @@ import useAuthStore from '../store/authStore';
 import { UserCog, ShieldAlert, ShieldCheck, ToggleLeft, ToggleRight, Trash2, CheckCircle } from 'lucide-react';
 import BacktestReportWidget from './BacktestReportWidget';
 import DailySnapshotAnalytics from './DailySnapshotAnalytics';
+import AdminSignalHistory from './AdminSignalHistory';
+import SystemManagementTab from './SystemManagementTab';
 
 const AdminDashboard = () => {
   const { user } = useAuthStore();
@@ -184,10 +186,34 @@ const AdminDashboard = () => {
         >
           종목 성과 분석 📊
         </button>
+        <button 
+          onClick={() => setActiveTab('signals')}
+          style={{
+            padding: '0.75rem 1.5rem', background: activeTab === 'signals' ? 'rgba(255,255,255,0.1)' : 'none',
+            border: 'none', borderBottom: activeTab === 'signals' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'signals' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          신호 이력 조회 📡
+        </button>
+        <button 
+          onClick={() => setActiveTab('system')}
+          style={{
+            padding: '0.75rem 1.5rem', background: activeTab === 'system' ? 'rgba(255,255,255,0.1)' : 'none',
+            border: 'none', borderBottom: activeTab === 'system' ? '2px solid var(--primary)' : '2px solid transparent',
+            color: activeTab === 'system' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          시스템 관리 ⚙️
+        </button>
       </div>
 
       {activeTab === 'analytics' ? (
         <DailySnapshotAnalytics />
+      ) : activeTab === 'signals' ? (
+        <AdminSignalHistory />
+      ) : activeTab === 'system' ? (
+        <SystemManagementTab />
       ) : (
         <>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', flexWrap: 'wrap', gap: '1rem' }}>

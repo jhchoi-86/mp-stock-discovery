@@ -14,9 +14,15 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
     const [lastSignal, setLastSignal] = useState(null);
+    const [realtimePrices, setRealtimePrices] = useState({}); // { code: { price, changeRate } }
+    const [notifications, setNotifications] = useState([]); // [v6.1.1] 실시간 알림 피드
     
     const progressRef = useRef(progress);
     const frameId = useRef(null);
+
+    // Throttle UI updates for prices to 500ms to keep UI snappy but not overloaded
+    const pendingPrices = useRef({});
+    const updateTimer = useRef(null);
 
     useEffect(() => {
         let eventSource = null;
@@ -63,10 +69,36 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                     else if (data.type === 'sniper_alert') {
                         setLastSignal(data.payload);
                     }
+                    else if (data.type === 'price_update' || data.type === 'price_snapshot') {
+                        // [v6.2.0] Support both individual updates and snapshots
+                        if (data.type === 'price_snapshot') {
+                            Object.assign(pendingPrices.current, data.data);
+                        } else {
+                            pendingPrices.current[data.code] = { 
+                                price: data.price, 
+                                changeRate: data.changeRate,
+                                updatedAt: Date.now()
+                            };
+                        }
+
+                        if (!updateTimer.current) {
+                            updateTimer.current = setTimeout(() => {
+                                setRealtimePrices(prev => ({ ...prev, ...pendingPrices.current }));
+                                pendingPrices.current = {};
+                                updateTimer.current = null;
+                            }, 300); // 0.3s batching (Tuned for snapiness)
+                        }
+                    }
+                    else if (data.type === 'live_notification') {
+                        // [v6.1.1] Push new notification to the front
+                        setNotifications(prev => [data.data, ...prev].slice(0, 20));
+                    }
                 } catch (e) {
                     console.error("[SSE] Data Error:", e);
                 }
             };
+            
+            // ... (onerror and return remain same)
 
             eventSource.onerror = (e) => {
                 setIsConnected(false);
@@ -88,10 +120,17 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
     }, [onUpdateRequested]);
 
     return (
-        <SSEContext.Provider value={{ progress, lastSignal, isConnected, error }}>
+        <SSEContext.Provider value={{ progress, lastSignal, isConnected, error, realtimePrices, notifications }}>
             {children}
         </SSEContext.Provider>
     );
 };
 
-export const useSSE = () => useContext(SSEContext);
+export const useSSE = () => useContext(SSEContext) || { 
+    progress: { current: 0, total: 348, timeframe: '' }, 
+    lastSignal: null, 
+    isConnected: false, 
+    error: null, 
+    realtimePrices: {},
+    notifications: []
+};

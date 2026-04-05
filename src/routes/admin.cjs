@@ -8,6 +8,8 @@ const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 const router = express.Router();
 
 const telegramService = require('../services/telegramService.cjs');
+const systemStatsService = require('../services/systemStatsService.cjs');
+const os = require('os');
 
 // Apply auth verifying and admin guard to all routes in this router
 router.use(authMiddleware);
@@ -247,6 +249,60 @@ router.post('/subscriptions/:id/approve', async (req, res) => {
   } catch (error) {
     console.error('[Admin Approve Subscription Error]', error);
     res.status(500).json({ error: 'Internal server error while approving subscription.' });
+  }
+});
+
+// E. 시스템 통계 조회 (GET /api/admin/system/stats)
+router.get('/system/stats', async (req, res) => {
+  try {
+    const stats = await prisma.systemStat.findMany({
+      orderBy: { date: 'desc' },
+      take: 30
+    });
+    res.json(stats);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch system stats' });
+  }
+});
+
+// F. 실시간 시스템 리소스 조회 (GET /api/admin/system/resources)
+router.get('/system/resources', async (req, res) => {
+  try {
+    const resources = await systemStatsService.getSystemResources();
+    res.json(resources);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch resources' });
+  }
+});
+
+// G. 장애 로그 조회 (GET /api/admin/system/incidents)
+router.get('/system/incidents', async (req, res) => {
+  try {
+    const incidents = await prisma.incidentLog.findMany({
+      orderBy: { occurredAt: 'desc' },
+      take: 50
+    });
+    res.json(incidents);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch incidents' });
+  }
+});
+
+// H. 장애 로그 등록 (POST /api/admin/system/incidents)
+router.post('/system/incidents', async (req, res) => {
+  try {
+    const { title, description, severity } = req.body;
+    const incident = await prisma.incidentLog.create({
+      data: {
+        title,
+        description,
+        severity: severity || 'ERROR',
+        status: 'OPEN'
+      }
+    });
+    res.json(incident);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to log incident' });
   }
 });
 

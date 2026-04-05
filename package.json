@@ -1,12 +1,12 @@
 {
   "name": "-",
   "private": true,
-  "version": "0.0.0",
+  "version": "7.7.18",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "release": "npm run build && node update_hash.cjs && pm2 reload mp-stock-backend --update-env",
+    "release": "npm version patch --no-git-tag-version && npm run build && node update_hash.cjs && pm2 reload mp-stock-backend --update-env",
     "safe-deploy": "node scripts/deploy_safe.cjs",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "seal": "node seal.cjs"
@@ -43,6 +43,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-hot-toast": "^2.6.0",
+    "react-router-dom": "^7.1.5",
     "react-virtuoso": "^4.18.3",
     "redlock": "^5.0.0-beta.2",
     "swr": "^2.4.1",

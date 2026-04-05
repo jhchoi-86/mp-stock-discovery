@@ -7,9 +7,10 @@ module.exports = {
       exec_mode: 'fork',              // Fork 모드 실행 (Cluster 모드는 SSE 통신 불일치 유발)
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '1200M',
       wait_ready: true,               // process.send('ready') 이벤트를 기다림
       listen_timeout: 50000,          // 준비 신호를 기다리는 최대 대기 시간 (50초)
+      kill_timeout: 10000,            // graceful shutdown 10초
       env: {
         NODE_ENV: 'development',
         PORT: 3001
@@ -20,6 +21,7 @@ module.exports = {
         CLIENT_URL: 'https://mpstock.co.kr'
       }
     },
+/*
     {
       name: 'mp-stock-ai-api',
       script: process.platform === 'win32' ? './ai-service/venv/Scripts/python.exe' : './ai-service/venv/bin/python',
@@ -30,7 +32,7 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '800M',
+      max_memory_restart: '400M',
       env_production: {
         NODE_ENV: 'production'
       }
@@ -44,37 +46,23 @@ module.exports = {
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
+      max_memory_restart: '400M',
       env_production: {
         NODE_ENV: 'production'
       }
     },
     {
-      name: 'mp-stock-sniper-engine',
-      script: 'main.py',
-      cwd: './sniper_engine',
-      interpreter: process.platform === 'win32' ? './sniper_engine/venv/Scripts/python.exe' : './sniper_engine/venv/bin/python',
+      name: 'mp-stock-3m-sniper',
+      script: './sniper_3m.cjs',
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
       watch: false,
-      max_memory_restart: '1G',
-      env_production: {
-        NODE_ENV: 'production',
-        PYTHONPATH: '..'
-      }
-    },
-    {
-      name: 'mp-coin-nightly-monitor',
-      script: './src/utils/coinNightlyMonitor.cjs',
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      watch: false,
-      max_memory_restart: '500M',
+      max_memory_restart: '400M',
       env_production: {
         NODE_ENV: 'production'
       }
     }
+    */
   ]
 };

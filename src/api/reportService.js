@@ -19,6 +19,26 @@ const reportService = {
       console.error(`Failed to fetch report for ${date}:`, error);
       throw error;
     }
+  },
+
+  getTop5Strategy: async () => {
+    try {
+      const response = await axiosClient.get('/api/public/top5-strategy');
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch top5 strategy:', error);
+      throw error;
+    }
+  },
+  
+  getWatchlistStrategy: async () => {
+    try {
+      const response = await axiosClient.get('/api/public/watchlist-strategy');
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch watchlist strategy:', error);
+      return { updatedAt: new Date().toISOString(), stocks: [] };
+    }
   }
 };
 

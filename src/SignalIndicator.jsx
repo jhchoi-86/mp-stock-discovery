@@ -70,7 +70,7 @@ const SignalIndicator = ({ signal, latestSignal, bestTfLabel, totalScore, kisDat
     <div style={{ marginTop: '0.8rem', padding: '0.8rem', background: 'rgba(0,0,0,0.2)', borderRadius: '8px', borderLeft: `3px solid ${badgeColor}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.6rem' }}>
         <span style={{ fontSize: '0.85rem', color: '#ccc', display: 'flex', alignItems: 'center', gap: '6px' }}>
-          PineScript 분석 데이터 
+          분석데이터 
           {bestTfLabel && <strong style={{ color: '#FFD700', backgroundColor: 'rgba(255, 215, 0, 0.15)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.75rem', border: '1px solid rgba(255,215,0,0.3)' }}>[{bestTfLabel} 기준]</strong>}
         </span>
         <span className="badge" style={{ backgroundColor: badgeColor, color: '#fff', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -90,9 +90,9 @@ const SignalIndicator = ({ signal, latestSignal, bestTfLabel, totalScore, kisDat
 
       {/* 메인 시그널 상태 (4개 박스) */}
       <div style={{ display: 'flex', gap: '6px', marginBottom: '0.6rem', flexWrap: 'wrap' }}>
-        <div style={getStyle(cond_up7, 'var(--success)')}>추세 필터<br/>(MTF MACD)</div>
-        <div style={getStyle(DHH2, '#4A90E2')}>눌림목 감지<br/>(DHH2)</div>
-        <div style={getStyle(entry_approved, '#F5A623')}>거래량/캔들<br/>승인</div>
+        <div style={getStyle(cond_up7, 'var(--success)')}>추세필터</div>
+        <div style={getStyle(DHH2, '#4A90E2')}>눌림목 감지</div>
+        <div style={getStyle(entry_approved, '#F5A623')}>거래량/캔들</div>
         <div style={getStyle(signal_HH, '#FF1744', '#FF1744')}>최종 매수<br/>(HH)</div>
       </div>
 

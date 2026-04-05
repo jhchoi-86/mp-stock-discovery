@@ -201,6 +201,12 @@ model DailyStockSnapshot {
   entryPrice2  Float?   @map("entry_price2")
   entryPrice3  Float?   @map("entry_price3")
   targetPrice1 Float?   @map("target_price1")
+  targetPrice2 Float?   @map("target_price2")
+  stopLoss     Float?   @map("stop_loss")
+  ema5         Float?   @map("ema5")
+  ema10        Float?   @map("ema10")
+  ema20        Float?   @map("ema20")
+  ema60        Float?   @map("ema60")
   tradeAmount  BigInt?  @map("trade_amount")
   foreignBuy   String?  @map("foreign_buy")
   instBuy      String?  @map("inst_buy")
@@ -212,4 +218,48 @@ model DailyStockSnapshot {
   @@index([createdAt])
   @@index([code])
   @@map("daily_stock_snapshots")
+}
+
+model DailySignalHistory {
+  id        Int      @id @default(autoincrement())
+  date      String   @db.VarChar(10) // "YYYY-MM-DD"
+  code      String   @db.VarChar(20)
+  name      String   @db.VarChar(100)
+  signals   String   @db.Text         // JSON stringified 30-min slots
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([date, code])
+  @@map("daily_signal_history")
+}
+
+model SystemStat {
+  id               String   @id @default(uuid()) @db.Uuid
+  date             String   @unique @db.VarChar(10) // "YYYY-MM-DD"
+  visitorCount     Int      @default(0) @map("visitor_count")
+  loginCount       Int      @default(0) @map("login_count")
+  signupCount      Int      @default(0) @map("signup_count")
+  maxConcurrent    Int      @default(0) @map("max_concurrent")
+  freeUserCount    Int      @default(0) @map("free_user_count")
+  paidUserCount    Int      @default(0) @map("paid_user_count")
+  cpuUsageAvg      Float?   @map("cpu_usage_avg")
+  memUsageAvg      Float?   @map("mem_usage_avg")
+  diskUsageAvg     Float?   @map("disk_usage_avg")
+  healthStatus     String   @default("HEALTHY") @map("health_status")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("system_stats")
+}
+
+model IncidentLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  severity    String    @default("INFO") // INFO, WARN, ERROR, FATAL
+  status      String    @default("OPEN") // OPEN, RESOLVED, CLOSED
+  occurredAt  DateTime  @default(now()) @map("occurred_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  handlerName String?   @map("handler_name") @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("incident_logs")
 }

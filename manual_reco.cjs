@@ -172,10 +172,13 @@ async function runManualProcess() {
             const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
             
             let priceText = "-";
-            if (sig2H && sig2H.ema5 > 0) {
+            if (sig2H) {
+                const stopLoss = sig2H.stop_loss || 0;
                 priceText = `현재가: ${Math.round(curPrice).toLocaleString()}원\n` +
                             `1차 매수타점: ${Math.round(sig2H.result_2).toLocaleString()}원\n` +
-                            `1차목표가(2H): ${Math.round(sig2H.bb_upper).toLocaleString()}원`;
+                            `2차 매수타점: ${Math.round(sig2H.result_3).toLocaleString()}원\n` +
+                            `손절가 (SL): ${stopLoss > 0 ? Math.round(stopLoss).toLocaleString() : Math.round(sig2H.result_3 * 0.98).toLocaleString()}원\n` +
+                            `1차목표가(1D): ${Math.round(tfSigs['1D']?.bb_upper || sig2H.bb_upper).toLocaleString()}원`;
             } else {
                 priceText = `${Math.round(s.latestSignal.entry_price || s.latestSignal.result_2 || 0).toLocaleString()}원`;
             }

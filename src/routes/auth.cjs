@@ -3,6 +3,7 @@ const bcrypt = require('bcrypt');
 const jsonwebtoken = require('jsonwebtoken');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const systemStatsService = require('../services/systemStatsService.cjs');
 
 const router = express.Router();
 
@@ -41,6 +42,9 @@ router.post('/register', async (req, res) => {
         }
       });
       console.log('[Auth Registration] Prisma user created successfully:', newUser.id);
+      
+      // Record Signup Stat
+      await systemStatsService.recordSignup();
     } catch (dbError) {
       console.error('[Auth Registration] Prisma DB Error during create:', dbError);
       return res.status(500).json({ error: 'Database insertion failed', details: dbError.message });
@@ -112,6 +116,9 @@ router.post('/login', async (req, res) => {
       accessToken,
       user: { id: user.id, email: user.email, name: user.name, role: user.role }
     });
+
+    // Record Login Stat (Async)
+    systemStatsService.recordLogin().catch(err => console.error('[Auth Login Stat Error]', err));
   } catch (error) {
     console.error('[Auth Login Error]', error);
     res.status(500).json({ error: 'Internal server error during login.' });

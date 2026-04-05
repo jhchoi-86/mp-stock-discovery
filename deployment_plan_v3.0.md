@@ -1,89 +1,74 @@
-# MP Stock Discovery v3.0 배포 계획서 (7차 보완 - 배포 확정본)
+# Deployment Plan - MP Stock Discovery v3.0
 
-본 문서는 v3.0 로직 고도화 및 데이터 구조 변경에 따른 **장애 제로 배포**를 위한 최종 가이드라인입니다.
+이 문서는 v3.0 로직 고도화 및 v1.1 UI/UX 리팩토링 사항을 운영 서버(`mpstock.co.kr`)에 안정적으로 배포하기 위한 가이드입니다.
 
-## 1. 배포 개요
-- **버전**: v3.0 (7-Timeframe & Universal Cache)
-- **권장 배포 시간**: **장 마감 후 (15:30 KST 이후)** 또는 야간 배치 전
-- **예상 다운타임**: 약 5~10분 (전체 종목 최초 동기화 및 signals.json 재생성 소요 시간)
+## 1. 배포 대상 및 환경
+- **버전**: v3.0.0 (Release)
+- **주요 변경**: 7개 타임프레임 확장, SMA 5/10 추가, 3x7 신호 그리드 UI
+- **대상 서버**: AWS EC2 (Ubuntu)
+- **도구**: `aws_update.bat`, PM2, Git
 
-## 2. 주요 변경 파일 목록 (Total Sync)
-| 구분 | 파일명 | 변경 내용 |
-|------|--------|-----------|
-| **코어** | `analyzer.cjs` | 7개 TF 분석, 인터벌 캐시, 리샘플링 로직 |
-| **데이터** | `useStockManager.js` | 2D 지원, 신호 수신 배열 구조 동기화 |
-| **UI** | `SignalIndicator.jsx` | 30M/2D 인디케이터 추가 |
-| **UI** | `PcDashboard.jsx` | 2H MA 정렬 및 전용 셀 연동 |
-| **UI** | `MobileStockCard.jsx` | 모바일 카드 시그널 렌더링 최적화 |
-| **유틸** | `reportUtils.js` | 리포트 내 신호 판정 패턴 수정 |
+---
 
-## 3. 배포 절차 (Safe Deployment Steps)
+## 2. 배포 전 체크리스트 (Pre-Deployment)
 
-### STEP 1: 백엔드 중단 및 데이터 백업
-```bash
-# 1. 서비스 중단 (구조 변경에 따른 일시 중단)
-pm2 stop all
+- [ ] **로컬 빌드 확인**: `npm run build` 실행 시 오류 없는지 확인
+- [ ] **데이터 정합성**: `data/signals.json` 내에 `30M` 타임프레임 및 `sma5/10` 필드 존재 확인
+- [ ] **코드 파리티**: `analyzer.cjs`, `useStockManager.js` 등의 최신 수정사항이 로컬 Git에 커밋되었는지 확인
+- [ ] **백업 확인**: `MP_Stock_v3.0.0_20260401_1900` 폴더에 소스 전체 복제본 존재 확인
 
-# 2. 기존 데이터 백업 (롤백 대비 필수)
-cp data/signals.json data/signals_v2_backup.json
+---
 
-# 3. 코드 업데이트 (Lock 파일 준수를 위해 npm ci 사용)
-git pull origin main
-npm ci
+## 3. 배포 실행 절차 (Deployment Steps)
+
+### Step 1: 자동 배포 스크립트 실행
+로컬 터미널에서 아래 명령어를 실행하여 AWS 배포를 자동 진행합니다.
+```powershell
+.\aws_update.bat
 ```
+> **스크립트 수행 내용:**
+> 1. Local React build (`dist` 생성)
+> 2. AWS 서버 `dist` 폴더 백업
+> 3. AWS 서버 최신 코드 `git pull`
+> 4. `dist` 폴더 AWS 업로드 (SCP)
+> 5. PM2 프로세스 0초 무중단 재시작 (`ecosystem.config.cjs`)
+> 6. Health Check (정상 응답 확인)
 
-### STEP 2: 서비스 기동 및 데이터 재생성
+### Step 2: 백엔드 엔진 동기화 확인
+AWS 접속 후 `analyzer.cjs`가 정상 작동하는지 로그를 확인합니다.
 ```bash
-# 1. 서비스 시작
-pm2 start all
-
-# 2. 전체 종목 동기화 수동 트리거 (또는 자동 스케줄 대기)
-# analyzer 실행으로 v3.0 형식의 signals.json 생성 확인
-```
-
-### STEP 3: 프론트엔드 빌드 및 배포
-```bash
-# 1. 환경 변수(.env.production) 설정 확인 후 빌드
-npm run build
-
-# 2. 정적 파일 배포 경로 업데이트
-```
-
-## 4. 사후 검증 체크리스트 (Verification)
-
-### 1. 데이터 정합성 즉시 확인 (명령어 실행 필수)
-```bash
-node -e "
-const s = require('./data/signals.json');
-const tfs = [...new Set(s.map(x => x.timeframe))];
-console.log('--- v3.0 데이터 검증 ---');
-console.log('TF 목록:', tfs.sort());
-console.log('30M 건수:', s.filter(x => x.timeframe==='30M').length);
-console.log('2D 건수:', s.filter(x => x.timeframe==='2D').length);
-if(tfs.includes('2D') && tfs.includes('30M')) console.log('✅ TF 검증 성공');
-"
-```
-
-### 2. PM2 로그 집중 모니터링 항목
-- `ReferenceError`: `resampleChartData` 또는 `currentCandle` 미선언 여부 확인.
-- `Atomic Write Error`: `signals.json` 파일 쓰기 시 `.tmp` 잔류 여부 확인.
-- `2D Resample Count`: 신규 상장주 등에서 2D 캔들이 25개 미만인 케이스(정상 처리됨) 확인.
-
-## 5. 비상 롤백 전략 (Rollback)
-
-**배포 후 크래시 또는 대시보드 렌더링 오류 발생 시 즉시 실행:**
-```bash
-# 1. 이전 안정 버전 복구
-git checkout [v2.x_Tag_or_Commit]
-
-# 2. 데이터 구조 원복 (v3.0 데이터와 v2.0 코드 혼용 방지)
-mv data/signals.json data/signals_v3_failed.json
-mv data/signals_v2_backup.json data/signals.json
-
-# 3. 서비스 재시작
-pm2 restart all
+pm2 logs discovery
 ```
 
 ---
-**작성자**: Antigravity (Advanced AI Coding Agent)
-**승인 상태**: 레드팀 9차 전수 검증 및 배포 절차 최종 보완 완료.
+
+## 4. 배포 후 검증 (Post-Deployment)
+
+### 4.1 UI/UX 검증
+- [ ] https://mpstock.co.kr 접속 후 F5 새로고침
+- [ ] 종목명 셀 3행 표시 및 별점(stars) 출력 확인
+- [ ] 이평선배열(2H) 컬럼에 5행 가격순 정렬 및 현재가(📍) 강조 확인
+- [ ] 신호발생구간 3x7 그리드에 30M 버튼 포함 여부 확인
+
+### 4.2 데이터/기능 검증
+- [ ] 대시보드 상단 7개 TF 필터 버튼 작동 확인
+- [ ] `분석데이터` 팝업 레이블이 간소화되었는지 확인
+- [ ] 텔레그램 알림 메시지 발송 확인 (필요 시)
+
+---
+
+## 5. 긴급 롤백 절차 (Rollback Plan)
+
+배포 직후 심각한 오류 발생 시 아래 명령으로 이전 버전으로 즉시 복구합니다.
+```bash
+# AWS 서버 접속 후 실행
+cd ~/mp-stock-discovery
+rm -rf dist
+mv dist_backup_[TIMESTAMP] dist
+pm2 reload ecosystem.config.cjs --env production
+```
+*※ `aws_update.bat`에서 헬스체크 실패 시 자동으로 수행되나, 수동 복구가 필요한 경우 참조.*
+
+---
+**Deployment Coordinator**: Antigravity (Deepmind Team)
+**Approval Status**: Ready for Deployment

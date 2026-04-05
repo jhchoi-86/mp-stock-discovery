@@ -117,11 +117,19 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
       };
       const curPriceStr = curPrice > 0 ? `현재가: ${Math.round(curPrice).toLocaleString()}원 (${curChange >= 0 ? '⬆️' : '⬇️'}${Math.abs(curChange).toFixed(2)}%)` : '';
       
+      // [v7.7.2] Remove Target & SL Correction Logic (Use raw sync values)
+      const displayTarget1D = target1D;
+      
+      const stopLoss = t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0; 
+      
       let pLines = [curPriceStr];
-      if (target1H > 0) pLines.push(`1차 매수진입가(1H): ${Math.round(target1H).toLocaleString()}원 ${formatGap(target1H)}`);
-      if (target2H > 0) pLines.push(`2차 매수진입가(2H): ${Math.round(target2H).toLocaleString()}원 ${formatGap(target2H)}`);
-      if (target4H > 0) pLines.push(`3차 매수진입가(4H): ${Math.round(target4H).toLocaleString()}원 ${formatGap(target4H)}`);
-      if (target1D > 0) pLines.push(`1차 목표가(1D): ${Math.round(target1D).toLocaleString()}원 ${formatProfit(target1D)}`);
+      if (target2H > 0) pLines.push(`1차 매수진입가(2H): ${Math.round(target2H).toLocaleString()}원 ${formatGap(target2H)}`);
+      // Use result_3 for 2nd entry strictly from 2H
+      const entry2H_2 = t2H?.result_3 || 0;
+      if (entry2H_2 > 0) pLines.push(`2차 매수진입가(2H): ${Math.round(entry2H_2).toLocaleString()}원 ${formatGap(entry2H_2)}`);
+      if (stopLoss > 0) pLines.push(`손절가 (SL): ${Math.round(stopLoss).toLocaleString()}원 ${formatGap(stopLoss)}`);
+      if (displayTarget1D > 0) pLines.push(`1차 목표가(1D): ${Math.round(displayTarget1D).toLocaleString()}원 ${formatProfit(displayTarget1D)}`);
+      if (displayTarget1D > 0) pLines.push(`2차 목표가(최종): ${Math.round(displayTarget1D * 1.05).toLocaleString()}원 ${formatProfit(displayTarget1D * 1.05)}`);
       
       priceText = pLines.filter(Boolean).join('\n');
     } else {
@@ -153,5 +161,36 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
   content += `---\n\n`;
   content += `\n* 본 리포트는 MP 자동 분석 로봇에 의해 생성되었습니다.\n`;
   content += `⚠️ 본 리포트는 알고리즘에 의한 자동 분석 결과일 뿐이며, 투자 매수/매도 리딩이 아닙니다. 투자 결과에 대한 법적 책임을 지지 않으며, 모든 투자의 최종 판단과 책임은 투자자 본인에게 있습니다.`;
+  return content;
+};
+
+export const generateTop5StrategyContent = (top5) => {
+  if (!top5 || top5.length === 0) return null;
+
+  const todayStr = new Date().toLocaleDateString();
+  let content = `🚀 [내일 매매 전략 Top 5 리서치]\n`;
+  content += `평가 일시: ${todayStr} ${new Date().toLocaleTimeString()}\n\n`;
+
+  top5.forEach((s, idx) => {
+    const sig2H = s.tfSigs['2H'];
+    const score = s.score || 0;
+    const curPrice = sig2H?.current_price || 0;
+    
+    content += `${idx + 1}️⃣ ${s.name} (${s.code}) - 점수: ${score}점\n`;
+    content += `- 현황: ${sig2H?.category || '-'} | 추세강도: ${Math.round(sig2H?.adx || 0)}\n`;
+    content += `- 매수전략: ${Math.round(sig2H?.result_2 || 0).toLocaleString()}원(1차) / ${Math.round(sig2H?.result_3 || 0).toLocaleString()}원(2차) 분할진입 유효\n`;
+    
+    let target1 = sig2H?.bb_upper || 0;
+    if (target1 > 0 && curPrice >= target1) target1 = curPrice * 1.05;
+    
+    content += `- 목표가: 1차 ${Math.round(target1).toLocaleString()}원 / 2차 ${Math.round(target1 * 1.05).toLocaleString()}원\n`;
+    content += `- 손절가: ${Math.round((sig2H?.result_3 || 0) * 0.98).toLocaleString()}원 (2차 진입가 대비 -2%)\n`;
+    content += `- 차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+  });
+
+  content += `💡 Antigravity Tip: 시초가 급등 시 무리한 추격보다는 오전 눌림 지지를 확인하고 진입하는 것을 권장합니다.\n`;
+  content += `---\n`;
+  content += `* 본 리포트는 MP AI 분석 시스템에 의해 생성되었습니다.`;
+
   return content;
 };

@@ -5,6 +5,8 @@ const telegramService = require('../services/telegramService.cjs');
 const authMiddleware = require('../middlewares/authMiddleware.cjs');
 const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
 
 const router = express.Router();
 
@@ -103,6 +105,50 @@ router.post('/', authMiddleware, guardMiddleware('FREE_USER', 'SEND_REPORT'), as
         }
       } catch (recErr) {
         console.error('[Send Report] Structured Recommendation Save Failed:', recErr);
+      }
+
+      // 1.2 Update Landing Page Watchlist Strategy (v7.5.0)
+      if (recommendations.length > 0) {
+        try {
+          const DATA_DIR = path.join(__dirname, '../../data');
+          const watchlistFile = path.join(DATA_DIR, 'watchlist_strategy.json');
+          const signalsFile = path.join(DATA_DIR, 'signals.json');
+          const masterFile = path.join(DATA_DIR, 'stock_master.json');
+
+          if (fs.existsSync(signalsFile) && fs.existsSync(masterFile)) {
+            const signals = JSON.parse(fs.readFileSync(signalsFile, 'utf8'));
+            const stocks = JSON.parse(fs.readFileSync(masterFile, 'utf8'));
+
+            const results = recommendations.slice(0, 2).map(rec => {
+              const code = rec.stockCode || rec.code;
+              const master = stocks.find(s => s.code === code) || { name: rec.stockName || '알 수 없음', code };
+              const stockSignals = signals.filter(s => s.code === code && s.timeframe === '2H');
+              const latest = stockSignals.sort((a, b) => b.timestamp - a.timestamp)[0];
+
+              return {
+                name: master.name,
+                code: master.code,
+                score: latest ? Math.round(latest.adx * 2) : 85,
+                category: latest?.category || '진입가 추천',
+                entryPrice1: rec.entryPrice || latest?.result_2 || 0,
+                entryPrice2: latest?.result_3 || (rec.entryPrice ? Math.round(rec.entryPrice * 0.95) : 0),
+                targetPrice: rec.targetPrice || latest?.bb_upper || 0,
+                stopLoss: rec.stopLoss || latest?.stop_loss || 0,
+                updatedAt: new Date().toISOString()
+              };
+            });
+
+            const watchlistData = {
+              updatedAt: new Date().toISOString(),
+              stocks: results
+            };
+
+            fs.writeFileSync(watchlistFile, JSON.stringify(watchlistData, null, 2));
+            console.log(`[Watchlist-Auto] Updated landing page watchlist for ${results.length} stocks.`);
+          }
+        } catch (err) {
+          console.error('[Watchlist-Auto] Update Failed:', err.message);
+        }
       }
     }
 

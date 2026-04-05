@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { Toaster } from 'react-hot-toast';
 import useAuthStore from './store/authStore.js';
+import authService from './api/authService.js';
 import Login from './components/Login.jsx';
 import PcDashboard from './components/PcDashboard.jsx';
 import MobileDashboard from './components/MobileDashboard.jsx';
@@ -10,11 +11,18 @@ import useIsMobile from './hooks/useIsMobile.js';
 import useSecurityShield from './hooks/useSecurityShield.js';
 import LandingPage from './components/LandingPage.jsx';
 import { SSEProvider } from './context/SSEContext.jsx';
+import { Routes, Route, useNavigate } from 'react-router-dom';
+import PerformancePage from './pages/PerformancePage.jsx';
+import AnalysisPage from './pages/AnalysisPage.jsx';
+import SignalsPage from './pages/SignalsPage.jsx';
 
 const App = () => {
   const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
-  const isMobile = useIsMobile(768);
-  const manager = useStockManager(isAuthenticated);
+   const isMobile = useIsMobile(768);
+   const manager = useStockManager(isAuthenticated);
+   const navigate = useNavigate();
+
+  const isManagementUser = user && user.role === 'ADMIN';
 
   // 플랜 1, 2: 프론트엔드 보안 방패 적용 및 콘솔 경고
   useSecurityShield(user?.role);
@@ -34,7 +42,7 @@ const App = () => {
     );
   }, [initAuth]);
 
-  const [showLogin, setShowLogin] = React.useState(false);
+  const handleLoginClick = () => navigate('/login');
 
   if (!isInitialized) {
     return (
@@ -45,42 +53,35 @@ const App = () => {
     );
   }
 
-  if (!isAuthenticated) {
-    if (showLogin) {
-      return <Login onBack={() => setShowLogin(false)} />;
-    }
-    return <LandingPage onLoginClick={() => setShowLogin(true)} />;
-  }
+  return (
+    <div className="dashboard-root">
+      <Toaster position="bottom-right" />
+      <SSEProvider onUpdateRequested={manager.fetchData}>
+          <Routes>
+            {/* Common Routes available to everyone */}
+            <Route path="/performance" element={<PerformancePage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
+            <Route path="/analysis" element={<AnalysisPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
+            <Route path="/live-signals" element={<SignalsPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
 
-  const isManagementUser = user && user.role === 'ADMIN';
+            {/* Role-based Home Route */}
+            <Route path="/" element={
+              !isAuthenticated ? (
+                <LandingPage onLoginClick={handleLoginClick} />
+              ) : (
+                isManagementUser ? (
+                  isMobile ? <MobileDashboard manager={manager} user={user} clearAuth={authService.logout} /> : <PcDashboard manager={manager} user={user} clearAuth={authService.logout} />
+                ) : (
+                  <LandingPage onLoginClick={handleLoginClick} isAuthenticated={true} onLogoutClick={authService.logout} />
+                )
+              )
+            } />
 
-  if (isAuthenticated && !isManagementUser) {
-    return (
-      <LandingPage 
-        onLoginClick={() => setShowLogin(true)} 
-        isAuthenticated={true} 
-        onLogoutClick={clearAuth} 
-      />
-    );
-  }
-
-  if (isAuthenticated && isManagementUser) {
-    return (
-      <div className="dashboard-root">
-        <Toaster position="bottom-right" />
-        <SSEProvider onUpdateRequested={manager.fetchData}>
-            {isMobile ? (
-              <MobileDashboard manager={manager} user={user} clearAuth={clearAuth} />
-            ) : (
-              <PcDashboard manager={manager} user={user} clearAuth={clearAuth} />
-            )}
-        </SSEProvider>
-      </div>
-    );
-  }
-
-  // Final fallback (should not be reached if logic is complete)
-  return null;
+            {/* Login Route (Fallback for direct access) */}
+            <Route path="/login" element={<Login onBack={() => navigate('/')} />} />
+          </Routes>
+      </SSEProvider>
+    </div>
+  );
 };
 
 export default App;

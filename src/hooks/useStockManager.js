@@ -48,20 +48,49 @@ export const useStockManager = (isAuthenticated) => {
   useEffect(() => { 
     if (stocks && stocks.length > 0) localStorage.setItem('mp_stocks', JSON.stringify(stocks)); 
   }, [stocks]);
-  useEffect(() => { 
-    if (signals && signals.length > 0) localStorage.setItem('mp_signals', JSON.stringify(signals)); 
+
+  useEffect(() => {
+    if (signals && signals.length > 0) {
+        try {
+            // [TASK-014] 최신 신호만 필터링하여 저장 (타임프레임별 최근 1건)
+            const latestOnly = [];
+            const seen = new Set();
+            // 타임스탬프 내림차순 정렬하여 최신 것부터 추출
+            const sorted = [...signals].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            for (const sig of sorted) {
+                const key = `${sig.code}_${sig.timeframe}`;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    latestOnly.push(sig);
+                }
+            }
+            
+            const serialized = JSON.stringify(latestOnly);
+            // 4MB 임계값 체크 (localStorage 한계 방어)
+            if (serialized.length < 4 * 1024 * 1024) {
+                localStorage.setItem('mp_signals', serialized);
+            } else {
+                console.warn('[LocalStorage] signals too large to cache, skipping.');
+            }
+        } catch(e) {
+            console.warn('[LocalStorage] signals save failed:', e.message);
+            // 쿼터 초과 시 기존 캐시 삭제하여 White Screen 방지
+            if (e.name === 'QuotaExceededError') {
+                localStorage.removeItem('mp_signals');
+            }
+        }
+    }
   }, [signals]);
 
   const fetchData = async () => {
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
       const [stocksRes, signalsRes] = await Promise.all([
-        fetch(`${API_URL}/api/stocks`, { credentials: 'include' }),
-        fetch(`${API_URL}/api/signals`, { credentials: 'include' })
+        axiosClient.get('/api/stocks'),
+        axiosClient.get('/api/signals')
       ]);
       
-      let stocksData = await stocksRes.json();
-      let signalsData = await signalsRes.json();
+      let stocksData = stocksRes.data;
+      let signalsData = signalsRes.data;
       
       // 방어 코드: 401/403 등 에러 JSON 객체가 반환되었을 경우 빈 배열로 강제 처리하여 React UI Crash(White Screen) 방지
       if (!Array.isArray(stocksData)) stocksData = [];
@@ -120,16 +149,16 @@ export const useStockManager = (isAuthenticated) => {
     ALL_TIMEFRAMES.forEach(tf => {
       const s = tfSigs[tf];
       if (s) {
-        // [Design v3.0] 아키텍처 정상화: 백엔드(analyzer.cjs)에서 계산된 
-        // is_strong_signal(BBW MTF 절대신호) 플래그를 그대로 사용
+        // [Design v3.0] Restore consistency: Check both new (v6.4+) and old field names
         const isBuy = s.signal_HH === true;
         const isTrend = s.cond_up7 === true;
-        const isStrong = s.is_strong_signal === true;
+        const isStrong = s.signal_H === true;
+        const isAbsolute = (s.signal_HHH === true || s.is_strong_signal === true);
 
         if (isBuy) buy.push(tf);
         if (isTrend) trend.push(tf);
         if (isStrong) strong.push(tf);
-        if (isBuy && isStrong) absolute.push(tf);
+        if (isAbsolute) absolute.push(tf);
       }
     });
     
@@ -193,101 +222,87 @@ export const useStockManager = (isAuthenticated) => {
 
   const calculateTotalScore = (tfSigs, latest, isTopSector) => {
     let score = 0;
+    const sig2H = tfSigs['2H'];
+    const sig1H = tfSigs['1H'];
+    const sig30M = tfSigs['30M'];
+    const price = sig2H ? sig2H.current_price : (latest ? latest.current_price : 0);
     
-    // 1️⃣ 베스트 타임프레임 코어 점수 (Max 50점)
-    let coreScore = 0;
-    let bestTf = '1D'; // default
-    const coreTfs = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
+    // [v3.4.0] Hybrid (Day + Swing) Scoring Rules
     
-    let activeTfCount = 0;
-    coreTfs.forEach(tf => {
-      let tfScore = 0;
-      let hasCondUp7 = tfSigs[tf] && tfSigs[tf].cond_up7;
-      let hasSignal = tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2);
-      
-      if (hasCondUp7) tfScore += 20;
-      if (hasSignal) tfScore += 20;
-      
-      if (hasCondUp7 || hasSignal) {
-        activeTfCount++;
-      }
-      
-      if (tfScore >= coreScore) {
-        coreScore = tfScore; 
-        if (tfScore > 0) bestTf = tf;
-      }
-    });
-
-    if (activeTfCount >= 2) {
-      coreScore += 10;
-    }
-    score += Math.min(coreScore, 50);
+    // 1. 추세 필터(2H): cond_up7 -> 20점
+    if (sig2H && sig2H.cond_up7) score += 20;
     
-    // 2️⃣ 다중 시간대(MTF) 프랙탈 매수 보너스 (Max 30점)
-    let mtfScore = 0;
-    let mtfSignalCount = 0;
+    // 2. 눌림목 감지(2H): DHH2 -> 20점
+    if (sig2H && sig2H.DHH2) score += 20;
     
-    coreTfs.forEach(tf => {
-      if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) {
-        mtfScore += 5;
-        mtfSignalCount++;
+    // 3. 이평선 정배열(2H): 5 > 10 > 20 > 60 -> 10점
+    const isAligned = sig2H && (sig2H.sma5 > sig2H.sma10 && sig2H.sma10 > sig2H.sma20 && sig2H.sma20 > sig2H.sma60);
+    if (isAligned) score += 10;
+    
+    // 4. 하이브리드 합의점 보너스 (NEW): 2H 추세(O) & (1H or 30M 매수신호(O)) -> 15점
+    const hasLowTfMomentum = (sig1H && sig1H.signal_HH) || (sig30M && sig30M.signal_HH);
+    if (sig2H && sig2H.cond_up7 && hasLowTfMomentum) score += 15;
+    
+    // 5. 이격도 A(2H): 정배열 & 10일선 < 현재가 < 5일선 -> 5점
+    if (isAligned && price < sig2H.sma5 && price > sig2H.sma10) score += 5;
+    
+    // 6. 이격도 B(2H): 정배열 & 20일선 < 현재가 < 10일선 -> 3점
+    if (isAligned && price < sig2H.sma10 && price > sig2H.sma20) score += 3;
+    
+    // 7-10. 신호 중첩 보너스 (각 시간대별)
+    const tfs = ["30M", "1H", "2H", "4H", "1D", "2D", "1W"];
+    tfs.forEach(tf => {
+      const s = tfSigs[tf];
+      if (s) {
+        if (s.signal_HH) score += 1;   // 매수신호(HH)
+        if (s.cond_up7) score += 1;    // 추세신호(cond_up7)
+        if (s.signal_H) score += 2;    // 강력신호(signal_H)
+        if (s.signal_HHH || s.is_strong_signal) score += 5;  // 절대신호(signal_HHH) / fallback: is_strong_signal
       }
     });
     
-    if (mtfSignalCount >= 3) {
-      mtfScore += 10;
-    } else if (mtfSignalCount === 2) {
-      mtfScore += 5;
-    }
-    score += Math.min(mtfScore, 30);
+    // 11. 거래량 급증(1D): 1.5배 초과 -> 5점 (v3.4.0 상향)
+    if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
+    
+    // 12. 역배열 조건: 5일선 < 20일선(2H) -> -20점
+    if (sig2H && sig2H.sma5 < sig2H.sma20) score -= 20;
 
-    // 3️⃣ 장기 수급(거래량) 폭발 보너스 (Max 10점)
-    let volScore = 0;
-    if (tfSigs['2H'] && tfSigs['2H'].trigger_vol) volScore += 2;
-    if (tfSigs['4H'] && tfSigs['4H'].trigger_vol) volScore += 2;
-    if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) volScore += 4;
-    if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) volScore += 4;
-    score += Math.min(volScore, 10);
-
-    // 5️⃣ 실시간 외국인/기관 수급 보너스 (최대 11점) - server.cjs에서 처리된 bonus_score
-    const bonus = latest?.kis_change_data?.bonus_score || 0;
-    score += bonus;
-
-    return { score: Math.min(score, 100), bestTf };
+    return { score, bestTf: '2H' };
   };
 
-  const candidatesRaw = filteredStocks.map(stock => {
-    const tfSigs = getSignalsForStock(stock.code);
-    const latest = getLatestGlobal(stock.code);
-    const isTopSector = topSectors.includes(stock.sector);
-    const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
-    const bestSignal = tfSigs[scoreData.bestTf] || latest;
-    
-    // [Design v3.0] 신호구간 배열 및 2H 이평선 병합
-    const signalTimeframes = buildSignalTimeframes(tfSigs);
-    const t2H = tfSigs['2H'] ? {
-      sma5: tfSigs['2H'].sma5 || null,
-      sma10: tfSigs['2H'].sma10 || null,
-      sma20: tfSigs['2H'].sma20 || null,
-      sma60: tfSigs['2H'].sma60 || null,
-    } : null;
+  const candidates = useMemo(() => {
+    const raw = (filteredStocks || []).map(stock => {
+      const tfSigs = getSignalsForStock(stock.code);
+      const latest = getLatestGlobal(stock.code);
+      const isTopSector = topSectors.includes(stock.sector);
+      const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
+      const bestSignal = tfSigs[scoreData.bestTf] || latest;
+      
+      const signalTimeframes = buildSignalTimeframes(tfSigs);
+      const t2H = tfSigs['2H'] ? {
+        sma5: tfSigs['2H'].sma5 || null,
+        sma10: tfSigs['2H'].sma10 || null,
+        sma20: tfSigs['2H'].sma20 || null,
+        sma60: tfSigs['2H'].sma60 || null,
+      } : null;
 
-    return {
-      ...stock,
-      ...signalTimeframes,
-      t2H,
-      timeframeStatus: tfSigs,
-      latestSignal: latest,
-      bestSignal: bestSignal,
-      bestTfLabel: scoreData.bestTf,
-      isTopSector,
-      total_score: scoreData.score
-    };
-  });
+      return {
+        ...stock,
+        ...signalTimeframes,
+        t2H,
+        timeframeStatus: tfSigs,
+        latestSignal: latest,
+        bestSignal: bestSignal,
+        bestTfLabel: scoreData.bestTf,
+        isTopSector,
+        total_score: scoreData.score
+      };
+    });
 
-  const candidates = showAll 
-    ? [...candidatesRaw].sort((a, b) => b.total_score - a.total_score)
-    : [...candidatesRaw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
+    return showAll 
+      ? [...raw].sort((a, b) => b.total_score - a.total_score)
+      : [...raw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
+  }, [filteredStocks, signals, showAll, topSectors]);
 
   const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
 
@@ -340,11 +355,9 @@ export const useStockManager = (isAuthenticated) => {
   const handleReset = async () => {
     if (!window.confirm('정말 모든 분석 데이터를 초기화하시겠습니까? (복구할 수 없습니다)')) return;
     try {
-      const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : `https://mpstock.co.kr`;
-      const response = await fetch(`${API_URL}/api/reset`, { method: 'POST' });
-      if (response.ok) {
-        const result = await response.json();
-        alert(result.message);
+      const response = await axiosClient.post('/api/reset');
+      if (response.status === 200) {
+        alert(response.data.message);
         setSelectedStocks(new Set());
         fetchData();
       } else {
@@ -375,7 +388,12 @@ export const useStockManager = (isAuthenticated) => {
         // 🔴 [Red Team 방어] 350종목 처리 시 120초를 초과하는 경우가 많아 300초(5분)로 증설
         await axiosClient.post('/api/auto-sync', { timeframe: tf }, { timeout: 900000 });
         
-        // 각 시간대 완료 시점에 즉시 화면 갱신
+        // [v3.9.1] Resource Protection: Sleep 30s to let server rest between heavy bursts
+        if (i < timeframes.length - 1) {
+            setSyncProgress(prev => ({ ...prev, timeframe: `[휴식 중...30초] ${tf} 완료` }));
+            await new Promise(resolve => setTimeout(resolve, 30000));
+        }
+        
         await fetchData();
       }
       
@@ -499,9 +517,26 @@ export const useStockManager = (isAuthenticated) => {
       const recommendations = approvedStocks.map(s => {
         const tfSigs = s.timeframeStatus || {};
         const sig2H = tfSigs['2H'];
-        const ePrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.ema5) : Math.round(s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0);
-        const tPrice = (sig2H && sig2H.ema5 > 0) ? Math.round(sig2H.bb_upper) : Math.round(s.latestSignal?.target_price || 0);
-        return { stockCode: s.code, stockName: s.name, entryPrice: ePrice, targetPrice: tPrice };
+        const curPrice = s.latestSignal?.current_price || 0;
+        
+        // [v6.6.0] Sync Logic with reportUtils.js
+        let ePrice = Math.round(sig2H?.result_2 || s.latestSignal?.entry_price || s.latestSignal?.result_2 || 0);
+        let tPrice = Math.round(s.timeframeStatus?.['1D']?.bb_upper || s.latestSignal?.target_price || 0);
+        
+        // Auto-correct target if already breached
+        if (tPrice > 0 && curPrice >= tPrice) {
+          tPrice = Math.round(curPrice * 1.05);
+        }
+        
+        const sPrice = Math.round((sig2H?.result_3 || s.latestSignal?.result_3 || 0) * 0.98); // [v6.6.1] Pine Script Base: Entry2 - 2%
+        
+        return { 
+          stockCode: s.code, 
+          stockName: s.name, 
+          entryPrice: ePrice, 
+          targetPrice: tPrice, 
+          stopLoss: sPrice 
+        };
       });
 
       const safeContent = tgContent.length > 4000 
@@ -540,7 +575,9 @@ export const useStockManager = (isAuthenticated) => {
     // Actions
     fetchData,
     toggleSelectAll, toggleSelectStock,
-    handleCsvUpload, handleReset, handleIntegratedSync,
+    handleCsvUpload, handleReset,
+    handleAutoSync: handleIntegratedSync, // Task-015 Alias
+    handleIntegratedSync,
     handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
     handleSnapshotSelected, activeSnapshot
   };

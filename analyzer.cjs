@@ -16,17 +16,21 @@ const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
 let kisAccessToken = null;
 let kisTokenExpiry = 0;
 
-async function getKisAccessToken() {
+async function getKisAccessToken(force = false) {
     if (!KIS_APP_KEY || !KIS_APP_SECRET) throw new Error("KIS API Keys missing");
-    if (!kisAccessToken && fs.existsSync(KIS_TOKEN_FILE)) {
+    
+    // Default: Return cached token if valid for > 1 hour
+    if (!force && !kisAccessToken && fs.existsSync(KIS_TOKEN_FILE)) {
         try {
             const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
             kisAccessToken = saved.token;
             kisTokenExpiry = saved.expiry;
         } catch (e) {}
     }
-    if (kisAccessToken && kisTokenExpiry > Date.now() + 3600000) return kisAccessToken;
     
+    if (!force && kisAccessToken && kisTokenExpiry > Date.now() + 3600000) return kisAccessToken;
+    
+    console.log(`[KIS API] ${force ? 'FORCING' : 'Requesting'} new Access Token...`);
     const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
         grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET
     });
@@ -40,22 +44,33 @@ async function getKisAccessToken() {
 const resampleChartData = (raw, hourCount, tf) => {
     let resampled = { open: [], high: [], low: [], close: [], volume: [], time: [] };
     if (!raw.time || raw.time.length === 0) return resampled;
-    const isDayBased = (tf === '2D');
+    const isDayBased = (tf === '2D' || tf === '3D' || tf === '1W');
     
     let currentCandle = null;
     let candleCount = 0;
     let currentDayStr = null;
+    let firstDayInGroup = null;
 
     for (let i = 0; i < raw.time.length; i++) {
         const date = new Date(raw.time[i] * 1000);
         date.setUTCHours(date.getUTCHours() + 9);
         const dayStr = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
 
-        if (!isDayBased && currentDayStr !== dayStr && currentCandle) {
-            resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
-            resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
-            resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
-            currentCandle = null; candleCount = 0;
+        // 날짜 변경 시 처리
+        if (currentDayStr !== dayStr && currentCandle) {
+            if (!isDayBased) {
+                // 분봉 기반 리샘플링은 날짜 변경 시 무조건 flush
+                resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+                resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+                resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+                currentCandle = null; candleCount = 0;
+            } else if (tf === '2D' && candleCount >= hourCount) {
+                // 2D 리샘플링: 이미 2일치를 채웠으면 flush
+                resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+                resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+                resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+                currentCandle = null; candleCount = 0;
+            }
         }
 
         if (currentCandle === null) {
@@ -66,10 +81,13 @@ const resampleChartData = (raw, hourCount, tf) => {
             currentCandle.high = Math.max(currentCandle.high, raw.high[i]);
             currentCandle.low = Math.min(currentCandle.low, raw.low[i]);
             currentCandle.close = raw.close[i]; currentCandle.volume += raw.volume[i];
-            candleCount++;
+            if (currentDayStr !== dayStr) {
+                candleCount++;
+                currentDayStr = dayStr;
+            }
         }
 
-        if (candleCount === hourCount) {
+        if (!isDayBased && candleCount === hourCount) {
             resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
             resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
             resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
@@ -143,7 +161,13 @@ const fetchHybridHistory = async (stock, days, interval, kisTokenGlobal) => {
                     chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
                 }
             }
-        } catch(e) {}
+        } catch(e) {
+            // EGW00123: Expired Token
+            if (e.response && e.response.data && e.response.data.msg_cd === 'EGW00123') {
+                throw { type: 'TOKEN_EXPIRED', originalError: e };
+            }
+            // Other errors (429, 500, etc.) are caught and ignored for hybrid fallback
+        }
     }
     return chartData;
 };
@@ -348,52 +372,69 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     const timeArr = cleanData.map(d => d.time); // Unix timestamp in seconds
     const len = close.length;
 
-    // RSI Pivot 1 (RSI 2)
-    const rsi2 = rsi(close, 2);
-    const P_2 = rsi2.map((val, i) => i > 1 ? (rsi2[i-2] > rsi2[i-1] && rsi2[i-1] < rsi2[i]) : false);
+    // RSI Pivot 1 (RSI 3)
+    const rsiPeriod_2 = 3;
+    const rsi3 = rsi(close, rsiPeriod_2);
+    const P_2 = rsi3.map((val, i) => i > 1 ? (rsi3[i-2] > rsi3[i-1] && rsi3[i-1] < rsi3[i]) : false);
     const lowest_low_3_2 = lowest(low, 3);
+    const lowest_low_rsi_2 = lowest(low, rsiPeriod_2); 
     
-    // Calculate result_2 over time
+    // Calculate result_2 over time (O(N) Optimization)
     let result_2_series = Array(len).fill(0);
-    for (let i = 2; i < len; i++) {
-        const B_2 = valuewhen(P_2.slice(0, i+1), lowest_low_3_2.slice(0, i+1), 0);
-        const B_2_prev = valuewhen(P_2.slice(0, i), lowest_low_3_2.slice(0, i), 0);
-        
-        if (B_2_prev !== null && B_2 !== null && B_2_prev < B_2) {
-            const Q_2 = lowest(low.slice(0, i+1), 2).pop();
-            const QQ_2 = lowest(low.slice(0, i), 2).pop();
-            result_2_series[i] = Q_2 > QQ_2 ? Q_2 : QQ_2;
-        } else {
-            result_2_series[i] = result_2_series[i-1];
+    let last_val_B2 = null;
+    let prev_val_B2 = null;
+    let Q_2 = null;
+    let QQ_2 = null;
+    
+    for (let i = 0; i < len; i++) {
+        if (P_2[i]) {
+            prev_val_B2 = last_val_B2;
+            last_val_B2 = lowest_low_3_2[i];
+            
+            // Higher Low Trigger (PineScript: B_2[1] < B_2)
+            if (prev_val_B2 !== null && last_val_B2 > prev_val_B2) {
+                QQ_2 = Q_2;
+                Q_2 = lowest_low_rsi_2[i];
+            }
         }
         
-        // Trailing support: If the price breaks the support, the new low is the current support.
-        if (result_2_series[i] > 0 && low[i] < result_2_series[i]) {
-            result_2_series[i] = low[i];
+        if (Q_2 !== null && QQ_2 !== null) {
+            result_2_series[i] = Q_2 > QQ_2 ? Q_2 : QQ_2;
+        } else if (i > 0) {
+            result_2_series[i] = result_2_series[i-1];
         }
     }
 
-    // RSI Pivot 2 (RSI 8)
-    const rsi8 = rsi(close, 8);
+    // RSI Pivot 2 (RSI 10 - User Pine Script Base)
+    const rsiPeriod_3 = 10;
+    const rsi8 = rsi(close, rsiPeriod_3);
     const P_3 = rsi8.map((val, i) => i > 1 ? (rsi8[i-2] > rsi8[i-1] && rsi8[i-1] < rsi8[i]) : false);
     const lowest_low_3_3 = lowest(low, 3);
+    const lowest_low_rsi_3 = lowest(low, rsiPeriod_3);
     
+    // Calculate result_3 over time (O(N) Optimization)
     let result_3_series = Array(len).fill(0);
-    for (let i = 2; i < len; i++) {
-        const B_3 = valuewhen(P_3.slice(0, i+1), lowest_low_3_3.slice(0, i+1), 0);
-        const B_3_prev = valuewhen(P_3.slice(0, i), lowest_low_3_3.slice(0, i), 0);
-        
-        if (B_3_prev !== null && B_3 !== null && B_3_prev < B_3) {
-            const Q_3 = lowest(low.slice(0, i+1), 8).pop();
-            const QQ_3 = lowest(low.slice(0, i), 8).pop();
-            result_3_series[i] = Q_3 > QQ_3 ? Q_3 : QQ_3;
-        } else {
-            result_3_series[i] = result_3_series[i-1];
+    let last_val_B3 = null;
+    let prev_val_B3 = null;
+    let Q_3 = null;
+    let QQ_3 = null;
+    
+    for (let i = 0; i < len; i++) {
+        if (P_3[i]) {
+            prev_val_B3 = last_val_B3;
+            last_val_B3 = lowest_low_3_3[i];
+            
+            // Higher Low Trigger (PineScript: B_3[1] < B_3)
+            if (prev_val_B3 !== null && last_val_B3 > prev_val_B3) {
+                QQ_3 = Q_3;
+                Q_3 = lowest_low_rsi_3[i];
+            }
         }
-
-        // Trailing support: If the price breaks the support, the new low is the current support.
-        if (result_3_series[i] > 0 && low[i] < result_3_series[i]) {
-            result_3_series[i] = low[i];
+        
+        if (Q_3 !== null && QQ_3 !== null) {
+            result_3_series[i] = Q_3 > QQ_3 ? Q_3 : QQ_3;
+        } else if (i > 0) {
+            result_3_series[i] = result_3_series[i - 1];
         }
     }
 
@@ -452,6 +493,12 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
                              (BBMacd_mtf[i] > 0);
     }
     const cond_up7 = cond_up7_series[last_idx];
+    
+    // [Design v3.2.2] Strong Trend Condition for Rule 8
+    // Definition: BBMacd_mtf > 0 AND BBMacd_mtf > banda_supe_mtf AND BBMacd > BBMacd_mtf
+    const cond_strong_trend = (BBMacd_mtf[last_idx] > 0) && 
+                              (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && 
+                              (BBMacd[last_idx] > BBMacd_mtf[last_idx]);
 
     // Red Team Hotfix: DHH2 Separation (Pullback formed earlier, then breakout occurs within 5 bars)
     const pullback_formed_series = Array(len).fill(false);
@@ -481,8 +528,8 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         }
     }
 
-    const rsi2_prev = rsi2[last_idx - 1] !== null ? rsi2[last_idx - 1] : 50;
-    const rsi2_curr = rsi2[last_idx] !== null ? rsi2[last_idx] : 50;
+    const rsi2_prev = rsi3[last_idx - 1] !== null ? rsi3[last_idx - 1] : 50;
+    const rsi2_curr = rsi3[last_idx] !== null ? rsi3[last_idx] : 50;
     
     // 1. RSI Trigger: Hooking up from pullback region (< 40)
     const trigger_rsi = rsi2_prev < 40 && rsi2_curr > rsi2_prev;
@@ -508,6 +555,7 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
 
     // --- Progress & Final Signal Logic ---
     const timeframeMsMap = {
+        '2M': 2 * 60 * 1000,
         '5M': 5 * 60 * 1000,
         '15M': 15 * 60 * 1000,
         '30M': 30 * 60 * 1000,
@@ -584,13 +632,31 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     const resampled2x = resampleChartData({ time: timeArr, open, high, low, close, volume }, 2, timeframeStr);
     const mtfBBW = calculateBBWAndLowest(resampled2x.close);
 
-    // Pine Script '절대신호' (isStrong): 
-    // (bbw > bbw_mtf) and (bbw > plot_low) and (bbw_mtf > plot_con_mtf) and cond_up7 and signal_HH
-    const con_mtf = mtfBBW.low5;
-    const is_strong_signal = signal_HH && cond_up7 && 
-                            (currentBBW.val > mtfBBW.val) && 
-                            (currentBBW.val > currentBBW.low5) && 
-                            (mtfBBW.val > con_mtf);
+    // [v6.4.0] New Signal Logic (Strong & Absolute)
+    const multiplier_bbw = 2;
+    let bbw_mtf_series = Array(len).fill(0);
+    for (let i = 0; i < len; i++) {
+        let mtfIdx = Math.floor(i / multiplier_bbw);
+        bbw_mtf_series[i] = mtfBBW.series[mtfIdx] !== undefined ? mtfBBW.series[mtfIdx] : 0;
+    }
+    const bbw_series = currentBBW.series;
+    
+    // THH: crossover(bbw, bbw_mtf)
+    const THH = last_idx > 0 && bbw_series[last_idx] > bbw_mtf_series[last_idx] && (bbw_series[last_idx - 1] || 0) <= (bbw_mtf_series[last_idx - 1] || 0);
+    // RHH: bbw > bbw_mtf
+    const RHH = bbw_series[last_idx] > bbw_mtf_series[last_idx];
+    // bg_up_1: BBMacd > banda_supe
+    const bg_up_1 = BBMacd[last_idx] > banda_supe[last_idx];
+    // cond_up8: (BBMacd > banda_supe) and (BBMacd_mtf > banda_supe_mtf) and BBMacd_mtf > 0 and BBMacd > BBMacd_mtf
+    const cond_up8 = (BBMacd[last_idx] > banda_supe[last_idx]) && 
+                     (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && 
+                     (BBMacd_mtf[last_idx] > 0) && 
+                     (BBMacd[last_idx] > BBMacd_mtf[last_idx]);
+
+    // 강력신호 (signal_H): THH and progress > 0.7 and bg_up_1
+    const signal_H = THH && progress > 0.7 && bg_up_1;
+    // 절대신호 (signal_HHH): RHH and cond_up8
+    const signal_HHH = RHH && cond_up8;
 
     // Standard BB (20, 2) for price targets
     const sma20 = sma(close, 20);
@@ -624,8 +690,9 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     }
 
     return {
-        result_2: result_2_series[last_idx],
-        result_3: result_3_series[last_idx],
+        result_2: Math.round(result_2_series[last_idx]),
+        result_3: Math.round(result_3_series[last_idx]),
+        stop_loss: Math.round(result_3_series[last_idx] * 0.98), // [v6.6.1] Pine Script Base: Entry2 - 2%
         cond_up7,
         DHH2: isSignalActive,
         progress: Number(progress.toFixed(3)),
@@ -652,9 +719,12 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         prev_close: (last_idx > 0 && close[last_idx - 1]) ? Math.round(close[last_idx - 1]) : 0,
         bbw: Number(currentBBW.val.toFixed(4)),
         lowest_bbw_5: Number(currentBBW.low5.toFixed(4)),
-        is_strong_signal: is_strong_signal,
-        con_mtf: Number(mtfBBW.low5.toFixed(4)), // Export con_mtf for verification
-        bbw_mtf: Number(mtfBBW.val.toFixed(4)),  // Export bbw_mtf for verification
+        is_strong_signal: signal_HHH, // Absolute Signal (RHH & cond_up8)
+        signal_H: signal_H,           // Strong Signal (THH & progress & bg_up_1)
+        signal_HHH: signal_HHH,       // Absolute Signal
+        cond_strong_trend: cond_strong_trend,
+        con_mtf: Number(mtfBBW.low5.toFixed(4)),
+        bbw_mtf: Number(mtfBBW.val.toFixed(4)),
         kis_change_data: ohlcHistory.kis_change_data || null
     };
 }
@@ -733,7 +803,7 @@ if (require.main === module) {
             };
 
             let allTimeframesResults = [];
-            const intervalMap = { '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
+            const intervalMap = { '2M': '2m', '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
             const globalHistoryCache = {};
 
             for (const tf of timeframes) {
@@ -753,21 +823,32 @@ if (require.main === module) {
                         } else {
                             // Fetch max days needed for this interval across potential TFs
                             let fetchDays = 60;
-                            if (interval === '5m') fetchDays = 5; 
+                            if (interval === '2m') fetchDays = 2;
+                            else if (interval === '5m') fetchDays = 5; 
                             else if (interval === '15m') fetchDays = 15; 
                             else if (interval === '30m') fetchDays = 30;
                             else if (interval === '1h') fetchDays = 60;
                             else if (interval === '1d') fetchDays = 365; // Cover 2D as well
                             else if (interval === '1wk') fetchDays = 1000;
 
+                            try {
                             rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
-                            if (rawHistory) globalHistoryCache[cacheKey] = rawHistory;
+                        } catch (fetchErr) {
+                            if (fetchErr.type === 'TOKEN_EXPIRED') {
+                                console.log(`[Analyzer CLI] Token expired during ${stock.code}. Refreshing...`);
+                                kisToken = await getKisAccessToken(true);
+                                rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
+                            } else {
+                                throw fetchErr;
+                            }
+                        }
+                        if (rawHistory) globalHistoryCache[cacheKey] = rawHistory;
                         }
 
                         if (rawHistory && rawHistory.close && rawHistory.close.length > 50) {
-                            // Perform resampling EXPLICITLY before calculating signals
                             let processedHistory = rawHistory;
-                            if (tf === '2H') processedHistory = resampleChartData(rawHistory, 2, tf);
+                            if (tf === '2M') processedHistory = resampleChartData(rawHistory, 2, tf);
+                            else if (tf === '2H') processedHistory = resampleChartData(rawHistory, 2, tf);
                             else if (tf === '4H') processedHistory = resampleChartData(rawHistory, 4, tf);
                             else if (tf === '2D') processedHistory = resampleChartData(rawHistory, 2, tf);
 

@@ -58,11 +58,20 @@ function getNowKST() {
 
 function isMarketHours() {
     const now = getNowKST();
-    const day = now.getUTCDay();           // 0=일, 6=토
+    const day = now.getUTCDay(); // KST Offset added object's UTCDay is the actual KST Day
+    if (day === 0 || day === 6) return false; // 0=Sunday, 6=Saturday
+
     const h = now.getUTCHours();
     const m = now.getUTCMinutes();
     const t = h * 100 + m;
-    return day >= 1 && day <= 5 && t >= 900 && t <= 2000;
+
+    // 1. 장전 시간외 종가: 08:30 ~ 08:40
+    if (t >= 830 && t <= 840) return true;
+    
+    // 2. 정규장 + 장후 시간외 + 시간외 단일가 + 연장 마감: 09:00 ~ 20:00
+    if (t >= 900 && t <= 2000) return true;
+
+    return false;
 }
 
 // ─── KIS API 단건 조회 ────────────────────────────────────────────────────────
@@ -134,7 +143,7 @@ function onBatchSuccess() {
 }
 
 // ─── 배치 폴 실행 ─────────────────────────────────────────────────────────────
-async function runFullUniversePoll(stockMaster, getKisToken) {
+async function runFullUniversePoll(stockMaster, getKisToken, getWssSubscribedCodes = null) {
     if (!checkCircuit()) return;
 
     const API_KEY    = process.env.KIS_APP_KEY;
@@ -153,14 +162,21 @@ async function runFullUniversePoll(stockMaster, getKisToken) {
         return;
     }
 
-    const batches = chunk(stockMaster, BATCH_SIZE);
-    const roundResult = { ...IN_MEMORY_CACHE }; // 기존 캐시 보존
+    // [v6.2.5] Filter out codes already handled by WebSocket to save TPS
+    const wssCodes = getWssSubscribedCodes ? getWssSubscribedCodes() : new Set();
+    const targetStocks = stockMaster.filter(s => !wssCodes.has(s.code));
+    
+    if (targetStocks.length === 0) {
+        console.log('[FullPoller] All stocks handled by WSS. Skipping round.');
+        return;
+    }
+
+    const batches = chunk(targetStocks, BATCH_SIZE);
+    const roundResult = { ...IN_MEMORY_CACHE };
     let updatedCount = 0;
 
     for (let bIdx = 0; bIdx < batches.length; bIdx++) {
         const batch = batches[bIdx];
-
-        // 배치 내 병렬 처리
         const settled = await Promise.allSettled(
             batch.map(s => fetchPriceWithRetry(s.code, token, API_KEY, API_SECRET))
         );
@@ -172,7 +188,7 @@ async function runFullUniversePoll(stockMaster, getKisToken) {
             const currentPrice = parseInt(output.stck_prpr || '0', 10);
             const lowPrice     = parseInt(output.stck_lwpr || '9999999', 10);
             const changeRate   = parseFloat(output.prdy_ctrt || '0');
-            const entryPrice   = stock.entry_price || 0; // 추천 진입가 (선택)
+            const entryPrice   = stock.entry_price || 0;
 
             const isHit = entryPrice > 0 && (currentPrice <= entryPrice || lowPrice <= entryPrice);
             const prev  = roundResult[stock.code] || {};
@@ -189,20 +205,21 @@ async function runFullUniversePoll(stockMaster, getKisToken) {
         });
 
         onBatchSuccess();
-
-        // 마지막 배치가 아니면 딜레이
-        if (bIdx < batches.length - 1) {
-            await sleep(BATCH_DELAY_MS);
-        }
+        if (bIdx < batches.length - 1) await sleep(BATCH_DELAY_MS);
     }
 
     // 메모리 캐시 갱신
-    IN_MEMORY_CACHE = roundResult;
+    Object.keys(roundResult).forEach(code => {
+        const newData = roundResult[code];
+        const prev = IN_MEMORY_CACHE[code];
+        if (!prev || newData.updated_at >= (prev.updated_at || 0)) {
+            IN_MEMORY_CACHE[code] = newData;
+        }
+    });
 
-    // 5분마다 디스크 flush
     if (Date.now() - lastFlushAt >= FLUSH_INTERVAL) {
         try {
-            fs.writeFileSync(FULL_PRICE_FILE, JSON.stringify(roundResult, null, 2));
+            fs.writeFileSync(FULL_PRICE_FILE, JSON.stringify(IN_MEMORY_CACHE, null, 2));
             lastFlushAt = Date.now();
         } catch (e) {
             console.error('[FullPoller] Flush 실패:', e.message);
@@ -211,13 +228,13 @@ async function runFullUniversePoll(stockMaster, getKisToken) {
 
     const kst = getNowKST();
     const hhmm = `${String(kst.getUTCHours()).padStart(2,'0')}:${String(kst.getUTCMinutes()).padStart(2,'0')}`;
-    console.log(`[FullPoller] Round complete @ KST ${hhmm} — ${updatedCount}/${stockMaster.length}종목 갱신`);
+    console.log(`[FullPoller] Round complete @ KST ${hhmm} — ${updatedCount}/${targetStocks.length}종목 갱신 (WSS Skip: ${wssCodes.size})`);
 }
 
 // ─── 공개 인터페이스 ──────────────────────────────────────────────────────────
 
 /** 전체 유니버스 폴러 시작 */
-function startFullUniversePoller(stockMaster, getKisToken) {
+function startFullUniversePoller(stockMaster, getKisToken, getWssSubscribedCodes = null) {
     // 디스크 캐시 복원
     try {
         if (fs.existsSync(FULL_PRICE_FILE)) {
@@ -231,7 +248,7 @@ function startFullUniversePoller(stockMaster, getKisToken) {
     async function loop() {
         if (isMarketHours()) {
             try {
-                await runFullUniversePoll(stockMaster, getKisToken);
+                await runFullUniversePoll(stockMaster, getKisToken, getWssSubscribedCodes);
             } catch (e) {
                 console.error('[FullPoller] Loop Error:', e.message);
             }
@@ -243,14 +260,41 @@ function startFullUniversePoller(stockMaster, getKisToken) {
     loop();
 }
 
-/** 단건 현재가 조회 (다른 모듈에서 캐시 접근 시 사용) */
+/** 실시간 가격 캐시 외부 업데이트 (웹소켓 연동용) */
+function updateCachedPrice(code, price, changeRate, stockMaster = []) {
+    const prev = IN_MEMORY_CACHE[code] || {};
+    
+    // 목표가 도달(is_hit) 판정 로직 추가
+    let isHit = prev.is_hit || false;
+    let hitAt = prev.hit_at || null;
+    
+    const masterInfo = stockMaster.find(s => s.code === code);
+    if (masterInfo && masterInfo.target_price > 0 && !isHit) {
+        if (price >= masterInfo.target_price) {
+            isHit = true;
+            hitAt = Date.now();
+            console.log(`[WSS-HIT] ${masterInfo.name} (${code}) 목표가 도달! ${price} >= ${masterInfo.target_price}`);
+        }
+    }
+
+    IN_MEMORY_CACHE[code] = {
+        ...prev,
+        price,
+        change_rate: changeRate,
+        is_hit: isHit,
+        hit_at: hitAt,
+        updated_at: Date.now()
+    };
+}
+
+/** 특정 종목의 캐시된 가격 반환 */
 function getCachedPrice(code) {
     return IN_MEMORY_CACHE[code] || null;
 }
 
-/** 전체 캐시 반환 */
+/** 전체 가격 캐시 객체 반환 */
 function getFullPriceCache() {
     return IN_MEMORY_CACHE;
 }
 
-module.exports = { startFullUniversePoller, getCachedPrice, getFullPriceCache };
+module.exports = { startFullUniversePoller, getCachedPrice, getFullPriceCache, updateCachedPrice };

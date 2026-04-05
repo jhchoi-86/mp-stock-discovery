@@ -9,7 +9,8 @@ import SubscriptionModal from './SubscriptionModal.jsx';
 import ReportArchive from './ReportArchive.jsx';
 import reportService from '../api/reportService';
 import useSWR from 'swr';
-import { Activity, Share2, Filter, Layout, LogOut } from 'lucide-react';
+import { useSSE } from '../context/SSEContext';
+import { Activity, Archive, Share2, Filter, Layout, LogOut } from 'lucide-react';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -23,6 +24,7 @@ function getMarketStatus() {
 }
 
 const MobileDashboard = ({ manager, user, clearAuth }) => {
+  const { realtimePrices } = useSSE();
   const [landingTab, setLandingTab] = useState('MP_SIGNAL'); // 'HOME', 'MP_SIGNAL', 'DAILY_PERFORMANCE'
   const {
       searchQuery, setSearchQuery,
@@ -31,7 +33,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       showAll, setShowAll,
       uploadTimeframe, setUploadTimeframe,
       isSyncing, isSendingTg,
-      candidates, topSectors, activeCount, signals, selectedStocks,
+      candidates: originalCandidates, topSectors, activeCount, signals, selectedStocks,
       handleIntegratedSync, handleSendToTelegram,
       toggleSelectStock, toggleSelectAll,
       fetchData
@@ -45,11 +47,27 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
 
   const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
     revalidateOnFocus: true,
-    refreshInterval: 30000
+    refreshInterval: 3000
   });
+
+  // Merge Real-time Prices (v3.7.6)
+  const candidates = React.useMemo(() => {
+    return (originalCandidates || []).map(stock => {
+        const rt = realtimePrices[stock.code];
+        if (rt) {
+            return {
+                ...stock,
+                current_price: rt.price,
+                change_rate: rt.changeRate
+            };
+        }
+        return stock;
+    });
+  }, [originalCandidates, realtimePrices]);
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: 'var(--bg)', color: '#fff' }}>
+      <div className="version-badge">v{__APP_VERSION__}</div>
       {/* 1. Sticky Top Navigation */}
       <header style={{
         position: 'sticky', top: 0, zIndex: 100,
@@ -112,7 +130,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         {['ADMIN', 'PAID'].includes(user?.role) && (
           <>
             <button onClick={() => handleIntegratedSync()} disabled={isSyncing} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer', boxShadow: isSyncing ? 'none' : '0 4px 12px rgba(16,185,129,0.3)' }}>
-              <Activity size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '진행중...' : '통합동기화'}
+              <Activity size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '진행중...' : '통합동기화: 30M, 1H, 2H, 4H, 1D, 2D, 1W'}
             </button>
           </>
         )}

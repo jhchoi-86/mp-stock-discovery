@@ -4,17 +4,21 @@ import React from 'react';
 import { Menu, X, Rocket, Shield, BarChart3, Sparkles, TrendingUp, CheckCircle, Smartphone, Activity, Share2, LogIn, ChevronRight, Play, Zap, Bell, CheckCircle2 } from 'lucide-react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
-import MPStockDailyReport from './MPStockDailyReport';
-import DailySnapshotAnalytics from './DailySnapshotAnalytics';
+import Top5StrategyBanner from './Top5StrategyBanner';
+import WatchlistStrategyBanner from './WatchlistStrategyBanner';
+import LandingHeader from './LandingHeader';
+import { useSSE } from '../context/SSEContext';
 
-const SocialMarquee = () => {
-  const alerts = [
-    "[VIP 알림] 산일전기(062040) 1차 매수 타점 도달 완료!",
-    "[수익 실현] LG이노텍 목표가 달성! 단기 +5% 수익",
-    "[VIP 알림] 에이프릴바이오(062040) 돌파 시그널 발생",
-    "[수익 실현] 삼양식품 익절 완료! +7.2% 수익",
-    "[VIP 알림] 현대차(005380) 스윙 진입가 안착"
+const SocialMarquee = ({ notifications = [] }) => {
+  const defaultAlerts = [
+    "[알림] 실시간 매매 신호 엔진 가동 중...",
+    "[정보] KOSPI 200 & KOSDAQ 150 주도주 정밀 분석 완료",
+    "[VIP] 일일 리서치 리포트 발송 완료"
   ];
+
+  const displayAlerts = notifications.length > 0 
+    ? notifications.map(n => n.message) 
+    : defaultAlerts;
 
   return (
     <div className="lp-section" style={{padding: '2rem 0', backgroundColor: '#0d0d0d', borderBottom: '1px solid var(--glass-border)'}}>
@@ -24,8 +28,8 @@ const SocialMarquee = () => {
         </div>
         <div style={{flex: 1, overflow: 'hidden', position: 'relative'}}>
             <div className="animate-marquee" style={{display: 'flex', gap: '4rem'}}>
-                {[...alerts, ...alerts].map((text, idx) => (
-                    <span key={idx} style={{color: '#fff', fontSize: '0.9rem', fontWeight: 500}}>
+                {[...displayAlerts, ...displayAlerts].map((text, idx) => (
+                    <span key={idx} style={{color: '#fff', fontSize: '0.9rem', fontWeight: 500, whiteSpace: 'nowrap'}}>
                         {text}
                     </span>
                 ))}
@@ -44,17 +48,31 @@ const LandingPage = ({ onLoginClick, isAuthenticated, onLogoutClick }) => {
   
   const { data, error, isLoading } = useSWR('reports/latest', reportService.getLatestReport, {
     revalidateOnFocus: true,
-    refreshInterval: 10000
+    refreshInterval: 3000
   });
+
+  const { data: swrNotifications } = useSWR('public/live-notifications', reportService.getLiveNotifications, {
+    revalidateOnFocus: true,
+    refreshInterval: 30000 
+  });
+
+  const { notifications: sseNotifications } = useSSE();
+  
+  // Combine SSE and SWR (SSE takes priority for real-time, SWR for initial load)
+  const notifications = React.useMemo(() => {
+    if (sseNotifications && sseNotifications.length > 0) return sseNotifications;
+    return swrNotifications || [];
+  }, [sseNotifications, swrNotifications]);
 
   const isFallback = !data && !isLoading; 
 
   const stats = React.useMemo(() => {
     if (!data || !data.stocks) return { hitRate: '---', avgReturn: '0.0', totalSignals: '0' };
     const stocks = data.stocks || [];
-    const hits = stocks.filter(s => s.status === '체결' || s.status === 'EXECUTED').length;
+    const executedStocks = stocks.filter(s => s.status === '체결' || s.status === 'EXECUTED');
+    const hits = executedStocks.length;
     const hitRate = stocks.length > 0 ? ((hits / stocks.length) * 100).toFixed(0) : '0';
-    const returns = stocks.map(s => s.yield_pct || 0);
+    const returns = executedStocks.map(s => s.yield_pct || 0);
     const avgVal = returns.length > 0 ? (returns.reduce((a, b) => a + b, 0) / returns.length) : 0;
     const avgReturn = (avgVal >= 0 ? "+" : "") + avgVal.toFixed(1);
     return { hitRate, avgReturn, totalSignals: stocks.length };
@@ -76,95 +94,18 @@ const LandingPage = ({ onLoginClick, isAuthenticated, onLogoutClick }) => {
 
   return (
     <div className="lp-premium-wrap">
+      <div className="version-badge">v{__APP_VERSION__}</div>
       <div className="lp-container">
       {/* Navigation */}
-      <nav className="lp-nav">
-        <div className="lp-nav-inner">
-          <div className="lp-logo">
-            <div className="lp-logo-icon">
-              <Rocket className="text-black" size={20} fill="currentColor" />
-            </div>
-            <span>MP <span style={{color: 'var(--primary)'}}>STOCK</span></span>
-          </div>
+      <LandingHeader 
+        isAuthenticated={isAuthenticated} 
+        onLogoutClick={onLogoutClick} 
+        onLoginClick={onLoginClick} 
+      />
 
-          <div className="lp-nav-links">
-            <a href="#home" className="lp-nav-link">Home</a>
-            <a href="#signals" className="lp-nav-link">MP 시그널</a>
-            <a href="#report" className="lp-nav-link">Daily 성과</a>
-            <a href="#stats" className="lp-nav-link">Daily 종목 분석</a>
-            {isAuthenticated ? (
-              <button onClick={onLogoutClick} className="lp-btn-gold" style={{backgroundColor: 'rgba(231, 76, 60, 0.1)', color: '#e74c3c', border: '1px solid rgba(231, 76, 60, 0.3)'}}>로그아웃</button>
-            ) : (
-              <button onClick={onLoginClick} className="lp-btn-gold">로그인</button>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      <header className="lp-hero" id="home">
-        <div className="animate-in fade-in zoom-in duration-700">
-            <h1 className="lp-hero-title">
-              감정이 배제된 AI의 정확한 타점,<br/>
-              <span style={{color: 'var(--primary)', textShadow: '0 0 30px rgba(212,175,55,0.4)'}}>매일 결과로 증명합니다.</span>
-            </h1>
-            <p className="lp-hero-subtitle">
-                KOSPI 200 & KOSDAQ 150 주도주 중심, 매일 업데이트되는<br/>
-                5종목의 놀라운 승률을 지금 바로 확인하세요.
-            </p>
-        </div>
-
-
-
-        {/* Stats Grid */}
-        <div className="lp-hero-stats-grid">
-            <div className="lp-stat-card">
-                <div className="lp-stat-label">금일 적중률</div>
-                <div className="lp-stat-value">{stats.hitRate}<span className="lp-stat-unit">%</span></div>
-                <div style={{fontSize: '0.65rem', color: '#4ADE80', marginTop: '0.5rem', fontWeight: 700}}>
-                    <CheckCircle2 size={10} style={{display: 'inline', marginRight: '2px'}} /> LIVE VERIFIED
-                </div>
-            </div>
-            <div className="lp-stat-card" style={{borderColor: 'var(--primary)', borderWidth: '2px'}}>
-                <div className="lp-stat-label">평균 수익률</div>
-                <div className="lp-stat-value">{stats.avgReturn}<span className="lp-stat-unit">%</span></div>
-                <div style={{fontSize: '0.65rem', color: '#fbbf24', marginTop: '0.5rem', fontWeight: 700}}>
-                    <TrendingUp size={10} style={{display: 'inline', marginRight: '2px'}} /> MARKET TOP 1%
-                </div>
-            </div>
-            <div className="lp-stat-card">
-                <div className="lp-stat-label">금일 시그널</div>
-                <div className="lp-stat-value">{stats.totalSignals}<span className="lp-stat-unit">건</span></div>
-                <div style={{fontSize: '0.65rem', color: '#60A5FA', marginTop: '0.5rem', fontWeight: 700}}>
-                    <Zap size={10} style={{display: 'inline', marginRight: '2px'}} /> REAL-TIME ENGINE
-                </div>
-            </div>
-        </div>
-        
-        <div id="stats" style={{marginTop: '4rem', textAlign: 'left'}}>
-            <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '1.5rem', color: 'var(--primary)'}}>
-                Daily 종목 분석
-            </h2>
-            <DailySnapshotAnalytics isPublic={true} isMobile={window.innerWidth < 768} />
-        </div>
-
-        <div id="report" style={{marginTop: '6rem', textAlign: 'left'}}>
-            <MPStockDailyReport data={data} isLoading={isLoading} isFallback={isFallback} />
-        </div>
-      </header>
-
-      {/* Social Proof Marquee */}
-      <section>
-        <div className="lp-hero" style={{padding: '4rem 0 2rem 0'}}>
-            <h2 style={{fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.5rem'}}>
-                지금 이 순간에도 <span style={{color: 'var(--primary)'}}>AI는 기회를 포착</span>하고 있습니다.
-            </h2>
-        </div>
-        <SocialMarquee />
-      </section>
-
-      {/* Value Proposition */}
+      {/* Value Proposition (Moved to Top as MP SIGNAL Section) */}
       <section className="lp-section lp-section-dark" id="signals">
-        <div className="lp-hero" style={{paddingTop: 0, paddingBottom: '4rem'}}>
+        <div className="lp-hero" style={{paddingTop: '4rem', paddingBottom: '4rem'}}>
             <h2 style={{fontSize: '3rem', fontWeight: 900, marginBottom: '1rem', lineHeight: 1.2}}>
                 왜 MP Stock인가?<br/>
                 <span style={{color: 'var(--primary)'}}>흔들리지 않는 상위 1%의 투자 공식</span>
@@ -202,37 +143,88 @@ const LandingPage = ({ onLoginClick, isAuthenticated, onLogoutClick }) => {
         </div>
       </section>
 
+      {/* Social Proof Marquee (Relocated above Recommendations) */}
+      <section>
+        <div className="lp-hero" style={{padding: '2rem 0 1rem 0'}}>
+            <h2 style={{fontSize: '1.5rem', fontWeight: 900, marginBottom: '0.5rem'}}>
+                지금 이 순간에도 <span style={{color: 'var(--primary)'}}>AI는 기회를 포착</span>하고 있습니다.
+            </h2>
+        </div>
+        <SocialMarquee notifications={notifications} />
+      </section>
+
+      <Top5StrategyBanner onLoginClick={onLoginClick} />
+      {isAuthenticated && <WatchlistStrategyBanner />}
+
+      <header className="lp-hero" id="home">
+        <div className="animate-in fade-in zoom-in duration-700" style={{textAlign: 'center', width: '100%'}}>
+            <h1 className="lp-hero-title">
+              감정이 배제된 AI의 정확한 타점,<br/>
+              <span style={{color: 'var(--primary)', textShadow: '0 0 30px rgba(212,175,55,0.4)'}}>매일 결과로 증명합니다.</span>
+            </h1>
+            <p className="lp-hero-subtitle">
+                KOSPI 200 & KOSDAQ 150 주도주 중심, 매일 업데이트되는<br/>
+                5종목의 놀라운 승률을 지금 바로 확인하세요.
+            </p>
+        </div>
+
+
+
+        {/* Stats Grid */}
+        <div className="lp-hero-stats-grid">
+            <div className="lp-stat-card">
+                <div className="lp-stat-label">금일 적중률</div>
+                <div className="lp-stat-value">{stats.hitRate}<span className="lp-stat-unit">%</span></div>
+                <div style={{fontSize: '0.65rem', color: '#4ADE80', marginTop: '0.5rem', fontWeight: 700}}>
+                    <CheckCircle2 size={10} style={{display: 'inline', marginRight: '2px'}} /> LIVE VERIFIED
+                </div>
+            </div>
+            <div className="lp-stat-card" style={{borderColor: 'var(--primary)', borderWidth: '2px'}}>
+                <div className="lp-stat-label">평균 수익률</div>
+                <div className="lp-stat-value">{stats.avgReturn}<span className="lp-stat-unit">%</span></div>
+                <div style={{fontSize: '0.65rem', color: '#fbbf24', marginTop: '0.5rem', fontWeight: 700}}>
+                    <TrendingUp size={10} style={{display: 'inline', marginRight: '2px'}} /> MARKET TOP 1%
+                </div>
+            </div>
+            <div className="lp-stat-card">
+                <div className="lp-stat-label">금일 시그널</div>
+                <div className="lp-stat-value">{stats.totalSignals}<span className="lp-stat-unit">건</span></div>
+                <div style={{fontSize: '0.65rem', color: '#60A5FA', marginTop: '0.5rem', fontWeight: 700}}>
+                    <Zap size={10} style={{display: 'inline', marginRight: '2px'}} /> REAL-TIME ENGINE
+                </div>
+            </div>
+        </div>
+        
+      </header>
+
+
+
       {/* CTA & Lead Gen */}
       <section className="lp-section" id="subscribe">
         <div className="lp-hero" style={{background: 'linear-gradient(to bottom, rgba(212, 212, 212, 0.05), rgba(0,0,0,0))', borderRadius: '40px', padding: '5rem 2rem'}}>
-            <div style={{display: 'flex', flexWrap: 'wrap', gap: '4rem', justifyContent: 'center'}}>
-                {/* Free Case */}
-                <div style={{flex: '1', minWidth: '320px', maxWidth: '450px'}}>
-                    <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '1.5rem'}}>
-                        내일의 급등주,<br/><span style={{color: 'var(--primary)'}}>장 시작 전 무료</span>로 받아보세요.
+            <div style={{display: 'flex', flexWrap: 'wrap', gap: '4rem', justifyContent: 'center', alignItems: 'stretch'}}>
+                {/* Free Case (Unified Signup CTA) */}
+                <div style={{flex: '1', minWidth: '320px', maxWidth: '480px', textAlign: 'center', display: 'flex', flexDirection: 'column', justifyContent: 'space-between'}}>
+                    <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '2rem', lineHeight: 1.4}}>
+                        무료 회원 가입하고 <br/>
+                        <span style={{color: 'var(--primary)'}}>내일의 급등주, 장 시작 전 무료</span>로 <br/>
+                        일주일 동안 받아 보세요.
                     </h2>
-                    <form onSubmit={handleSubscribe} className="lp-input-group" style={{maxWidth: '100%'}}>
-                        <input 
-                            type="email" 
-                            value={email}
-                            onChange={(e) => setEmail(e.target.value)}
-                            placeholder="리포트를 받을 이메일 주소를 입력해주세요."
-                            required
-                            className="lp-input"
-                        />
-                        <input type="text" value={honeypot} onChange={(e) => setHoneypot(e.target.value)} style={{display: 'none'}} tabIndex="-1" />
-                        <button type="submit" disabled={submitStatus !== 'idle'} className="lp-btn-gold" style={{width: '100%', padding: '1.25rem'}}>
-                            {submitStatus === 'loading' ? '처리 중...' : submitStatus === 'success' ? '신청 완료! ✨' : '무료 Daily 리포트 신청'}
-                        </button>
-                    </form>
+                    <button 
+                        onClick={onLoginClick} 
+                        className="lp-btn-gold" 
+                        style={{width: '100%', padding: '1.25rem', fontSize: '1.25rem', fontWeight: 800}}
+                    >
+                        무료 회원 가입
+                    </button>
                 </div>
 
                 {/* Paid Case */}
-                <div style={{flex: '1', minWidth: '320px', maxWidth: '450px', display: 'flex', flexDirection: 'column', justifyContent: 'center'}}>
-                    <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '1.5rem'}}>
+                <div style={{flex: '1', minWidth: '320px', maxWidth: '480px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between', textAlign: 'center'}}>
+                    <h2 style={{fontSize: '2rem', fontWeight: 900, marginBottom: '2rem', lineHeight: 1.4}}>
                         남들보다 한 발 앞선 타이밍,<br/><span style={{color: '#fff'}}>VIP 멤버십으로 시작하세요.</span>
                     </h2>
-                    <button className="lp-btn-gold" style={{padding: '1.25rem', fontSize: '1.25rem', boxShadow: '0 0 40px rgba(212,175,55,0.4)'}}>
+                    <button className="lp-btn-gold" style={{width: '100%', padding: '1.25rem', fontSize: '1.25rem', fontWeight: 800, boxShadow: '0 0 40px rgba(212,175,55,0.4)'}}>
                         프리미엄 구독 시작하기
                     </button>
                 </div>

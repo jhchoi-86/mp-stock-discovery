@@ -720,9 +720,47 @@ option {
   gap: 3rem;
 }
 
+.lp-mobile-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  color: #fff;
+  cursor: pointer;
+  z-index: 2000;
+}
+
 @media (max-width: 768px) {
   .lp-hero-title { font-size: 2.5rem; }
   .lp-nav-links { display: none; }
+  .lp-mobile-toggle { display: flex; }
+}
+
+.lp-mobile-menu {
+  position: fixed;
+  top: 80px;
+  left: 0;
+  width: 100%;
+  height: calc(100vh - 80px);
+  background-color: var(--bg-deep);
+  display: flex;
+  flex-direction: column;
+  padding: 2rem;
+  gap: 1.5rem;
+  z-index: 1500;
+  border-top: 1px solid var(--glass-border);
+  animation: slideInDown 0.3s ease-out forwards;
+}
+
+.lp-mobile-menu a {
+  color: #fff;
+  text-decoration: none;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+@keyframes slideInDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .lp-input-group {
@@ -961,4 +999,37 @@ option {
   .lp-summary-grid-v41 {
     grid-template-columns: 1fr;
   }
+}
+
+/* Revision Badge Styles */
+.version-badge {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(212, 175, 55, 0.6);
+  color: var(--accent);
+  padding: 6px 14px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  z-index: 99999;
+  pointer-events: none;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.version-badge::before {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  background: var(--accent);
+  border-radius: 50%;
+  box-shadow: 0 0 8px var(--accent);
 }

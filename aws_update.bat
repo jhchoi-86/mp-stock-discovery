@@ -30,16 +30,34 @@ echo [3/8] Syncing latest Git codebase on AWS Server...
 ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && git reset --hard HEAD && git clean -fd -e data/ && git pull"
 
 echo.
-echo [4/8] Uploading compiled dist folder to AWS Server...
+echo [4/8] Uploading compiled dist folder and backend scripts to AWS Server...
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r dist %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no analyzer.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no server.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no sniper_3m.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no scripts/generateReport.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/scripts/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no scripts/send_top5_report.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/scripts/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/services/kisWebSocketService.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/services/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/services/systemStatsService.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/services/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/auth.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/admin.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/publicReports.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/components/AdminDashboard.jsx %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/components/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/components/SystemManagementTab.jsx %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/components/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/nightlyMonitor.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/fullUniversePoller.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/reportUtils.js %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no prisma/schema.prisma %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/prisma/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no ecosystem.config.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no RELEASE.md %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Upload failed. Stopping deployment.
     exit /b 1
 )
 
 echo.
-echo [5/8] Applying Permissions and Reloading PM2 Clusters (Zero Downtime)...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && chmod -R 755 dist && pm2 reload ecosystem.config.cjs --env production"
+echo [5/8] Applying DB Schema and Permissions (Zero Downtime)...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && npx prisma db push && chmod -R 755 dist && pm2 reload ecosystem.config.cjs --env production"
 
 echo.
 echo [6/8] Waiting for Health Check (10 seconds)...
