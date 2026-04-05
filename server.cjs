@@ -28,6 +28,7 @@ const { savePastRecommendations, evaluatePastRecommendations, generateSummaryRep
 const { startNightlyMonitor } = require('./src/utils/nightlyMonitor.cjs');
 const { startFullUniversePoller, getCachedPrice, getFullPriceCache, updateCachedPrice } = require('./src/utils/fullUniversePoller.cjs');
 const { Queue } = require('bullmq');
+
 const { startWebSocketService, updateSubscriptions, getSubscribedCodes } = require('./src/services/kisWebSocketService.cjs');
 const systemStatsService = require('./src/services/systemStatsService.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
@@ -1270,28 +1271,29 @@ app.post('/api/auto-sync', async (req, res) => {
         }
         
         let totalCount = 0;
-            for (const tf of tfList) {
-                const intervalMap = { '2M': '2m', '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
-                const interval = intervalMap[tf] || '1d';
 
-                const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
-                let syncResults = [];
-                let errorCount = 0;
+        // [v7.7.19] Scope FIX: Move emitProgress OUTSIDE the timeframe loop
+        const emitProgress = (cur, tot, t) => {
+            currentSyncProgress = { current: cur, total: tot, timeframe: t };
+            const payload = `data: ${JSON.stringify({ type: 'sync_progress', payload: { current: cur, total: tot, timeframe: t } })}\n\n`;
+            clients.forEach(c => { 
+                try { 
+                    c.write(payload); 
+                    if(c.flush) c.flush();
+                } catch(e) {} 
+            });
+        };
 
-                console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
+        for (const tf of tfList) {
+            const intervalMap = { '2M': '2m', '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
+            const interval = intervalMap[tf] || '1d';
 
-                const emitProgress = (cur, tot, t) => {
-                    currentSyncProgress = { current: cur, total: tot, timeframe: t };
-                    const payload = `data: ${JSON.stringify({ type: 'sync_progress', payload: { current: cur, total: tot, timeframe: t } })}\n\n`;
-                    clients.forEach(c => { 
-                        try { 
-                            c.write(payload); 
-                            if(c.flush) c.flush();
-                        } catch(e) {} 
-                    });
-                };
+            const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
+            let syncResults = [];
+            let errorCount = 0;
 
-                emitProgress(0, stocks.length, tf);
+            console.log(`[Auto-Sync] Starting sync for ${stocks.length} stocks at ${tf} timeframe...`);
+            emitProgress(0, stocks.length, tf);
 
     // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
     const fetchHybridHistory = async (stock) => {
