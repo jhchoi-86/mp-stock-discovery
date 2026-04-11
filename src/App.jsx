@@ -15,6 +15,7 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import PerformancePage from './pages/PerformancePage.jsx';
 import AnalysisPage from './pages/AnalysisPage.jsx';
 import SignalsPage from './pages/SignalsPage.jsx';
+import BacktestPage from './components/BacktestPage.jsx';
 
 const App = () => {
   const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
@@ -62,6 +63,7 @@ const App = () => {
             <Route path="/performance" element={<PerformancePage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
             <Route path="/analysis" element={<AnalysisPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
             <Route path="/live-signals" element={<SignalsPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
+            <Route path="/backtest" element={<BacktestPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
 
             {/* Role-based Home Route */}
             <Route path="/" element={
@@ -80,6 +82,7 @@ const App = () => {
             <Route path="/login" element={<Login onBack={() => navigate('/')} />} />
           </Routes>
       </SSEProvider>
+
     </div>
   );
 };

@@ -1,11 +1,6 @@
-const fs = require('fs');
-const path = require('path');
-const axios = require('axios');
-require('dotenv').config();
-
-const DATA_DIR = path.join(__dirname, '..', 'data');
-const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
-const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
+const cache = require('../src/services/cacheService.cjs');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || "")
@@ -68,14 +63,11 @@ const generateMessage = (top5) => {
     let content = `🚀 [내일(${dateStr}) 주도주 매매 전략 Top 5]\n\n`;
 
     top5.forEach((s, idx) => {
-        const sig2H = s.tfSigs['2H'];
-        content += `${idx + 1}️⃣ ${s.name} (${s.code}) - 점수: ${s.score}점\n`;
-        content += `- 현황: ${sig2H?.category || '-'} | 추세강도: ${Math.round(sig2H?.adx || 0)}\n`;
-        content += `- 매수전략: ${Math.round(sig2H?.result_2 || 0).toLocaleString()}원(1차) / ${Math.round(sig2H?.result_3 || 0).toLocaleString()}원(2차) 분할진입 유효\n`;
-        const target1 = sig2H?.bb_upper || 0;
-        const target2 = Math.round(target1 * 1.05);
-        content += `- 목표가: 1차 ${Math.round(target1).toLocaleString()}원 / 2차 ${target2.toLocaleString()}원\n`;
-        content += `- 손절가: ${Math.round(sig2H?.stop_loss || 0).toLocaleString()}원 (2차 진입가 대비 -2%)\n`;
+        content += `${idx + 1}️⃣ ${s.name} (${s.code}) - 점수: ${s.star_grade || 0}등급\n`;
+        content += `- 현황: ${s.trend || '-'} | 추세강도: ${Math.round(s.trend_strength || 0)}\n`;
+        content += `- 매수전략: ${Math.round(s.entry_price_1 || 0).toLocaleString()}원(1차) / ${Math.round(s.entry_price_2 || 0).toLocaleString()}원(2차) 분할진입 유효\n`;
+        content += `- 목표가: 1차 ${Math.round(s.target_price_1 || 0).toLocaleString()}원 / 2차 ${Math.round((s.target_price_1 || 0) * 1.05).toLocaleString()}원\n`;
+        content += `- 손절가: ${Math.round(s.stop_loss || 0).toLocaleString()}원 (2차 진입가 대비 -2%)\n`;
         content += `- 차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
     });
 
@@ -88,21 +80,41 @@ const generateMessage = (top5) => {
 async function sendReport() {
     console.log('[Telegram-Report] Starting...');
     try {
-        if (!fs.existsSync(SIGNALS_FILE) || !fs.existsSync(STOCK_MASTER_FILE)) {
-            console.error('Data files missing');
+        console.log('[Telegram-Report] Fetching Top 5 from DB/Cache (SSOT)...');
+        
+        // 1. DB에서 star_grade(별점)가 높은 상위 5종목 조회
+        const top5FromDb = await prisma.dailyStockSnapshot.findMany({
+            where: { star_grade: { gt: 0 } },
+            orderBy: [
+                { star_grade: 'desc' },
+                { createdAt: 'desc' }
+            ],
+            take: 5
+        });
+
+        if (top5FromDb.length === 0) {
+            console.error('[Telegram-Report] No active Top 5 stocks found in DB.');
             return;
         }
 
-        const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
-        const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+        // 2. Redis 캐시 보강 (R-MISS-02 보정)
+        const top5 = await Promise.all(top5FromDb.map(async (stock) => {
+            return await cache.getSignalReport(stock.code, async () => {
+                return {
+                    code: stock.code,
+                    name: stock.name,
+                    entry_price_1: stock.entry_price_1,
+                    entry_price_2: stock.entry_price_2,
+                    stop_loss: stock.stop_loss,
+                    target_price_1: stock.target_price_1,
+                    trend: stock.trend_type || stock.trend,
+                    trend_strength: stock.trend_strength,
+                    star_grade: stock.star_grade
+                };
+            });
+        }));
 
-        const results = stocks.map(stock => {
-            const tfSigs = getSignalsForStock(signals, stock.code);
-            const score = calculateTotalScore(tfSigs);
-            return { ...stock, score, tfSigs };
-        }).sort((a, b) => b.score - a.score).slice(0, 5);
-
-        const message = generateMessage(results);
+        const message = generateMessage(top5);
         console.log('--- GENERATED MESSAGE ---\n', message);
 
         if (process.argv.includes('--test')) {

@@ -7,44 +7,66 @@ import logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("MockGenerator")
 
-# PM님이 지정해주신 3월 20일 추천 종목 6개 및 임의의 장식용 베이스 단가
-TICKERS = {
-    "047040": {"name": "대우건설", "base_price": 4000},
-    "028050": {"name": "삼성E&A", "base_price": 25000},
-    "161890": {"name": "한국콜마", "base_price": 45000},
-    "222800": {"name": "심텍", "base_price": 30000},
-    "003030": {"name": "세아제강지주", "base_price": 150000},
-    "298040": {"name": "효성중공업", "base_price": 250000}
-}
+import os
+
+# 🟢 [Dynamic Tickers Allocation]
+# Load from landing_strategy.json to match current Top 5
+def get_current_tickers():
+    strategy_path = os.path.join(os.path.dirname(__file__), "../../data/landing_strategy.json")
+    tickers = {}
+    if os.path.exists(strategy_path):
+        try:
+            with open(strategy_path, 'r', encoding='utf-8') as f:
+                strategy = json.load(f)
+                for s in strategy.get('stocks', [])[:5]:
+                    # [v9.0.7] Use actual currentPrice as base_price to fix uniform 50k bug
+                    price = int(s.get('currentPrice', 50000))
+                    tickers[s['code']] = {
+                        "name": s['name'], 
+                        "base_price": price,
+                        "initial_price": price # Fix shadow-copy pricing
+                    }
+            logger.info(f"Loaded {len(tickers)} tickers from landing_strategy.json with REAL prices.")
+        except Exception as e:
+            logger.error(f"Failed to load strategy: {e}")
+            
+    if not tickers:
+        logger.warning("Using fallback tickers (GS건설, etc.)")
+        tickers = {
+            "006360": {"name": "GS건설", "base_price": 20000, "initial_price": 20000},
+            "375500": {"name": "DL이앤씨", "base_price": 35000, "initial_price": 35000},
+            "047040": {"name": "대우건설", "base_price": 4000, "initial_price": 4000},
+            "009150": {"name": "삼성전기", "base_price": 140000, "initial_price": 140000},
+            "011170": {"name": "롯데케미칼", "base_price": 130000, "initial_price": 130000}
+        }
+    return tickers
+
+TICKERS = get_current_tickers()
 
 def generate_synthetic_ticks(output_file: str):
     """
     🔵 [Blue Team] 가상의 하루 체결 단위(Tick) 시나리오 제너레이터 (Task 6.4)
-    - 실데이터가 없을 때 로직이 정상 동작하는지 테스트하기 위해 '합성 데이터(Synthetic Data)'를 만듭니다.
-    - 특징: 특정 시간대에 특정 종목에 엄청난 수급을 몰아넣어(Fake Surge) 스나이퍼 엔진이 제대로 트리거하는지 관찰합니다.
     """
     ticks = []
     
-    # 09:00:00 부터 15:20:00 까지 흐르는 가상의 시간 루프
     start_time = datetime.strptime("090000", "%H%M%S")
     end_time = datetime.strptime("152000", "%H%M%S")
     current_time = start_time
     
-    logger.info("Generating synthetic market flow from 09:00 to 15:20...")
+    logger.info("Generating synthetic market flow with dynamic pricing...")
     
     while current_time <= end_time:
         time_str = current_time.strftime("%H%M%S")
         
-        # 1. 일상적인 잡음 틱(Noise) 발생 (모든 종목에 띄엄띄엄 거래 발생)
-        if random.random() < 0.2:  # 매초마다 20% 확률로 틱 하나 체결
+        # 1. 일상적인 잡음 틱(Noise) 발생
+        if random.random() < 0.2:
             code = random.choice(list(TICKERS.keys()))
             info = TICKERS[code]
             
-            # 0.1% 내외의 랜덤 가격 변동
             price_shift = int(info["base_price"] * random.uniform(-0.001, 0.001))
             tick_price = info["base_price"] + price_shift
             vol = random.randint(10, 300)
-            is_buy = "5" if random.random() > 0.5 else "1" # 5=매수체결, 1=매도체결
+            is_buy = "5" if random.random() > 0.5 else "1"
             
             ticks.append({
                 "code": code,
@@ -54,48 +76,65 @@ def generate_synthetic_ticks(output_file: str):
                 "time": time_str
             })
             
-        # 2. 🔴 [Red Team 강제 돌파 시나리오] 10시 30분, 삼성E&A(028050)에 작전 세력(?) 개입 연출!
-        # - 순매수 금액 3,000만 원 이상 & 거래량 폭증 (WBS Analyzer 발동 조건 충족)
-        if "102950" <= time_str <= "103010":
-            target_code = "028050"
-            # 현재가를 갑자기 200원 위로 치고 올라가는 시장가 매수 연속 체결
-            surge_price = TICKERS[target_code]["base_price"] + 200 
-            
-            if random.random() < 0.8: # 매우 잦은 빈도의 폭격!
-                ticks.append({
-                    "code": target_code,
-                    "price": str(surge_price),
-                    "volume": str(random.randint(3000, 6000)), # 큰 볼륨으로 밀어붙임
-                    "is_buy": "5",  # 100% 매수 체결(누군가 매도 호가를 강하게 먹음)
-                    "time": time_str
-                })
-                # 기본 단가를 멱살잡고 올려놓음
-                TICKERS[target_code]["base_price"] = surge_price
-                
-        # 3. 🔴 [Red Team 청산 시나리오] 14:00 이후 심텍(222800) 가격 붕괴 연출 (손절 로직 테스트용)
-        if "140000" <= time_str <= "140500":
-            simtech = "222800"
-            crash_price = TICKERS[simtech]["base_price"] - 500
+        # 🔴 [v9.0.7] 시나리오 보정: 시스템 익절 조건(3.0%)에 도달할 수 있도록 타겟 수익률 상향(5.0%)
+        # 또한 종목별로 수급 타이밍을 분산시켜 데이터 중복 현상 원천 차단
+        surge_windows = [
+            ("102950", "103500", 1.050), # 1차 수급 (5.0%)
+            ("130000", "130600", 1.070), # 2차 수급 (누적 7.0%)
+            ("141000", "141800", 1.090)  # 3차 수급 (누적 9.0%)
+        ]
+        
+        for start_v, end_v, target_ratio in surge_windows:
+            if start_v <= time_str <= end_v:
+                for target_code in TICKERS.keys():
+                    # 종목 코드의 마지막 자리를 이용해 수급 시작 시간에 약간의 딜레이 부여 (데이터 분산)
+                    delay = int(target_code[-1]) * 2 
+                    delayed_start = (datetime.strptime(start_v, "%H%M%S") + timedelta(seconds=delay)).strftime("%H%M%S")
+                    
+                    if time_str < delayed_start:
+                        continue
+
+                    # [v9.0.7] initial_price를 기준으로 타겟 가격 산정
+                    target_price = int(TICKERS[target_code]["initial_price"] * target_ratio)
+                    
+                    if random.random() < 0.7: # 수급 유입 확률 상향
+                        current_p = TICKERS[target_code]["base_price"]
+                        # 목표가 도달 전까지는 가격 상승 유도 (랜덤 보폭 증가)
+                        move_p = min(target_price, current_p + random.randint(50, 200))
+                        
+                        ticks.append({
+                            "code": target_code,
+                            "price": str(move_p),
+                            "volume": str(random.randint(8000, 25000)), # 수급 대금 증강
+                            "is_buy": "5",
+                            "time": time_str
+                        })
+                        TICKERS[target_code]["base_price"] = move_p
+                        
+        # 🟠 돌발 악재 시나리오 (랜덤 1종목 3% 급락) - 14:00
+        if "140000" <= time_str <= "140200":
+            lucky_ticker = list(TICKERS.keys())[random.randint(0, len(TICKERS)-1)]
+            crash_price = int(TICKERS[lucky_ticker]["base_price"] * 0.97)
             if random.random() < 0.5:
                 ticks.append({
-                    "code": simtech,
+                    "code": lucky_ticker,
                     "price": str(crash_price),
-                    "volume": str(random.randint(1000, 2000)),
-                    "is_buy": "1", # 매도 물량 폭탄
+                    "volume": str(random.randint(5000, 15000)),
+                    "is_buy": "1",
                     "time": time_str
                 })
-                TICKERS[simtech]["base_price"] = crash_price
+                TICKERS[lucky_ticker]["base_price"] = crash_price
                 
         current_time += timedelta(seconds=1)
         
-    # 미래참조 꼬임 방지를 위해 완벽히 시간순(Time) 정렬
     ticks.sort(key=lambda x: x['time'])
     
-    with open(output_file, 'w', encoding='utf-8') as f:
+    save_path = os.path.join(os.path.dirname(__file__), output_file)
+    with open(save_path, 'w', encoding='utf-8') as f:
         json.dump(ticks, f)
         
     logger.info(f"✅ Completed. Generated {len(ticks)} synthetic ticks.")
-    logger.info(f"💾 File saved successfully: {output_file}")
+    logger.info(f"💾 File saved successfully: {save_path}")
 
 if __name__ == "__main__":
     generate_synthetic_ticks("synthetic_ticks_0320.json")

@@ -10,6 +10,14 @@ const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
 const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
 const KIS_TOKEN_FILE = path.join(DATA_DIR, 'kis_token.json');
 
+// --- [Phase 4] SSOT DB Integration ---
+const ScoringService = require('./src/services/ScoringService.cjs');
+const signalReportService = require('./src/services/signalReportService.cjs');
+const { PrismaClient } = require('@prisma/client');
+const prisma = new PrismaClient();
+const redis = require('./platform/infra/redis/client.cjs');
+const { getKstDateString, getKstNow } = require('./src/utils/kst.cjs');
+
 const KIS_APP_KEY = (process.env.KIS_APP_KEY || '').trim();
 const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
 
@@ -36,7 +44,17 @@ async function getKisAccessToken(force = false) {
     });
     kisAccessToken = response.data.access_token;
     kisTokenExpiry = Date.now() + (response.data.expires_in * 1000);
-    fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({ token: kisAccessToken, expiry: kisTokenExpiry }));
+    
+    // [TASK-A10] 비동기 파일 I/O 및 원자적 쓰기 (Atomic Write)
+    const tokenData = JSON.stringify({ token: kisAccessToken, expiry: kisTokenExpiry });
+    const tempPath = KIS_TOKEN_FILE + '.tmp';
+    try {
+        await fs.promises.writeFile(tempPath, tokenData, 'utf8');
+        if (fs.existsSync(KIS_TOKEN_FILE)) fs.unlinkSync(KIS_TOKEN_FILE);
+        fs.renameSync(tempPath, KIS_TOKEN_FILE);
+    } catch (err) {
+        console.error(`[KIS Token] Save failed: ${err.message}`);
+    }
     return kisAccessToken;
 }
 
@@ -49,27 +67,30 @@ const resampleChartData = (raw, hourCount, tf) => {
     let currentCandle = null;
     let candleCount = 0;
     let currentDayStr = null;
-    let firstDayInGroup = null;
 
     for (let i = 0; i < raw.time.length; i++) {
         const date = new Date(raw.time[i] * 1000);
         date.setUTCHours(date.getUTCHours() + 9);
         const dayStr = `${date.getUTCFullYear()}-${date.getUTCMonth() + 1}-${date.getUTCDate()}`;
 
-        // 날짜 변경 시 처리
-        if (currentDayStr !== dayStr && currentCandle) {
+        if (currentCandle && currentDayStr !== dayStr) {
+            // [TASK-A03] 날짜 변경 감지
             if (!isDayBased) {
                 // 분봉 기반 리샘플링은 날짜 변경 시 무조건 flush
                 resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
                 resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
                 resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
                 currentCandle = null; candleCount = 0;
-            } else if (tf === '2D' && candleCount >= hourCount) {
-                // 2D 리샘플링: 이미 2일치를 채웠으면 flush
+            } else if (candleCount >= hourCount) {
+                // 일봉 기반: 이미 지정된 일수(hourCount)를 다 채웠으므로 flush
                 resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
                 resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
                 resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
                 currentCandle = null; candleCount = 0;
+            } else {
+                // 아직 그룹의 n일차 진행 중
+                candleCount++;
+                currentDayStr = dayStr;
             }
         }
 
@@ -81,19 +102,20 @@ const resampleChartData = (raw, hourCount, tf) => {
             currentCandle.high = Math.max(currentCandle.high, raw.high[i]);
             currentCandle.low = Math.min(currentCandle.low, raw.low[i]);
             currentCandle.close = raw.close[i]; currentCandle.volume += raw.volume[i];
-            if (currentDayStr !== dayStr) {
+            
+            // 분봉 리샘플링 시 candleCount는 캔들 개수(전환배수)로 사용
+            if (!isDayBased) {
                 candleCount++;
-                currentDayStr = dayStr;
+                if (candleCount >= hourCount) {
+                    resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
+                    resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
+                    resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
+                    currentCandle = null; candleCount = 0;
+                }
             }
         }
-
-        if (!isDayBased && candleCount === hourCount) {
-            resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
-            resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
-            resampled.volume.push(currentCandle.volume); resampled.time.push(currentCandle.time);
-            currentCandle = null; candleCount = 0;
-        }
     }
+    
     if (currentCandle) {
         resampled.open.push(currentCandle.open); resampled.high.push(currentCandle.high);
         resampled.low.push(currentCandle.low); resampled.close.push(currentCandle.close);
@@ -104,7 +126,7 @@ const resampleChartData = (raw, hourCount, tf) => {
 };
 
 // --- Hybrid History Fetcher ---
-const fetchHybridHistory = async (stock, days, interval, kisTokenGlobal) => {
+async function fetchHybridHistory(stock, days, interval, kisTokenGlobal, kisCache = null) {
     const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
     const symbolKS = stock.code + suffix;
     const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
@@ -133,73 +155,129 @@ const fetchHybridHistory = async (stock, days, interval, kisTokenGlobal) => {
     };
 
     if (kisTokenGlobal) {
-        try {
-            const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
-            const kisRes = await axios.get(kisUrl, {
-                headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
-                params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
-                timeout: 5000
-            });
-            const kisData = kisRes.data.output;
-            if (kisData && kisData.stck_prpr) {
-                const currentPrice = parseInt(kisData.stck_prpr);
-                const currentOpen = parseInt(kisData.stck_oprc);
-                const currentHigh = parseInt(kisData.stck_hgpr);
-                const currentLow = parseInt(kisData.stck_lwpr);
-                
-                chartData.kis_change_data = {
-                    sign: kisData.prdy_vrss_sign,
-                    change: parseInt(kisData.prdy_vrss),
-                    rate: parseFloat(kisData.prdy_ctrt),
-                    trade_amount: parseInt(kisData.acml_tr_pbmn)
-                };
+        let kisData = null;
+        let foreignBuy = 0;
+        let instBuy = 0;
+        let personBuy = 0;
 
-                const lastIdx = chartData.close.length - 1;
-                if (lastIdx >= 0) {
-                    chartData.close[lastIdx] = currentPrice;
-                    chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
-                    chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
+        if (kisCache && kisCache[stock.code]) {
+            kisData = kisCache[stock.code].price;
+            foreignBuy = kisCache[stock.code].foreign_buy;
+            instBuy = kisCache[stock.code].inst_buy;
+            personBuy = kisCache[stock.code].person_buy;
+        } else {
+            try {
+                const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
+                const kisRes = await axios.get(kisUrl, {
+                    headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
+                    params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
+                    timeout: 5000
+                });
+                kisData = kisRes.data.output;
+                
+                try {
+                    const trendRes = await axios.get('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor', {
+                        headers: { 
+                            'authorization': 'Bearer ' + kisTokenGlobal, 
+                            'appkey': KIS_APP_KEY, 
+                            'appsecret': KIS_APP_SECRET, 
+                            'tr_id': 'FHKST01010900' 
+                        },
+                        params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
+                        timeout: 3000
+                    });
+                    const out = trendRes.data.output;
+                        const row = Array.isArray(out) ? out[0] : out;
+                        if (row) {
+                            foreignBuy = parseInt(row.frgn_ntby_qty) || 0;
+                            instBuy = parseInt(row.orgn_ntby_qty) || 0;
+                            // [TASK-A12] 개인 순매수 데이터도 확보하여 보너스 점수 정확도 향상
+                            personBuy = parseInt(row.prsn_ntby_qty) || 0;
+                        }
+                } catch (trendErr) {
+                    console.warn(`[KIS Trend] Failed for ${stock.code}: ${trendErr.message}`);
                 }
+
+                if (kisCache) {
+                    kisCache[stock.code] = { price: kisData, foreign_buy: foreignBuy, inst_buy: instBuy, person_buy: personBuy };
+                }
+            } catch(e) {
+                if (e.response && e.response.data && e.response.data.msg_cd === 'EGW00123') {
+                    throw { type: 'TOKEN_EXPIRED', originalError: e };
+                }
+                console.warn(`[KIS API] Failed for ${stock.code}: ${e.message}`);
             }
-        } catch(e) {
-            // EGW00123: Expired Token
-            if (e.response && e.response.data && e.response.data.msg_cd === 'EGW00123') {
-                throw { type: 'TOKEN_EXPIRED', originalError: e };
+        }
+
+        if (kisData && kisData.stck_prpr) {
+            let currentPrice = parseInt(kisData.stck_prpr);
+            let currentHigh = parseInt(kisData.stck_hgpr);
+            let currentLow = parseInt(kisData.stck_lwpr);
+            
+            // [v9.2.0] After-Hours Price Red-Team Fix
+            // KST 기준 16:00 ~ 20:30 사이에는 시간외단일가(ovtm_untp_prpr)를 우선 확인
+            const kstNow = getKstNow();
+            const kstHour = kstNow.getUTCHours();
+            const overtimePrice = parseInt(kisData.ovtm_untp_prpr || 0);
+            
+            // 장마감(16:00) 이후 시간외 가격이 존재하면 이를 현재가로 채택
+            if (kstHour >= 16 && kstHour <= 20 && overtimePrice > 0) {
+                console.log(`[Analyzer] Applying After-Hours Price for ${stock.code}: ${overtimePrice}`);
+                currentPrice = overtimePrice;
             }
-            // Other errors (429, 500, etc.) are caught and ignored for hybrid fallback
+
+            chartData.kis_change_data = {
+                sign: kisData.prdy_vrss_sign,
+                change: parseInt(kisData.prdy_vrss),
+                rate: parseFloat(kisData.prdy_ctrt),
+                trade_amount: parseInt(kisData.acml_tr_pbmn),
+                acml_vol: parseInt(kisData.acml_vol || 0),
+                vol_rate: parseFloat(kisData.prdy_vol_vrss_rt || 0),
+                foreign_buy: foreignBuy,
+                inst_buy: instBuy,
+                person_buy: personBuy,
+                stck_prpr: currentPrice // Explicitly pass the derived price
+            };
+
+            // [v9.2.0] After-hours metrics sync
+            if (kstHour >= 16 && kstHour <= 20 && overtimePrice > 0) {
+                chartData.kis_change_data.change = parseInt(kisData.ovtm_untp_prdy_vrss || kisData.prdy_vrss);
+                chartData.kis_change_data.rate = parseFloat(kisData.ovtm_untp_prdy_ctrt || kisData.prdy_ctrt);
+                chartData.kis_change_data.sign = kisData.ovtm_untp_prdy_vrss_sign || kisData.prdy_vrss_sign;
+            }
+
+            const lastIdx = chartData.close.length - 1;
+            if (lastIdx >= 0) {
+                chartData.close[lastIdx] = currentPrice;
+                chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
+                chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
+            }
         }
     }
     return chartData;
-};
+}
 
 // --- Math Utilities ---
-
 function rsi(src, period) {
     if (src.length <= period) return Array(src.length).fill(null);
     let rsiValues = Array(period).fill(null);
-    
     let gains = [];
     let losses = [];
-    
     for (let i = 1; i < src.length; i++) {
         let diff = src[i] - src[i-1];
         gains.push(Math.max(0, diff));
         losses.push(Math.max(0, -diff));
     }
-    
     let avgGain = gains.slice(0, period).reduce((a, b) => a + b) / period;
     let avgLoss = losses.slice(0, period).reduce((a, b) => a + b) / period;
-    
     const firstRS = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
     rsiValues.push(firstRS);
-    
     for (let i = period; i < gains.length; i++) {
         avgGain = (avgGain * (period - 1) + gains[i]) / period;
         avgLoss = (avgLoss * (period - 1) + losses[i]) / period;
         const rs = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss));
         rsiValues.push(rs);
     }
-    
     return rsiValues;
 }
 
@@ -215,75 +293,70 @@ function ema(src, period) {
 function sma(src, period) {
     let results = [];
     for (let i = 0; i < src.length; i++) {
-        if (i < period - 1) {
-            results.push(null);
-        } else {
+        if (i < period - 1) { results.push(null); } 
+        else {
             let sum = 0;
-            for (let j = 0; j < period; j++) {
-                sum += src[i - j];
-            }
+            for (let j = 0; j < period; j++) { sum += src[i - j]; }
             results.push(sum / period);
         }
     }
     return results;
 }
 
-function lowest(src, period) {
-    let results = [];
-    for (let i = 0; i < src.length; i++) {
-        if (i < period - 1) {
-            results.push(null);
-            continue;
+function lowest(source, period) {
+    let result = [];
+    for (let i = 0; i < source.length; i++) {
+        if (i < period - 1) { result.push(null); } 
+        else {
+            let win = source.slice(i - period + 1, i + 1);
+            result.push(Math.min(...win));
         }
-        let window = src.slice(i - period + 1, i + 1);
-        results.push(Math.min(...window));
     }
-    return results;
+    return result;
+}
+
+function highest(source, period) {
+    let result = [];
+    for (let i = 0; i < source.length; i++) {
+        if (i < period - 1) { result.push(null); } 
+        else {
+            let win = source.slice(i - period + 1, i + 1);
+            result.push(Math.max(...win));
+        }
+    }
+    return result;
 }
 
 function stdev(src, period) {
     let results = [];
     for (let i = 0; i < src.length; i++) {
-        if (i < period - 1) {
-            results.push(null);
-            continue;
-        }
+        if (i < period - 1) { results.push(null); continue; }
         let window = src.slice(i - period + 1, i + 1);
         let mean = window.reduce((a, b) => a + b) / period;
-        let variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / period;
+        // [TASK-A08] 표본 표준편차 (N-1) 적용 - Pine Script ta.stdev 정합성
+        const divisor = period > 1 ? period - 1 : 1;
+        let variance = window.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / divisor;
         results.push(Math.sqrt(variance));
     }
     return results;
 }
 
-// ADX (Average Directional Index) Calculation
 function calculateADX(high, low, close, period = 14) {
     if (close.length <= period) return Array(close.length).fill(null);
     let tr = [0], plusDM = [0], minusDM = [0];
-
     for (let i = 1; i < close.length; i++) {
         let upMove = high[i] - high[i - 1];
         let downMove = low[i - 1] - low[i];
-        
         plusDM.push((upMove > downMove && upMove > 0) ? upMove : 0);
         minusDM.push((downMove > upMove && downMove > 0) ? downMove : 0);
-        
         let tr1 = high[i] - low[i];
         let tr2 = Math.abs(high[i] - close[i - 1]);
         let tr3 = Math.abs(low[i] - close[i - 1]);
         tr.push(Math.max(tr1, tr2, tr3));
     }
-
     let smoothTR = [0], smoothPlusDM = [0], smoothMinusDM = [0];
-    
-    // Wilder's Smoothing
     for (let i = 1; i < close.length; i++) {
-        if (i < period) {
-            smoothTR.push(null);
-            smoothPlusDM.push(null);
-            smoothMinusDM.push(null);
-            continue;
-        }
+        if (i < period) { smoothTR.push(null); smoothPlusDM.push(null); smoothMinusDM.push(null); continue; }
         if (i === period) {
             smoothTR.push(tr.slice(1, period + 1).reduce((a, b) => a + b, 0));
             smoothPlusDM.push(plusDM.slice(1, period + 1).reduce((a, b) => a + b, 0));
@@ -294,53 +367,23 @@ function calculateADX(high, low, close, period = 14) {
             smoothMinusDM.push(smoothMinusDM[i - 1] - (smoothMinusDM[i - 1] / period) + minusDM[i]);
         }
     }
-
     let adx = Array(close.length).fill(null);
     let dx = [];
-
     for (let i = period; i < close.length; i++) {
         let plusDI = 100 * (smoothPlusDM[i] / smoothTR[i]);
         let minusDI = 100 * (smoothMinusDM[i] / smoothTR[i]);
-        if (plusDI + minusDI === 0) {
-            dx.push(0);
-        } else {
-            dx.push(100 * Math.abs(plusDI - minusDI) / (plusDI + minusDI));
-        }
+        if (plusDI + minusDI === 0) { dx.push(0); } else { dx.push(100 * Math.abs(plusDI - minusDI) / (plusDI + minusDI)); }
     }
-
-    let dxOffset = period; // dx array is shorter than close array
+    let dxOffset = period;
     for (let i = period * 2 - 1; i < close.length; i++) {
-        if (i === period * 2 - 1) {
-            adx[i] = dx.slice(0, period).reduce((a, b) => a + b, 0) / period;
-        } else {
-            adx[i] = ((adx[i - 1] * (period - 1)) + dx[i - dxOffset]) / period;
-        }
+        if (i === period * 2 - 1) { adx[i] = dx.slice(0, period).reduce((a, b) => a + b, 0) / period; } 
+        else { adx[i] = ((adx[i - 1] * (period - 1)) + dx[i - dxOffset]) / period; }
     }
-
     return adx;
 }
 
-/**
- * Re-implements ta.valuewhen
- * @param {Array<boolean>} condition 
- * @param {Array<number>} source 
- * @param {number} occurrence (0 = latest, 1 = previous...)
- */
-function valuewhen(condition, source, occurrence = 0) {
-    let matches = [];
-    for (let i = 0; i < condition.length; i++) {
-        if (condition[i]) {
-            matches.push({ val: source[i], idx: i });
-        }
-    }
-    if (matches.length <= occurrence) return null;
-    return matches[matches.length - 1 - occurrence].val;
-}
-
 // --- Pine Indicator Implementation ---
-
 function calculateSignals(ohlcHistory, timeframeStr = '1D') {
-    // Filter out potential nulls from Yahoo Finance
     const timestamps = ohlcHistory.time || [];
     const rawClose = ohlcHistory.close || [];
     const rawOpen = ohlcHistory.open || [];
@@ -352,16 +395,10 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     for (let i = 0; i < rawClose.length; i++) {
         if (rawClose[i] !== null && rawOpen[i] !== null && rawHigh[i] !== null && rawLow[i] !== null) {
             cleanData.push({
-                close: rawClose[i],
-                open: rawOpen[i],
-                high: rawHigh[i],
-                low: rawLow[i],
-                volume: rawVolume[i] || 0,
-                time: timestamps[i]
+                close: rawClose[i], open: rawOpen[i], high: rawHigh[i], low: rawLow[i], volume: rawVolume[i] || 0, time: timestamps[i]
             });
         }
     }
-
     if (cleanData.length < 50) return null;
 
     const close = cleanData.map(d => d.close);
@@ -369,524 +406,298 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
     const low = cleanData.map(d => d.low);
     const high = cleanData.map(d => d.high);
     const volume = cleanData.map(d => d.volume);
-    const timeArr = cleanData.map(d => d.time); // Unix timestamp in seconds
+    const timeArr = cleanData.map(d => d.time);
     const len = close.length;
 
-    // RSI Pivot 1 (RSI 3)
-    const rsiPeriod_2 = 3;
-    const rsi3 = rsi(close, rsiPeriod_2);
+    const rsi14 = rsi(close, 14);
+    const P_1 = rsi14.map((val, i) => i > 1 ? (rsi14[i-2] < rsi14[i-1] && rsi14[i-1] > rsi14[i]) : false);
+    const highest_high_3_1 = highest(high, 3);
+    const highest_high_rsi_1 = highest(high, 14);
+    let result_1_series = Array(len).fill(0);
+    let last_val_B1 = null, prev_val_B1 = null, Q_1 = null, QQ_1 = null;
+    for (let i = 0; i < len; i++) {
+        if (P_1[i]) {
+            prev_val_B1 = last_val_B1; last_val_B1 = highest_high_3_1[i];
+            if (prev_val_B1 !== null && last_val_B1 < prev_val_B1) { QQ_1 = Q_1; Q_1 = highest_high_rsi_1[i]; }
+        }
+        if (Q_1 !== null && QQ_1 !== null) { result_1_series[i] = Q_1 < QQ_1 ? Q_1 : QQ_1; } 
+        else if (i > 0) { result_1_series[i] = result_1_series[i-1]; }
+    }
+
+    const rsi3 = rsi(close, 3);
     const P_2 = rsi3.map((val, i) => i > 1 ? (rsi3[i-2] > rsi3[i-1] && rsi3[i-1] < rsi3[i]) : false);
     const lowest_low_3_2 = lowest(low, 3);
-    const lowest_low_rsi_2 = lowest(low, rsiPeriod_2); 
-    
-    // Calculate result_2 over time (O(N) Optimization)
+    const lowest_low_rsi_2 = lowest(rsi3, 3); // [TASK-A06] low 대신 rsi3 사용
     let result_2_series = Array(len).fill(0);
-    let last_val_B2 = null;
-    let prev_val_B2 = null;
-    let Q_2 = null;
-    let QQ_2 = null;
-    
+    let last_val_B2 = null, prev_val_B2 = null, Q_2 = null, QQ_2 = null;
     for (let i = 0; i < len; i++) {
         if (P_2[i]) {
-            prev_val_B2 = last_val_B2;
-            last_val_B2 = lowest_low_3_2[i];
-            
-            // Higher Low Trigger (PineScript: B_2[1] < B_2)
-            if (prev_val_B2 !== null && last_val_B2 > prev_val_B2) {
-                QQ_2 = Q_2;
-                Q_2 = lowest_low_rsi_2[i];
-            }
+            prev_val_B2 = last_val_B2; last_val_B2 = lowest_low_3_2[i];
+            if (prev_val_B2 !== null && last_val_B2 > prev_val_B2) { QQ_2 = Q_2; Q_2 = lowest_low_rsi_2[i]; }
         }
-        
-        if (Q_2 !== null && QQ_2 !== null) {
-            result_2_series[i] = Q_2 > QQ_2 ? Q_2 : QQ_2;
-        } else if (i > 0) {
-            result_2_series[i] = result_2_series[i-1];
-        }
+        if (Q_2 !== null && QQ_2 !== null) { result_2_series[i] = Q_2 > QQ_2 ? Q_2 : QQ_2; } 
+        else if (i > 0) { result_2_series[i] = result_2_series[i-1]; }
     }
 
-    // RSI Pivot 2 (RSI 10 - User Pine Script Base)
     const rsiPeriod_3 = 10;
-    const rsi8 = rsi(close, rsiPeriod_3);
-    const P_3 = rsi8.map((val, i) => i > 1 ? (rsi8[i-2] > rsi8[i-1] && rsi8[i-1] < rsi8[i]) : false);
+    const rsi10 = rsi(close, rsiPeriod_3);
+    const P_3 = rsi10.map((val, i) => i > 1 ? (rsi10[i-2] > rsi10[i-1] && rsi10[i-1] < rsi10[i]) : false);
     const lowest_low_3_3 = lowest(low, 3);
     const lowest_low_rsi_3 = lowest(low, rsiPeriod_3);
-    
-    // Calculate result_3 over time (O(N) Optimization)
     let result_3_series = Array(len).fill(0);
-    let last_val_B3 = null;
-    let prev_val_B3 = null;
-    let Q_3 = null;
-    let QQ_3 = null;
-    
+    let last_val_B3 = null, prev_val_B3 = null, Q_3 = null, QQ_3 = null;
     for (let i = 0; i < len; i++) {
         if (P_3[i]) {
-            prev_val_B3 = last_val_B3;
-            last_val_B3 = lowest_low_3_3[i];
-            
-            // Higher Low Trigger (PineScript: B_3[1] < B_3)
-            if (prev_val_B3 !== null && last_val_B3 > prev_val_B3) {
-                QQ_3 = Q_3;
-                Q_3 = lowest_low_rsi_3[i];
-            }
+            prev_val_B3 = last_val_B3; last_val_B3 = lowest_low_3_3[i];
+            if (prev_val_B3 !== null && last_val_B3 > prev_val_B3) { QQ_3 = Q_3; Q_3 = lowest_low_rsi_3[i]; }
         }
-        
-        if (Q_3 !== null && QQ_3 !== null) {
-            result_3_series[i] = Q_3 > QQ_3 ? Q_3 : QQ_3;
-        } else if (i > 0) {
-            result_3_series[i] = result_3_series[i - 1];
-        }
+        if (Q_3 !== null && QQ_3 !== null) { result_3_series[i] = Q_3 > QQ_3 ? Q_3 : QQ_3; } 
+        else if (i > 0) { result_3_series[i] = result_3_series[i - 1]; }
     }
 
-    // --- Trend Filter (EMA MACD) ---
-    // [1] Primary Timeframe MACD (8, 26, 9, 0.2)
-    const m_rapida = ema(close, 8);
-    const m_lenta = ema(close, 26);
+    const m_rapida = ema(close, 8), m_lenta = ema(close, 26);
     const BBMacd = m_rapida.map((r, i) => r - m_lenta[i]);
-    const Avg = ema(BBMacd, 9);
-    const SDev = stdev(BBMacd, 9);
-    const stdv = 0.2;
-    const banda_supe = Avg.map((a, i) => a + stdv * SDev[i]);
+    const Avg = ema(BBMacd, 9), SDev = stdev(BBMacd, 9);
+    const banda_supe = Avg.map((a, i) => a + 0.2 * SDev[i]);
 
-    // [2] Multi-Timeframe (MTF) MACD
-    const multiplier = 2;
-    // Aggregate close array (compress)
     let mtfCloses = [];
-    for (let i = 0; i < len; i += multiplier) {
-        let endIdx = Math.min(i + multiplier - 1, len - 1);
-        mtfCloses.push(close[endIdx]);
+    // [TASK-A13] MTF 리샘플링 로직 단순화 (i+1 중복 방어 및 ceil(N/2) 정합성 확보)
+    for (let i = 1; i < len; i += 2) { 
+        mtfCloses.push(close[i]); 
     }
-    
-    // Calculate indicators on compressed array
-    const rapida_mtf = 12;
-    const lenta_mtf = 39;
-    const stdv_mtf = 0.4;
-    
-    const m_rapida_c = ema(mtfCloses, rapida_mtf);
-    const m_lenta_c = ema(mtfCloses, lenta_mtf);
+    if (len % 2 !== 0) {
+        mtfCloses.push(close[len - 1]);
+    }
+    const m_rapida_c = ema(mtfCloses, 12), m_lenta_c = ema(mtfCloses, 39);
     const BBMacd_c = m_rapida_c.map((r, i) => r - m_lenta_c[i]);
-    const Avg_c = ema(BBMacd_c, 9);
-    const SDev_c = stdev(BBMacd_c, 9);
-    const banda_supe_c = Avg_c.map((a, i) => a + stdv_mtf * SDev_c[i]);
+    const Avg_c = ema(BBMacd_c, 9), SDev_c = stdev(BBMacd_c, 9);
+    const banda_supe_c = Avg_c.map((a, i) => a + 0.4 * SDev_c[i]);
 
-    // Project MTF indicators back to base timeframe length
-    let BBMacd_mtf = Array(len).fill(0);
-    let Avg_mtf = Array(len).fill(0);
-    let banda_supe_mtf = Array(len).fill(0);
-
+    let BBMacd_mtf = Array(len).fill(0), Avg_mtf = Array(len).fill(0), banda_supe_mtf = Array(len).fill(0);
     for (let i = 0; i < len; i++) {
-        let mtfIdx = Math.floor(i / multiplier);
-        BBMacd_mtf[i] = BBMacd_c[mtfIdx] !== undefined ? BBMacd_c[mtfIdx] : 0;
-        Avg_mtf[i] = Avg_c[mtfIdx] !== undefined ? Avg_c[mtfIdx] : 0;
-        banda_supe_mtf[i] = banda_supe_c[mtfIdx] !== undefined ? banda_supe_c[mtfIdx] : 0;
+        let mtfIdx = Math.floor(i / 2);
+        BBMacd_mtf[i] = BBMacd_c[mtfIdx] || 0; Avg_mtf[i] = Avg_c[mtfIdx] || 0; banda_supe_mtf[i] = banda_supe_c[mtfIdx] || 0;
     }
 
-    // --- Signal Evaluation ---
     const last_idx = len - 1;
+    const cond_up7 = (BBMacd[last_idx] > banda_supe[last_idx]) && 
+                     (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && 
+                     (BBMacd[last_idx] > Avg[last_idx]) && 
+                     (BBMacd_mtf[last_idx] > 0);
     
-    // Red Team Hotfix: cond_up7 Apple-to-Orange comparison fix (Avg_mtf -> Avg)
-    const cond_up7_series = Array(len).fill(false);
-    for (let i = 0; i < len; i++) {
-        cond_up7_series[i] = (BBMacd[i] > banda_supe[i]) && 
-                             (BBMacd_mtf[i] > banda_supe_mtf[i]) && 
-                             (BBMacd[i] > Avg[i]) && 
-                             (BBMacd_mtf[i] > 0);
-    }
-    const cond_up7 = cond_up7_series[last_idx];
-    
-    // [Design v3.2.2] Strong Trend Condition for Rule 8
-    // Definition: BBMacd_mtf > 0 AND BBMacd_mtf > banda_supe_mtf AND BBMacd > BBMacd_mtf
-    const cond_strong_trend = (BBMacd_mtf[last_idx] > 0) && 
-                              (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && 
-                              (BBMacd[last_idx] > BBMacd_mtf[last_idx]);
+    const cond_strong_trend = (BBMacd_mtf[last_idx] > 0) && (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && (BBMacd[last_idx] > BBMacd_mtf[last_idx]);
 
-    // Red Team Hotfix: DHH2 Separation (Pullback formed earlier, then breakout occurs within 5 bars)
     const pullback_formed_series = Array(len).fill(false);
     for (let i = 1; i < len; i++) {
-        pullback_formed_series[i] = (result_2_series[i] > result_3_series[i]) && 
-                                    (result_2_series[i-1] !== result_2_series[i]) && 
-                                    (open[i] > result_2_series[i]);
+        pullback_formed_series[i] = (result_2_series[i] > result_3_series[i]) && (result_2_series[i-1] !== result_2_series[i]) && (open[i] > result_2_series[i]);
     }
-
     const checkDHH2At = (idx) => {
-        if (idx < 1) return false;
-        if (!cond_up7_series[idx] || open[idx] <= result_2_series[idx]) return false;
-        
-        // Look back up to 5 bars from idx for pullback confirmation
-        for (let k = idx; k >= Math.max(1, idx - 5); k--) {
-            if (pullback_formed_series[k]) return true;
-        }
+        if (idx < 1 || !cond_up7 || open[idx] <= result_2_series[idx]) return false;
+        for (let k = idx; k >= Math.max(1, idx - 5); k--) { if (pullback_formed_series[k]) return true; }
         return false;
     };
-
     let isSignalActive = false;
-    // To accommodate dashboard visibility, check if DHH2 fired in the recent 3 candles
-    for (let i = last_idx; i > Math.max(0, last_idx - 3); i--) {
-        if (checkDHH2At(i)) {
-            isSignalActive = true;
-            break;
-        }
-    }
+    for (let i = last_idx; i > Math.max(0, last_idx - 3); i--) { if (checkDHH2At(i)) { isSignalActive = true; break; } }
 
-    const rsi2_prev = rsi3[last_idx - 1] !== null ? rsi3[last_idx - 1] : 50;
-    const rsi2_curr = rsi3[last_idx] !== null ? rsi3[last_idx] : 50;
-    
-    // 1. RSI Trigger: Hooking up from pullback region (< 40)
+    const rsi2_prev = rsi3[last_idx - 1] || 50, rsi2_curr = rsi3[last_idx] || 50;
     const trigger_rsi = rsi2_prev < 40 && rsi2_curr > rsi2_prev;
-
     let trigger_vol = false;
     if (volume.length >= 20) {
-        let volSum = 0;
-        for (let i = last_idx - 20; i < last_idx; i++) {
-            if (i >= 0) volSum += volume[i];
-        }
-        const volAvg = volSum / 20;
-        // 2. Volume Trigger: Meaningful participation (> 1.5x average)
-        if (volAvg > 0 && volume[last_idx] >= volAvg * 1.5) {
-            trigger_vol = true;
-        }
+        let volSum = 0; for (let i = last_idx - 20; i < last_idx; i++) { if (i >= 0) volSum += volume[i]; }
+        if (volSum > 0 && volume[last_idx] >= (volSum/20) * 1.5) trigger_vol = true;
     }
-
-    // 3. Price Action Confirmation: Bullish Candle (Close > Open)
-    const bullish_candle = close[last_idx] > open[last_idx];
-
-    // Entry Approved: Removed strict conditions per user request. Sniper uses Top 15 Telegram score filter instead.
-    const entry_approved = true;
-
-    // --- Progress & Final Signal Logic ---
-    const timeframeMsMap = {
-        '2M': 2 * 60 * 1000,
-        '5M': 5 * 60 * 1000,
-        '15M': 15 * 60 * 1000,
-        '30M': 30 * 60 * 1000,
-        '1H': 60 * 60 * 1000,
-        '2H': 2 * 60 * 60 * 1000,
-        '4H': 4 * 60 * 60 * 1000,
-        '1D': 24 * 60 * 60 * 1000,
-        '2D': 2 * 24 * 60 * 60 * 1000,
-        '1W': 7 * 24 * 60 * 60 * 1000
-    };
-    const tfMs = timeframeMsMap[timeframeStr] || timeframeMsMap['1D'];
     
-    // timeArr[last_idx] is usually seconds (unix) or potentially ms. Handle intelligently.
-    const candleStartRaw = timeArr[last_idx];
-    const candleStart = candleStartRaw > 1e11 ? candleStartRaw : candleStartRaw * 1000;
-    const timenow = Date.now();
-    let progress = Math.max(0, Math.min(1.0, (timenow - candleStart) / tfMs));
-    
-    // Signal_HH is strongly defined as DHH2 AND progress > 0.3 AND entry_approved
-    const signal_HH = isSignalActive && progress > 0.3 && entry_approved;
+    const timeframeMsMap = { '2M': 120000, '5M': 300000, '15M': 900000, '30M': 1800000, '1H': 3600000, '2H': 7200000, '4H': 14400000, '1D': 86400000, '2D': 172800000, '1W': 604800000 };
+    // [TASK-A09] Yahoo API 타임스탬프(초 단위)를 밀리초로 통일
+    const candleStart = timeArr[last_idx] * 1000;
+    let progress = Math.max(0, Math.min(1.0, (Date.now() - candleStart) / (timeframeMsMap[timeframeStr] || 86400000)));
+    const signal_HH = isSignalActive && progress > 0.3;
 
     const adxArray = calculateADX(high, low, close, 14);
-    const currentADX = adxArray[last_idx] !== null ? adxArray[last_idx] : 0;
-    const isTrending = currentADX >= 25;
-
-    // --- Phase 4: Optimal Entry Price & Categorization & Multi-targets ---
-    const ema5 = ema(close, 5);
-    const ema10 = ema(close, 10);
-    const ema20 = ema(close, 20);
-    const ema60 = ema(close, 60);
-    const ema5_val = ema5[last_idx];
-    const ema10_val = ema10[last_idx];
-    const ema20_val = ema20[last_idx];
-    const ema60_val = ema60[last_idx];
+    const currentADX = adxArray[last_idx] || 0;
+    const ema5_val = ema(close, 5)[last_idx], ema10_val = ema(close, 10)[last_idx], ema20_val = ema(close, 20)[last_idx];
     
-    // SMA 5, 10 (Design v3.0)
-    const sma5_arr = sma(close, 5);
-    const sma10_arr = sma(close, 10);
-    const sma5_val = sma5_arr[last_idx];
-    const sma10_val = sma10_arr[last_idx];
+    const kis = ohlcHistory.kis_change_data || {};
+    const bonus_score = ScoringService.calculateBonusScore(kis.foreign_buy, kis.inst_buy, kis.person_buy);
 
-    // Bollinger Bands (25, 2) logic for BBW (Design v3.0)
-    const bbw_adj = 100.0;
-    const bbw_mult = 50.0;
-    const length_BBW = 25;
-    
-    const calculateBBWAndLowest = (src_close) => {
-        if (!src_close || src_close.length < length_BBW) return { val: 0, low5: 0, series: [] };
-        const b_sma = sma(src_close, length_BBW);
-        const b_stdev = stdev(src_close, length_BBW);
-        const series = b_sma.map((s, i) => {
-            if (s === 0 || s === null || b_stdev[i] === null) return null;
-            return (((s + 2 * b_stdev[i]) - (s - 2 * b_stdev[i])) / s) * 100 * bbw_mult + bbw_adj;
-        });
+    const currentBBW = (function(src) {
+        const b_sma = sma(src, 25), b_stdev = stdev(src, 25);
+        const series = b_sma.map((s, i) => (s && b_stdev[i]) ? (4 * b_stdev[i] / s) * 100 * 50 + 100 : null);
         const val = series[series.length - 1] || 0;
         let low5 = val;
         if (series.length >= 6) {
-            let min_v = val;
-            for (let i = 1; i <= 5; i++) {
-                const v = series[series.length - 1 - i];
-                if (v !== null && v < min_v) min_v = v;
-            }
-            low5 = min_v;
+            let win = series.slice(-6, -1).filter(v => v !== null);
+            if (win.length > 0) low5 = Math.min(...win, val);
         }
         return { val, low5, series };
+    })(close);
+
+    const mtfBBW = (function(src) {
+        let resampled = []; for (let i = 0; i < src.length; i += 2) { resampled.push(src[Math.min(i + 1, src.length - 1)]); }
+        const b_sma = sma(resampled, 25), b_stdev = stdev(resampled, 25);
+        const series = b_sma.map((s, i) => (s && b_stdev[i]) ? (4 * b_stdev[i] / s) * 100 * 50 + 100 : null);
+        return { val: series[series.length - 1] || 0, low5: 0, series };
+    })(close);
+
+    const bbw_series = currentBBW.series, bbw_mtf_v = mtfBBW.val;
+    const THH = last_idx > 0 && bbw_series[last_idx] > bbw_mtf_v && (bbw_series[last_idx-1] || 0) <= bbw_mtf_v;
+    const RHH = bbw_series[last_idx] > bbw_mtf_v;
+    const signal_H = THH && progress > 0.7 && BBMacd[last_idx] > banda_supe[last_idx];
+    const signal_HHH = RHH && cond_strong_trend;
+
+    const sma20 = sma(close, 20), stdev20 = stdev(close, 20);
+    const bb_upper = sma20[last_idx] ? sma20[last_idx] + 2 * stdev20[last_idx] : close[last_idx] * 1.07;
+
+    const currentPrice = close[last_idx];
+    const getRealisticTarget = (target, maxDiscount = 0.05) => {
+        if (!target || target === 0) return null; // [TASK-A05] 0인 경우 null 반환
+        const discount = (currentPrice - target) / currentPrice;
+        if (discount > maxDiscount || discount < -0.01) {
+            const support = Math.max(ema5_val, ema10_val, ema20_val);
+            return (currentPrice - support) / currentPrice > maxDiscount ? currentPrice * 0.985 : support;
+        }
+        return target;
     };
 
-    const currentBBW = calculateBBWAndLowest(close);
-    
-    // [Design v3.0] Internal Resampling Logic: 
-    // Calculate MTF (Multi-Timeframe) BBW. 
-    // Double resampling occurs for 2H/2D (Input 2H -> MTF 4H, Input 2D -> MTF 4D).
-    // Standard MTF mapping (e.g. 4H->1D) is planned for next version.
-    const resampled2x = resampleChartData({ time: timeArr, open, high, low, close, volume }, 2, timeframeStr);
-    const mtfBBW = calculateBBWAndLowest(resampled2x.close);
-
-    // [v6.4.0] New Signal Logic (Strong & Absolute)
-    const multiplier_bbw = 2;
-    let bbw_mtf_series = Array(len).fill(0);
-    for (let i = 0; i < len; i++) {
-        let mtfIdx = Math.floor(i / multiplier_bbw);
-        bbw_mtf_series[i] = mtfBBW.series[mtfIdx] !== undefined ? mtfBBW.series[mtfIdx] : 0;
-    }
-    const bbw_series = currentBBW.series;
-    
-    // THH: crossover(bbw, bbw_mtf)
-    const THH = last_idx > 0 && bbw_series[last_idx] > bbw_mtf_series[last_idx] && (bbw_series[last_idx - 1] || 0) <= (bbw_mtf_series[last_idx - 1] || 0);
-    // RHH: bbw > bbw_mtf
-    const RHH = bbw_series[last_idx] > bbw_mtf_series[last_idx];
-    // bg_up_1: BBMacd > banda_supe
-    const bg_up_1 = BBMacd[last_idx] > banda_supe[last_idx];
-    // cond_up8: (BBMacd > banda_supe) and (BBMacd_mtf > banda_supe_mtf) and BBMacd_mtf > 0 and BBMacd > BBMacd_mtf
-    const cond_up8 = (BBMacd[last_idx] > banda_supe[last_idx]) && 
-                     (BBMacd_mtf[last_idx] > banda_supe_mtf[last_idx]) && 
-                     (BBMacd_mtf[last_idx] > 0) && 
-                     (BBMacd[last_idx] > BBMacd_mtf[last_idx]);
-
-    // 강력신호 (signal_H): THH and progress > 0.7 and bg_up_1
-    const signal_H = THH && progress > 0.7 && bg_up_1;
-    // 절대신호 (signal_HHH): RHH and cond_up8
-    const signal_HHH = RHH && cond_up8;
-
-    // Standard BB (20, 2) for price targets
-    const sma20 = sma(close, 20);
-    const sma60 = sma(close, 60);
-    const sma120 = sma(close, 120);
-    const stdev20 = stdev(close, 20);
-    const bb_lower = sma20[last_idx] !== null ? sma20[last_idx] - 2 * stdev20[last_idx] : null;
-    const bb_upper = sma20[last_idx] !== null ? sma20[last_idx] + 2 * stdev20[last_idx] : null;
-
-    const lowest3_val = lowest_low_3_2[last_idx] !== null ? lowest_low_3_2[last_idx] : low[last_idx];
-
-    let category = "기타 (관망)";
-    let entry_price = close[last_idx];
-
-    if (isTrending && cond_up7) {
-        category = "추세 지속형";
-        // Use EMA 20 or RSI Pivot as support for uptrends
-        entry_price = Math.max(ema20_val, result_2_series[last_idx]);
-    } else if (!isTrending) {
-        // Range-bound
-        category = "박스권 횡보";
-        entry_price = bb_lower !== null ? bb_lower : lowest3_val;
-    } else if (isTrending && !cond_up7) {
-        if (rsi2_curr < 40) {
-            category = "바닥권 반등";
-            entry_price = lowest3_val; // tight stop base
-        } else {
-            category = "하락 추세";
-            entry_price = lowest3_val;
-        }
-    }
+    let category = (!currentADX || currentADX < 25) ? "박스권 횡보" : (cond_up7 ? "추세 지속형" : "하락 추세");
 
     return {
-        result_2: Math.round(result_2_series[last_idx]),
-        result_3: Math.round(result_3_series[last_idx]),
-        stop_loss: Math.round(result_3_series[last_idx] * 0.98), // [v6.6.1] Pine Script Base: Entry2 - 2%
-        cond_up7,
-        DHH2: isSignalActive,
-        progress: Number(progress.toFixed(3)),
-        signal_HH: signal_HH,
-        adx: currentADX,
-        isTrending: isTrending,
-        trigger_rsi,
-        trigger_vol,
-        entry_approved,
-        category,
-        entry_price: entry_price ? Math.round(entry_price) : 0,
-        ema5: ema5_val ? Math.round(ema5_val) : 0,
-        ema10: ema10_val ? Math.round(ema10_val) : 0,
-        ema20: ema20_val ? Math.round(ema20_val) : 0,
-        ema60: ema60_val ? Math.round(ema60_val) : 0,
-        sma5: sma5_val ? Math.round(sma5_val) : 0,
-        sma10: sma10_val ? Math.round(sma10_val) : 0,
-        sma20: sma20[last_idx] ? Math.round(sma20[last_idx]) : 0,
-        sma60: sma60[last_idx] ? Math.round(sma60[last_idx]) : 0,
-        sma120: sma120[last_idx] ? Math.round(sma120[last_idx]) : 0,
-        bb_upper: bb_upper ? Math.round(bb_upper) : 0,
-        current_price: close[last_idx] ? Math.round(close[last_idx]) : 0,
-        open_price: open[last_idx] ? Math.round(open[last_idx]) : 0,
-        prev_close: (last_idx > 0 && close[last_idx - 1]) ? Math.round(close[last_idx - 1]) : 0,
+        result_1: Math.round(Math.max(close[last_idx] * 1.05, bb_upper)),
+        result_2: result_2_series[last_idx] > 0 ? Math.round(getRealisticTarget(result_2_series[last_idx], 0.04)) : null,
+        result_3: result_3_series[last_idx] > 0 ? Math.round(getRealisticTarget(result_3_series[last_idx], 0.08)) : null,
+        stop_loss: result_3_series[last_idx] > 0 ? Math.round(getRealisticTarget(result_3_series[last_idx], 0.08) * 0.97) : null,
+        cond_up7, DHH2: isSignalActive, progress: Number(progress.toFixed(3)), signal_HH, adx: currentADX,
+        category, style_tag: (currentADX > 30 ? "단기 추세" : "스윙"),
+        current_price: close[last_idx], // [v9.2.1] Explicit price carrier
+        target_price_1: Math.round(Math.max(bb_upper, close[last_idx] * 1.05)),
+        target_price_2: Math.round(close[last_idx] * 1.12),
         bbw: Number(currentBBW.val.toFixed(4)),
         lowest_bbw_5: Number(currentBBW.low5.toFixed(4)),
-        is_strong_signal: signal_HHH, // Absolute Signal (RHH & cond_up8)
-        signal_H: signal_H,           // Strong Signal (THH & progress & bg_up_1)
-        signal_HHH: signal_HHH,       // Absolute Signal
-        cond_strong_trend: cond_strong_trend,
-        con_mtf: Number(mtfBBW.low5.toFixed(4)),
-        bbw_mtf: Number(mtfBBW.val.toFixed(4)),
-        kis_change_data: ohlcHistory.kis_change_data || null
+        signal_H, signal_HHH,
+        is_strong_signal: signal_HHH, // [TASK-A01] 신호 덮어쓰기 방지를 위해 마지막에 선언
+        bonus_score, kis_change_data: ohlcHistory.kis_change_data || null
     };
 }
 
-module.exports = { calculateSignals };
-
 // ─────────────────────────────────────────────────────────────────────────
-// [CLI Entry Point] Handle standalone execution (spawning from server.cjs)
+// [CLI Entry Point] Handle standalone execution
 // ─────────────────────────────────────────────────────────────────────────
-
 if (require.main === module) {
-    async function runCliSync() {
-        const args = process.argv.slice(2);
-        const timeframes = args.length > 0 ? args : ['1D'];
-        const isIntegrated = process.env.SYNC_MODE === 'integrated';
-
-        console.log(`[Analyzer CLI] Starting sync for: ${timeframes.join(', ')}`);
-
-        if (!fs.existsSync(STOCK_MASTER_FILE)) {
-            console.error(`[Analyzer CLI] Error: stock_master.json not found at ${STOCK_MASTER_FILE}`);
-            process.exit(1);
-        }
-
+    (async function runCliSync() {
         try {
-            let kisToken = null;
-            try { 
-                kisToken = await getKisAccessToken(); 
-            } catch(e) { 
-                console.error("[Analyzer CLI] KIS Token failed, proceeding with Yahoo only."); 
-            }
-
+            const timeframes = process.argv.slice(2).length > 0 ? process.argv.slice(2) : ['1D', '2H', '1H', '30M'];
+            let kisToken = await getKisAccessToken();
             let stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
             if (process.env.STOCK_FILTER) {
                 const codes = process.env.STOCK_FILTER.split(',').map(s => s.trim());
                 stocks = stocks.filter(s => codes.includes(s.code));
-                console.log(`[Analyzer CLI] Filtering stocks based on STOCK_FILTER: ${codes.join(', ')}`);
             }
             
-            const saveSignals = (newSignals, activeTimeframes) => {
-                if (!newSignals || newSignals.length === 0) {
-                    console.warn(`[Analyzer CLI] Warning: No new signals to save for timeframes: ${activeTimeframes.join(', ')}. Skipping save to prevent data loss.`);
-                    return;
-                }
-
-                let currentSignals = [];
-                if (fs.existsSync(SIGNALS_FILE)) {
-                    try { 
-                        currentSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8')); 
-                    } catch(e) { 
-                        console.error("[Analyzer CLI] Error reading signals.json, starting fresh.");
-                        currentSignals = []; 
-                    }
-                }
-                const tfSet = new Set(activeTimeframes);
-                let filtered;
-                if (process.env.ADDITIVE_SAVE === 'true') {
-                    // Additive mode: Only remove the specific (code, tf) we are updating
-                    const updatedKeys = new Set(newSignals.map(s => `${s.code}_${s.timeframe}`));
-                    filtered = currentSignals.filter(s => !updatedKeys.has(`${s.code}_${s.timeframe}`));
-                    console.log(`[Analyzer CLI] Additive Save Mode: Preserving other stocks for ${activeTimeframes.join(', ')}`);
-                } else {
-                    // Standard mode: Replace entire timeframe
-                    filtered = currentSignals.filter(s => !tfSet.has(s.timeframe));
-                }
-                const merged = [...filtered, ...newSignals];
-                
-                // Atomic Write (Temp file -> Rename)
-                const tempFile = SIGNALS_FILE + '.tmp';
-                try {
-                    fs.writeFileSync(tempFile, JSON.stringify(merged, null, 2));
-                    fs.renameSync(tempFile, SIGNALS_FILE);
-                } catch (err) {
-                    console.error("[Analyzer CLI] Atomic write failed:", err.message);
-                    if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-                }
-            };
-
-            let allTimeframesResults = [];
-            const intervalMap = { '2M': '2m', '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
-            const globalHistoryCache = {};
+            const allSignalsMap = new Map();
+            const kisCache = {};
 
             for (const tf of timeframes) {
+                // [TASK-A07] 주요 타임프레임(4H, 2D, 1W) 누락 보완
+                const intervalMap = { 
+                    '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', 
+                    '1D': '1d', '2D': '1d', '1W': '1wk' 
+                };
                 const interval = intervalMap[tf] || '1d';
-                console.log(`[Analyzer CLI] Syncing ${tf} (Using interval ${interval})...`);
+                console.log(`[Analyzer CLI] Syncing ${tf}...`);
 
-                const tfResults = [];
                 for (let i = 0; i < stocks.length; i++) {
                     const stock = stocks[i];
-                    // Optimization: Cache by interval (e.g. 1d) so 1D and 2D share raw data
-                    const cacheKey = `${stock.code}_${interval}`;
-
                     try {
-                        let rawHistory;
-                        if (globalHistoryCache[cacheKey]) {
-                            rawHistory = globalHistoryCache[cacheKey];
-                        } else {
-                            // Fetch max days needed for this interval across potential TFs
-                            let fetchDays = 60;
-                            if (interval === '2m') fetchDays = 2;
-                            else if (interval === '5m') fetchDays = 5; 
-                            else if (interval === '15m') fetchDays = 15; 
-                            else if (interval === '30m') fetchDays = 30;
-                            else if (interval === '1h') fetchDays = 60;
-                            else if (interval === '1d') fetchDays = 365; // Cover 2D as well
-                            else if (interval === '1wk') fetchDays = 1000;
-
-                            try {
-                            rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
-                        } catch (fetchErr) {
-                            if (fetchErr.type === 'TOKEN_EXPIRED') {
-                                console.log(`[Analyzer CLI] Token expired during ${stock.code}. Refreshing...`);
-                                kisToken = await getKisAccessToken(true);
-                                rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
-                            } else {
-                                throw fetchErr;
-                            }
-                        }
-                        if (rawHistory) globalHistoryCache[cacheKey] = rawHistory;
-                        }
-
-                        if (rawHistory && rawHistory.close && rawHistory.close.length > 50) {
-                            let processedHistory = rawHistory;
-                            if (tf === '2M') processedHistory = resampleChartData(rawHistory, 2, tf);
-                            else if (tf === '2H') processedHistory = resampleChartData(rawHistory, 2, tf);
-                            else if (tf === '4H') processedHistory = resampleChartData(rawHistory, 4, tf);
-                            else if (tf === '2D') processedHistory = resampleChartData(rawHistory, 2, tf);
-
-                            const signal = calculateSignals(processedHistory, tf);
+                        // [TASK-A02] 타임프레임별 데이터 일수 최적화 (1D 등 지표 신뢰도 확보)
+                        const daysMap = { '30M': 30, '1H': 60, '2H': 90, '4H': 120, '1D': 365, '2D': 730, '1W': 1000 };
+                        const days = daysMap[tf] || 90;
+                        const rawHistory = await fetchHybridHistory(stock, days, interval, kisToken, kisCache);
+                        if (rawHistory && rawHistory.close && rawHistory.close.length > 40) {
+                            const signal = calculateSignals(rawHistory, tf);
                             if (signal) {
-                                tfResults.push({ 
-                                    ...signal, 
-                                    code: stock.code, 
-                                    name: stock.name, 
-                                    timeframe: tf, 
-                                    timestamp: Date.now(), 
-                                    id: uuidv4(), 
-                                    kis_change_data: processedHistory.kis_change_data 
-                                });
+                                if (!allSignalsMap.has(stock.code)) allSignalsMap.set(stock.code, new Map());
+                                allSignalsMap.get(stock.code).set(tf, signal);
                             }
                         }
-                    } catch (e) {
-                        console.error(`[Analyzer CLI] Error ${stock.code} (${stock.name}): ${e.message}`);
-                    }
-
-                    // Incremental progress and save
-                    if ((i + 1) % 50 === 0 || i === stocks.length - 1) {
-                        console.log(`[PROGRESS] ${tf}:${i + 1}/${stocks.length}`);
-                        saveSignals(tfResults, [tf]);
-                    }
-                    await new Promise(r => setTimeout(r, 100)); 
+                    } catch (e) { console.error(`[Analyzer CLI] Error ${stock.code}: ${e.message}`); }
                 }
-                allTimeframesResults.push(...tfResults);
             }
 
-            console.log(`[Analyzer CLI] Full synchronization completed for: ${timeframes.join(', ')}`);
-        } catch (e) {
-            console.error("[Analyzer CLI] Fatal Error:", e.message);
-        }
-    }
+            console.log(`[SSOT] Executing final aggregate sync to DB...`);
+            const flatSignals = []; // For ADDITIVE_SAVE
+            for (const [code, tfMap] of allSignalsMap) {
+                const sig1D = tfMap.get('1D');
+                const stockSignals = [];
+                for (const [tf, sig] of tfMap) {
+                    stockSignals.push({ ...sig, code, timeframe: tf });
+                    flatSignals.push({ ...sig, code, timeframe: tf, timestamp: Date.now(), id: uuidv4() });
+                }
+                
+                if (!sig1D) continue;
+                
+                const stock = stocks.find(s => s.code === code);
+                const kisData = sig1D.kis_change_data;
+                const scoreRes = ScoringService.calculateTotalScore(Object.fromEntries(tfMap), { current_price: sig1D.current_price, kis_change_data: kisData });
+                const strategyObj = ScoringService.generateTradingStrategy(scoreRes.totalScore, tfMap.get('2H') || sig1D, sig1D);
 
-    runCliSync().catch(err => {
-        console.error('[Analyzer CLI Error]', err);
-        process.exit(1);
-    });
+                const indicators = {
+                    name: stock.name,
+                    currentPrice: sig1D.current_price,
+                    changeRate: kisData?.rate || 0,
+                    tradeAmount: kisData?.acml_vol || 0,
+                    trendType: sig1D.category,
+                    trendStrength: String(sig1D.adx || 0),
+                    starGrade: String(scoreRes.starGrade),
+                    score: scoreRes.totalScore,
+                    strategyDay: strategyObj.strategy_day,
+                    strategySwing: strategyObj.strategy_swing,
+                    entryPrice1: Math.round(sig1D.current_price * (scoreRes.totalScore >= 80 ? 0.995 : 0.98)),
+                    entryPrice2: Math.round(sig1D.current_price * 0.95),
+                    stopLoss: Math.round(sig1D.current_price * 0.92),
+                    targetPrice1: sig1D.result_1,
+                    targetPrice2: sig1D.target_price_2,
+                    volRate: kisData?.vol_rate || 0,
+                    styleTag: sig1D.style_tag || '분석완료',
+                    aiComment: strategyObj.strategy_day || '',
+                    foreignBuy: kisData?.foreign_buy || 0,
+                    instBuy: kisData?.inst_buy || 0
+                };
+
+                await signalReportService.upsertSignalReport(code, indicators);
+                // [TASK-A11] Top 5 임계값 80점 상향 (server.cjs와 일치)
+                if (scoreRes.totalScore >= 80) {
+                    await signalReportService.saveDailyTop5(code, indicators);
+                }
+            }
+
+            // [TASK-S08] ADDITIVE_SAVE: Merge signals into signals.json
+            if (process.env.ADDITIVE_SAVE === 'true' && flatSignals.length > 0) {
+                console.log(`[ADDITIVE_SAVE] Merging ${flatSignals.length} signals into ${SIGNALS_FILE}...`);
+                try {
+                    let currentSignals = [];
+                    if (fs.existsSync(SIGNALS_FILE)) {
+                        currentSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
+                    }
+                    
+                    const newKeys = new Set(flatSignals.map(s => `${s.code}_${s.timeframe}`));
+                    const filtered = currentSignals.filter(s => !newKeys.has(`${s.code}_${s.timeframe}`));
+                    const merged = [...filtered, ...flatSignals];
+                    
+                    // Atomic Store
+                    const tempPath = SIGNALS_FILE + '.tmp';
+                    fs.writeFileSync(tempPath, JSON.stringify(merged, null, 2));
+                    if (fs.existsSync(SIGNALS_FILE)) fs.unlinkSync(SIGNALS_FILE); // Ensure overwrite on Windows if rename fails
+                    fs.renameSync(tempPath, SIGNALS_FILE);
+                    console.log(`[ADDITIVE_SAVE] Successfully merged signals.`);
+                } catch (saveErr) {
+                    console.error(`[ADDITIVE_SAVE] Error:`, saveErr.message);
+                }
+            }
+
+            console.log(`[Analyzer CLI] Sync completed.`);
+            process.exit(0);
+        } catch (e) { console.error(e); process.exit(1); }
+    })();
 }
+
+module.exports = { getKisAccessToken, fetchHybridHistory, calculateSignals };

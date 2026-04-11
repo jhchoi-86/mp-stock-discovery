@@ -1,6 +1,7 @@
 # sniper_engine/pipeline/init_task.py
 import logging
 import os
+import json
 from redis.asyncio import Redis, from_url
 from sniper_engine.state import STATE
 
@@ -18,10 +19,39 @@ async def run_init_task(targets=None):
         # 하드코딩된 더미 테스트 타겟 (Phase 2 개발용)
         targets = ["000660", "005930", "035420", "035720", "000270", "005380"]
     
+    # [v9.0.9] Load strategy to get real baseline prices even if strings are passed
+    strategy_data = {}
+    strategy_path = os.path.join(os.path.dirname(__file__), "../../data/landing_strategy.json")
+    if os.path.exists(strategy_path):
+        try:
+            with open(strategy_path, 'r', encoding='utf-8') as f:
+                strategy = json.load(f)
+                for s in strategy.get('stocks', []):
+                    strategy_data[s['code']] = s
+        except Exception:
+            pass
+
     # 🔴 [Red Team 방어] KeyError 방지를 위해 순회하며 딕셔너리 키 구조 사전(Pre-allocate) 할당.
-    for ticker in targets:
-        # 백테스트(Mock Generator) 구동을 고려해 평범한 기준가/볼륨 할당
-        STATE['baseline'][ticker] = {"open": 25000, "prev_close": 24000, "prev_vol": 50000}
+    for ticker_data in targets:
+        if isinstance(ticker_data, dict):
+            ticker = ticker_data['code']
+            name = ticker_data.get('name', ticker)
+            s_info = ticker_data
+        else:
+            ticker = str(ticker_data)
+            s_info = strategy_data.get(ticker, {})
+            name = s_info.get('name', ticker)
+            
+        # [v9.0.9] Use REAL baseline prices to avoid score blocking
+        real_open = int(s_info.get('openPrice', s_info.get('currentPrice', 25000)))
+        real_prev = int(s_info.get('prevClose', real_open))
+
+        STATE['baseline'][ticker] = {
+            "name": name,
+            "open": real_open, 
+            "prev_close": real_prev, 
+            "prev_vol": int(s_info.get('volume', 50000))
+        }
         STATE['vwap'][ticker] = 0.0
         STATE['cumulative_vol'][ticker] = 0
         STATE['buy_ticks'][ticker] = 0

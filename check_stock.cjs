@@ -1,24 +1,24 @@
+// check_stock.cjs
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
+// Handle BigInt serialization
+BigInt.prototype.toJSON = function() { return this.toString() };
+
 async function check() {
     try {
-        const rs = await prisma.report.findMany({
-            where: { content: { contains: '성광벤드' } },
-            orderBy: { sentAt: 'desc' },
-            take: 1
+        const stock = await prisma.dailyStockSnapshot.findFirst({
+            where: { code: '003030' },
+            orderBy: { id: 'desc' }
         });
-        if (rs.length > 0) {
-            console.log('--- CONTENT START ---');
-            console.log(rs[0].content);
-            console.log('--- CONTENT END ---');
-        } else {
-            console.log('No reports found for stock.');
-        }
+        console.log('--- DB RECORD START ---');
+        console.log(JSON.stringify(stock, null, 2));
+        console.log('--- DB RECORD END ---');
     } catch (e) {
-        console.error(e);
+        console.error('DB Check Failed:', e);
     } finally {
         await prisma.$disconnect();
+        process.exit(0);
     }
 }
 check();

@@ -7,6 +7,8 @@ const guardMiddleware = require('../middlewares/guardMiddleware.cjs');
 const axios = require('axios');
 const fs = require('fs');
 const path = require('path');
+const PublishingService = require('../services/publishingService.cjs');
+const publishingService = global.publishingService || new PublishingService();
 
 const router = express.Router();
 
@@ -37,7 +39,7 @@ router.post('/preview-ai', authMiddleware, async (req, res) => {
     try {
       aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
         { stocks: aiPayload }, 
-        { timeout: 45000 } // massive timeout
+        { timeout: 10000 } // Reduced from 45s to 10s for resilience
       );
       console.log('🟢 [RED-TEAM] AI SERVICE RAW RESPONSE:', JSON.stringify(aiRes.data));
     } catch (e) {
@@ -107,47 +109,26 @@ router.post('/', authMiddleware, guardMiddleware('FREE_USER', 'SEND_REPORT'), as
         console.error('[Send Report] Structured Recommendation Save Failed:', recErr);
       }
 
-      // 1.2 Update Landing Page Watchlist Strategy (v7.5.0)
+      // 1.2 Update Landing Page Watchlist & Strategy (v9.1.5)
       if (recommendations.length > 0) {
         try {
-          const DATA_DIR = path.join(__dirname, '../../data');
-          const watchlistFile = path.join(DATA_DIR, 'watchlist_strategy.json');
-          const signalsFile = path.join(DATA_DIR, 'signals.json');
-          const masterFile = path.join(DATA_DIR, 'stock_master.json');
+          // Map recommendations to Standard Format
+          const stocksToPublish = recommendations.map(rec => ({
+            code: rec.stockCode || rec.code,
+            name: rec.stockName || rec.name,
+            score: 100, // Manual recommendations get priority score
+            category: '진입가 추천',
+            currentPrice: rec.entryPrice || 0,
+            entryPrice1: rec.entryPrice || 0,
+            targetPrice1: rec.targetPrice || 0,
+            stopLoss: rec.stopLoss || 0,
+            status: '보유 중'
+          }));
 
-          if (fs.existsSync(signalsFile) && fs.existsSync(masterFile)) {
-            const signals = JSON.parse(fs.readFileSync(signalsFile, 'utf8'));
-            const stocks = JSON.parse(fs.readFileSync(masterFile, 'utf8'));
-
-            const results = recommendations.slice(0, 2).map(rec => {
-              const code = rec.stockCode || rec.code;
-              const master = stocks.find(s => s.code === code) || { name: rec.stockName || '알 수 없음', code };
-              const stockSignals = signals.filter(s => s.code === code && s.timeframe === '2H');
-              const latest = stockSignals.sort((a, b) => b.timestamp - a.timestamp)[0];
-
-              return {
-                name: master.name,
-                code: master.code,
-                score: latest ? Math.round(latest.adx * 2) : 85,
-                category: latest?.category || '진입가 추천',
-                entryPrice1: rec.entryPrice || latest?.result_2 || 0,
-                entryPrice2: latest?.result_3 || (rec.entryPrice ? Math.round(rec.entryPrice * 0.95) : 0),
-                targetPrice: rec.targetPrice || latest?.bb_upper || 0,
-                stopLoss: rec.stopLoss || latest?.stop_loss || 0,
-                updatedAt: new Date().toISOString()
-              };
-            });
-
-            const watchlistData = {
-              updatedAt: new Date().toISOString(),
-              stocks: results
-            };
-
-            fs.writeFileSync(watchlistFile, JSON.stringify(watchlistData, null, 2));
-            console.log(`[Watchlist-Auto] Updated landing page watchlist for ${results.length} stocks.`);
-          }
+          await publishingService.publishToAll(stocksToPublish);
+          console.log(`[Watchlist-Auto] Updated all channels for ${stocksToPublish.length} recommended stocks.`);
         } catch (err) {
-          console.error('[Watchlist-Auto] Update Failed:', err.message);
+          console.error('[Watchlist-Auto] Unified Publish Failed:', err.message);
         }
       }
     }

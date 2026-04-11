@@ -40,7 +40,7 @@ async def analyzer_task():
             # Tracker 구동을 위한 최신 시세 브로드캐스트
             STATE['last_price'][ticker] = price    
             
-            # 🔴 [Red Team 방어] 장 마감 시간(15:15:00) 이후 모든 연산 강제 중단 (동시호가 왜곡 타점 무시)
+            # 🔴 [Red Team 방어] 장 마감 시간(15:15:00) 이후 모든 연산 강제 중단
             if time_str >= "151500":
                 TICK_QUEUE.task_done()
                 continue
@@ -59,12 +59,12 @@ async def analyzer_task():
             net_buy = txn_amount if is_buy else -txn_amount
             
             if ticker not in STATE['rolling_vol']:
-                STATE['rolling_vol'][ticker] = deque(maxlen=30) # 10초 * 30 = 300초(5분) 메모리 방어 캡슐
+                STATE['rolling_vol'][ticker] = deque(maxlen=30)
                 window_accumulation[ticker] = 0
                 current_windows[ticker] = window_idx
 
             if window_idx > current_windows[ticker]:
-                # 🔵 새로운 10초 버킷으로 넘어감. 직전 버킷을 데크에 넣고 초기화
+                # 버킷 롤링
                 STATE['rolling_vol'][ticker].append(window_accumulation[ticker])
                 window_accumulation[ticker] = 0
                 current_windows[ticker] = window_idx
@@ -74,74 +74,76 @@ async def analyzer_task():
             # --- 수급 스코어링 & 타점 판독 로직 ---
             rolling_queue = STATE['rolling_vol'][ticker]
             
-            # 데이터가 50초(윈도우 5개) 이상 쌓였을 때부터 유효 판단 시작
             if len(rolling_queue) >= 5: 
-                past_5m_avg_net_buy = sum(rolling_queue) / len(rolling_queue)
+                past_5m_avg = sum(rolling_queue) / len(rolling_queue)
                 current_net_buy = window_accumulation[ticker]
+                multiplier = (current_net_buy / past_5m_avg) if past_5m_avg > 0 else 999.0
                 
-                # 1. 10초 윈도우 내 순매수 대금이 3,000만 원 이상 터졌는가 (소형주 잡음 필터)
-                if current_net_buy >= 30_000_000:
-                    multiplier = (current_net_buy / past_5m_avg_net_buy) if past_5m_avg_net_buy > 0 else 999.0
+                # [v9.0.9 Logic] 10초 순매수 3천만 & 직전 평균 대비 300% 폭증
+                if current_net_buy >= 30_000_000 and multiplier >= 3.0:
+                    vwap_val = STATE['vwap'].get(ticker, 0)
+                    baseline = STATE['baseline'].get(ticker, {})
                     
-                    # 2. 거래대금이 평소(직전 5분)보다 300% 이상 폭주했는가
-                    if multiplier >= 3.0:
-                        vwap_val = STATE['vwap'].get(ticker, 0)
-                        
-                        # 3. 🔵 [Blue Team] Phase 7 Advanced Scoring Engine 가동
-                        baseline = STATE['baseline'].get(ticker, {})
-                        score_data = {
-                            "open": baseline.get("open", baseline.get("prev_close", price)),
-                            "prev_close": baseline.get("prev_close", 1),
-                            "current_vol": STATE['cumulative_vol'].get(ticker, 0),
-                            "avg_prev_5d_vol": baseline.get("prev_vol", 1),
-                            "current_price": price,
-                            "vwap": vwap_val,
-                            "buy_ticks": STATE['buy_ticks'].get(ticker, 0),
-                            "sell_ticks": STATE['sell_ticks'].get(ticker, 1),
-                            "ask_volume_sum": STATE['ask_vol_sum'].get(ticker, 0),
-                            "bid_volume_sum": STATE['bid_vol_sum'].get(ticker, 1)
-                        }
-                        
-                        indicators = ScoringEngine.compute_indicators(score_data)
-                        scoring_result = ScoringEngine.calculate_score(indicators)
-                        total_score = scoring_result["total_score"]
-                        grade = ScoringEngine.get_grade(total_score)
-                        
-                        # 4. 🔴 [Red Team 방어] 무지성 진입 차단. C/B등급 무시, 오직 S, A 등급(300점 이상)만 승인 (v5.1.0)
-                        if total_score >= 300 and price >= vwap_val and is_buy and ticker not in STATE.get('active_tickers', set()):
+                    score_data = {
+                        "open": baseline.get("open", price),
+                        "prev_close": baseline.get("prev_close", 1),
+                        "current_vol": STATE['cumulative_vol'].get(ticker, 0),
+                        "avg_prev_5d_vol": baseline.get("prev_vol", 1),
+                        "current_price": price,
+                        "vwap": vwap_val,
+                        "buy_ticks": STATE['buy_ticks'].get(ticker, 0),
+                        "sell_ticks": STATE['sell_ticks'].get(ticker, 1),
+                        "ask_volume_sum": STATE['ask_vol_sum'].get(ticker, 0),
+                        "bid_volume_sum": STATE['bid_vol_sum'].get(ticker, 1)
+                    }
+                    
+                    indicators = ScoringEngine.compute_indicators(score_data)
+                    scoring_result = ScoringEngine.calculate_score(indicators)
+                    total_score = scoring_result["total_score"]
+                    grade = ScoringEngine.get_grade(total_score)
+                    
+                    is_active = ticker in STATE.get('active_tickers', set())
+                    
+                    if total_score >= 300 and price >= vwap_val and is_buy and not is_active:
+                        # 🎯 타점 적중
+                        STATE.get('active_tickers', set()).add(ticker)
+                        signal_id = f"SIG_{ticker}_{uuid.uuid4().hex[:8]}"
+                        name = baseline.get('name', ticker)
 
-                            # 🔵 [Immediate Lock] 중복 신호 폭발 방지 (v4.8.0)
-                            STATE.get('active_tickers', set()).add(ticker)
-                            
-                            signal_id = f"SIG_{ticker}_{uuid.uuid4().hex[:8]}"
-
-                            alert_payload = {
-                                "signal_id": signal_id,
-                                "type": "ENTRY",
-                                "ticker": ticker,
-                                "price": price,   # 보수적 관점의 당장 매도가(Ask1 돌파)
-                                "time": time_str,
-                                "grade": grade,
-                                "score": total_score,
-                                "momentum": {
-                                    "net_buy_krw": current_net_buy,
-                                    "multiplier": round(multiplier, 2)
-                                }
+                        alert_payload = {
+                            "signal_id": signal_id,
+                            "type": "ENTRY",
+                            "ticker": ticker,
+                            "name": name,
+                            "price": price,
+                            "time": time_str,
+                            "grade": grade,
+                            "score": total_score,
+                            "momentum": {
+                                "net_buy_krw": current_net_buy,
+                                "multiplier": round(multiplier, 2)
                             }
-                            # 🔴 [Red Team 핫픽스] 쟁탈전 방지를 위해 Tracker와 Broadcaster에 별도로 명시적 동시 투하 (Fan-out)
-                            await TRACKER_QUEUE.put(alert_payload)
-                            await BROADCAST_QUEUE.put(alert_payload)
-                            logger.info(f"💣 ENTRY FIRED: {ticker} [Grade {grade}] (Score {total_score}) -> {signal_id}")
-                            
-                            # 중복 폭발 알람을 막기 위해 현재 윈도우 스코어 즉시 냉각
-                            window_accumulation[ticker] = 0
+                        }
+                        await TRACKER_QUEUE.put(alert_payload)
+                        await BROADCAST_QUEUE.put(alert_payload)
+                        logger.info(f"💣 [Hit] {name} ({ticker}) Score: {total_score} pts")
+                        window_accumulation[ticker] = 0
+                    else:
+                        # [DEBUG] Rejection reasons
+                        reasons = []
+                        if total_score < 300: reasons.append(f"Score {total_score}")
+                        if price < vwap_val: reasons.append("Below VWAP")
+                        if not is_buy: reasons.append("Not Buy")
+                        if is_active: reasons.append("Active")
+                        if reasons:
+                            logger.debug(f"[Reject] {ticker}: {', '.join(reasons)}")
 
             TICK_QUEUE.task_done()
             
         except asyncio.CancelledError:
             break
         except Exception as e:
-            logger.error(f"🔴 Analyzer Critical Exception: {e}")
+            logger.error(f"🔴 Analyzer Exception: {e}")
             try:
                 TICK_QUEUE.task_done()
             except ValueError:

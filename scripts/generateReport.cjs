@@ -91,6 +91,16 @@ async function generateReport() {
                 const scoreMatch = lookahead.match(/총점:.*\((\d+)점\)/);
                 if (scoreMatch) score = parseInt(scoreMatch[1]);
 
+                // [v7.8.0] Enhanced: Fetch 11 core indicators from DB for the recommendation day
+                // [v7.8.6] Fixed: Use createdAt <= reportTime for historical accuracy
+                const snapshot = await prisma.dailyStockSnapshot.findFirst({
+                    where: { 
+                        code: code,
+                        createdAt: { lte: reportTime } 
+                    },
+                    orderBy: { createdAt: 'desc' } 
+                });
+
                 const stockObj = {
                     name,
                     code,
@@ -100,28 +110,42 @@ async function generateReport() {
                     target_price: targetPrice,
                     report_current_price: reportCurrentPrice,
                     score,
+                    stars: score >= 95 ? 5 : (score >= 90 ? 4 : 3),
+                    // [v7.8.6] Fixed Field Mapping: trend -> trend_type, adx -> trend_strength
+                    trend_type: snapshot?.trend || '분석 중',
+                    trend_strength: snapshot?.adx ? `${snapshot.adx}` : '보통',
+                    // [v7.8.6] Fixed BigInt Serialization: Explicit .toString()
+                    trade_amount: snapshot?.tradeAmount ? snapshot.tradeAmount.toString() : '-',
+                    foreign_buy: snapshot?.foreignBuy || '0',
+                    inst_buy: snapshot?.instBuy || '0',
+                    ema20: snapshot?.ema20 || 0,
+                    ema60: snapshot?.ema60 || 0,
                     report_time: reportTime
                 };
 
                 // Track first entry price across the entire window
-                // [v4.7.2.3] Enhanced: Update if existing fields are 0
                 if (!firstEntryMap.has(code)) {
-                    // [v7.5.22] Apply default SL/TP if missing (SL: -3%, TP: +5%)
-                    // [v7.5.27] Strict Validation & [v7.5.28] Manual Overrides (VIP 자료실 기준)
                     let validTP = (targetPrice > entryPrice && targetPrice > 0) ? targetPrice : Math.floor(entryPrice * 1.05);
                     let validSL = (stopLoss < entryPrice && stopLoss > 0) ? stopLoss : Math.floor(entryPrice * 0.97);
 
-                    // User Manual Overrides for 04.04 (VIP 자료실)
-                    if (code === '028050') validTP = 42578; // 삼성E&A
-                    if (code === '003030') validTP = 265650; // 세아제강지주
-                    if (code === '014620') validTP = 41160;  // 성광벤드 (04.04 기준)
+                    if (code === '028050') validTP = 42578;
+                    if (code === '003030') validTP = 265650;
+                    if (code === '014620') validTP = 41160;
 
                     firstEntryMap.set(code, { 
                         entry_price: entryPrice, 
                         entry_price_2: entryPrice2,
                         stop_loss: validSL,
                         target_price: validTP,
-                        score: score 
+                        score: score,
+                        stars: stockObj.stars,
+                        trend_type: stockObj.trend_type,
+                        trend_strength: stockObj.trend_strength,
+                        trade_amount: stockObj.trade_amount,
+                        foreign_buy: stockObj.foreign_buy,
+                        inst_buy: stockObj.inst_buy,
+                        ema20: stockObj.ema20,
+                        ema60: stockObj.ema60
                     });
                 } else {
                     const existing = firstEntryMap.get(code);
@@ -129,9 +153,7 @@ async function generateReport() {
                     if (existing.stop_loss === 0 && stopLoss < entryPrice && stopLoss > 0) existing.stop_loss = stopLoss;
                     if (existing.entry_price === 0 && entryPrice > 0) existing.entry_price = entryPrice;
                     
-                    // Re-apply defaults or overrides if still mismatch or user specified
                     if (existing.entry_price > 0) {
-                        // User Manual Overrides (Always Enforce)
                         if (code === '028050') existing.target_price = 42578;
                         if (code === '003030') existing.target_price = 265650;
                         if (code === '014620') existing.target_price = 41160;
@@ -156,11 +178,18 @@ async function generateReport() {
             p.stocks.forEach(s => {
                 const globalFirst = firstEntryMap.get(s.code);
                 if (globalFirst) {
-                    // Sync ALL strategic parameters from the original discovery
                     s.entry_price = globalFirst.entry_price;
                     s.entry_price_2 = globalFirst.entry_price_2;
                     s.stop_loss = globalFirst.stop_loss;
                     s.target_price = globalFirst.target_price;
+                    // Sync additional indicators
+                    s.trend_type = globalFirst.trend_type;
+                    s.trend_strength = globalFirst.trend_strength;
+                    s.trade_amount = globalFirst.trade_amount;
+                    s.foreign_buy = globalFirst.foreign_buy;
+                    s.inst_buy = globalFirst.inst_buy;
+                    s.ema20 = globalFirst.ema20;
+                    s.ema60 = globalFirst.ema60;
                 }
                 rawStocks.push(s);
             });
@@ -253,6 +282,14 @@ async function generateReport() {
                     entry_price_2: s.entry_price_2,
                     stop_loss: s.stop_loss,
                     target_price_exit: s.target_price,
+                    // [v7.8.6] Added: Export 11 indicators to final JSON
+                    trend_type: s.trend_type,
+                    trend_strength: s.trend_strength,
+                    trade_amount: s.trade_amount,
+                    foreign_buy: s.foreign_buy,
+                    inst_buy: s.inst_buy,
+                    ema20: s.ema20,
+                    ema60: s.ema60,
                     recommended_at: `${String(kstReportTime.getUTCMonth() + 1).padStart(2, '0')}. ${String(kstReportTime.getUTCDate()).padStart(2, '0')}.`
                 };
             });
@@ -277,10 +314,21 @@ async function generateReport() {
 
         const logDir = path.join(__dirname, '../data/vip_logs');
         if (!fs.existsSync(logDir)) fs.mkdirSync(logDir, { recursive: true });
+        
+        // 1. Update Latest
         fs.writeFileSync(path.join(logDir, 'latest.json'), JSON.stringify(payload, null, 2));
 
+        // 2. Archive by Date (YYYY-MM-DD.json)
+        const now = new Date();
+        const kstNow = new Date(now.getTime() + (9 * 60 * 60 * 1000));
+        const dateStr = `${kstNow.getUTCFullYear()}-${String(kstNow.getUTCMonth() + 1).padStart(2, '0')}-${String(kstNow.getUTCDate()).padStart(2, '0')}`;
+        const archiveFile = path.join(logDir, `${dateStr}.json`);
+        
+        fs.writeFileSync(archiveFile, JSON.stringify(payload, null, 2));
+        console.log(`[ReportGen] Archived: ${path.basename(archiveFile)}`);
+
         // --- Phase 4: Automated Persistence legacy logic removed (Moved to server.cjs cron) ---
-        console.log(`[ReportGen] SUCCESS: v4.7.2.2 Precision Sync Complete. Total stocks: ${formattedStocks.length}`);
+        console.log(`[ReportGen] SUCCESS: v4.7.2.3 Precision Sync & Archive Complete. Total stocks: ${formattedStocks.length}`);
     } catch (e) {
         console.error('[ReportGen] v4.7.2.1 Critical Error:', e);
     } finally {

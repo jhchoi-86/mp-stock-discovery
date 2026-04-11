@@ -1,0 +1,263 @@
+﻿generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id                   String                @id @default(uuid()) @db.Uuid
+  email                String                @unique @db.VarChar(255)
+  phone                String?               @db.VarChar(50)
+  passwordHash         String                @map("password_hash") @db.VarChar(255)
+  name                 String                @db.VarChar(100)
+  telegramId           String?               @map("telegram_id") @db.VarChar(255)
+  role                 Role                  @default(FREE_USER)
+  status               Status                @default(ACTIVE)
+  lastLoginAt          DateTime?             @map("last_login_at")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  auditActions         AuditLog[]            @relation("AdminAction")
+  auditTargets         AuditLog[]            @relation("TargetUser")
+  refreshTokens        RefreshToken[]
+  reports              Report[]              @relation("ReportAuthor")
+  subscriptionRequests SubscriptionRequest[]
+  usageLogs            UsageLog[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  token     String   @unique @db.VarChar(512)
+  expiresAt DateTime @map("expires_at")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model UsageLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  actionType String   @map("action_type") @db.VarChar(100)
+  usageCount Int      @default(0) @map("usage_count")
+  logDate    DateTime @map("log_date") @db.Date
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, actionType, logDate])
+  @@map("usage_logs")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  adminId      String   @map("admin_id") @db.Uuid
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  action       String   @db.VarChar(255)
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+  admin        User     @relation("AdminAction", fields: [adminId], references: [id], onDelete: SetNull)
+  targetUser   User?    @relation("TargetUser", fields: [targetUserId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model Report {
+  id       String   @id @default(uuid()) @db.Uuid
+  content  String
+  authorId String   @map("author_id") @db.Uuid
+  sentAt   DateTime @default(now()) @map("sent_at")
+  author   User     @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([sentAt(sort: Desc)])
+  @@map("reports")
+}
+
+model Recommendation {
+  id            String   @id @default(uuid()) @db.Uuid
+  stockCode     String   @map("stock_code") @db.VarChar(50)
+  stockName     String   @map("stock_name") @db.VarChar(100)
+  entryPrice    Float    @map("entry_price")
+  targetPrice   Float    @map("target_price")
+  highestPrice  Float?   @map("highest_price")
+  recommendedAt DateTime @default(now()) @map("recommended_at")
+
+  @@index([recommendedAt(sort: Desc)])
+  @@map("recommendations")
+}
+
+model SubscriptionRequest {
+  id        String             @id @default(uuid()) @db.Uuid
+  userId    String             @map("user_id") @db.Uuid
+  status    SubscriptionStatus @default(PENDING)
+  createdAt DateTime           @default(now()) @map("created_at")
+  updatedAt DateTime           @updatedAt @map("updated_at")
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("subscription_requests")
+}
+
+model SniperSignal {
+  id         String   @id @default(uuid()) @db.Uuid
+  signalId   String   @unique @map("signal_id") @db.VarChar(255)
+  ticker     String   @db.VarChar(50)
+  type       String   @db.VarChar(50)
+  entryPrice Float    @map("entry_price")
+  time       String   @db.VarChar(50)
+  grade      String?  @db.VarChar(10)
+  score      Int?
+  momentum   Json?
+  isExited   Boolean  @default(false) @map("is_exited")
+  exitPrice  Float?   @map("exit_price")
+  exitReason String?  @map("exit_reason")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([createdAt(sort: Desc)])
+  @@map("sniper_signals")
+}
+
+model SignalCandidate {
+  id                Int       @id @default(autoincrement())
+  instrumentId      Int
+  timeframe         String
+  condUp7           Boolean
+  dhh2              Boolean
+  triggerRsi        Boolean
+  triggerVol        Boolean
+  entryApproved     Boolean
+  isTrending        Boolean
+  signalHH          Boolean
+  displayScore      Int
+  entryPrice1       Float
+  entryPrice2       Float?
+  entryPrice3       Float?
+  targetPrice       Float
+  stopLoss          Float
+  category          String
+  sourceHash        String
+  aiConfidenceScore Float?    @map("ai_confidence_score")
+  aiAnalyzedAt      DateTime? @map("ai_analyzed_at")
+  createdAt         DateTime  @default(now())
+
+  @@map("signal_candidates")
+}
+
+model Lead {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @db.VarChar(255)
+  source    String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
+}
+
+model DailyStockSnapshot {
+  id                   Int      @id @default(autoincrement())
+  code                 String   @db.VarChar(20)
+  name                 String   @db.VarChar(100)
+  category             String?  @db.VarChar(100)
+  score                Int?
+  adx                  Int?
+  trend                String?  @db.VarChar(20)
+  currentPrice         Float?   @map("current_price")
+  entryPrice1          Float?   @map("entry_price1")
+  entryPrice2          Float?   @map("entry_price2")
+  entryPrice3          Float?   @map("entry_price3")
+  targetPrice1         Float?   @map("target_price1")
+  tradeAmount          BigInt?  @map("trade_amount")
+  foreignBuy           String?  @map("foreign_buy")
+  instBuy              String?  @map("inst_buy")
+  createdAt            DateTime @default(now()) @map("created_at")
+  yield                Float?
+  executedAt           String?  @map("executed_at")
+  isExecuted           Boolean? @default(false) @map("is_executed")
+  ema10                Float?   @map("ema10")
+  ema20                Float?   @map("ema20")
+  ema5                 Float?   @map("ema5")
+  ema60                Float?   @map("ema60")
+  stopLoss             Float?   @map("stop_loss")
+  targetPrice2         Float?   @map("target_price2")
+  trend_type           String?  @default("?〓낫") @db.VarChar(20)
+  trend_strength       Decimal? @default(0.00) @db.Decimal(5, 2)
+  star_grade           Int?     @default(0) @db.SmallInt
+  entry_price_1        Decimal? @default(0) @db.Decimal(12, 0)
+  entry_price_2        Decimal? @default(0) @db.Decimal(12, 0)
+  target_price_1       Decimal? @default(0) @db.Decimal(12, 0)
+  is_validation_exempt Boolean? @default(false)
+
+  @@index([createdAt])
+  @@index([code])
+  @@map("daily_stock_snapshots")
+}
+
+model DailySignalHistory {
+  id        Int      @id @default(autoincrement())
+  date      String   @db.VarChar(10)
+  code      String   @db.VarChar(20)
+  name      String   @db.VarChar(100)
+  signals   String
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([date, code])
+  @@map("daily_signal_history")
+}
+
+model SystemStat {
+  id            String   @id @default(uuid()) @db.Uuid
+  date          String   @unique @db.VarChar(10)
+  visitorCount  Int      @default(0) @map("visitor_count")
+  loginCount    Int      @default(0) @map("login_count")
+  signupCount   Int      @default(0) @map("signup_count")
+  maxConcurrent Int      @default(0) @map("max_concurrent")
+  freeUserCount Int      @default(0) @map("free_user_count")
+  paidUserCount Int      @default(0) @map("paid_user_count")
+  cpuUsageAvg   Float?   @map("cpu_usage_avg")
+  memUsageAvg   Float?   @map("mem_usage_avg")
+  diskUsageAvg  Float?   @map("disk_usage_avg")
+  healthStatus  String   @default("HEALTHY") @map("health_status")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("system_stats")
+}
+
+model IncidentLog {
+  id          String    @id @default(uuid()) @db.Uuid
+  title       String    @db.VarChar(255)
+  description String?
+  severity    String    @default("INFO")
+  status      String    @default("OPEN")
+  occurredAt  DateTime  @default(now()) @map("occurred_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  handlerName String?   @map("handler_name") @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("incident_logs")
+}
+
+enum Role {
+  FREE_USER
+  PRO_USER
+  ADMIN
+  PENDING
+  FREE_TRIAL
+  FREE
+  PAID
+}
+
+enum Status {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+enum SubscriptionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

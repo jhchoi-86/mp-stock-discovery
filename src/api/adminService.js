@@ -66,6 +66,46 @@ const adminService = {
       console.error('[Admin Service] Fetching public snapshot dates failed:', error);
       throw error;
     }
+  },
+
+  /**
+   * Saves current Top 5 status as a historical snapshot.
+   * @param {Array} stocks - Optional: provide specific stocks data to save (WYSIWYS)
+   */
+  saveSyncHistory: async (stocks = null) => {
+    try {
+      const response = await axiosClient.post('/api/admin/save-sync-history', { stocks });
+      return response.data;
+    } catch (error) {
+      console.error('[Admin Service] Saving sync history failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetches available sync history tags (Date/Time).
+   */
+  getSyncHistoryTags: async () => {
+    try {
+      const response = await axiosClient.get('/api/public/sync-history-tags');
+      return response.data;
+    } catch (error) {
+      console.error('[Admin Service] Fetching history tags failed:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * Fetches details for a specific historical snapshot.
+   */
+  getSyncHistoryDetails: async (tag) => {
+    try {
+      const response = await axiosClient.get('/api/public/sync-history-details', { params: { tag } });
+      return response.data;
+    } catch (error) {
+      console.error('[Admin Service] Fetching history details failed:', error);
+      throw error;
+    }
   }
 };
 

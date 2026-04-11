@@ -53,8 +53,8 @@ async def tracker_task():
                 pass # 큐가 비어있으면 조용히 2단계로 넘어감
                 
             # 2. 보유 포지션 엑시트 폴링 평가 (1초 단위)
-            # 🔴 [Red Team 치명적 에러 방지] 딕셔너리를 순회하는 동안 항목이 지워지만(Error: dictionary changed size) 런타임 크래시가 나므로, list() 래핑(Deep Copy 뷰) 필수!
-            keys_to_delete = []
+            # 🔴 [Red Team 치명적 에러 방지] list() 래핑 필수
+            exits_to_process = [] # [v9.0.8] Store (sig_id, price, reason) to avoid variable leakage
             for sig_id, pos in list(STATE['virtual_pos'].items()):
                 ticker = pos['ticker']
                 cur_price = STATE['last_price'].get(ticker, 0)
@@ -69,26 +69,24 @@ async def tracker_task():
                 
                 if cur_price >= target_p:
                     exit_reason = f"TARGET_MET_3_PC"
-                    logger.warning(f"🎯 [Take Profit] {ticker} ({sig_id}) hit {cur_price}")
                 elif cur_price <= stop_p:
                     exit_reason = f"STOP_LOSS_1.5_PC"
-                    logger.warning(f"🚨 [Stop Loss] {ticker} ({sig_id}) hit {cur_price}")
                 elif vwap_p > 0 and cur_price < vwap_p:
                     exit_reason = f"VWAP_BROKEN"
-                    logger.warning(f"🚨 [VWAP Broken] {ticker} ({sig_id}) dropped below VWAP. Cur: {cur_price}")
 
                 if exit_reason:
-                    keys_to_delete.append(sig_id)
+                    exits_to_process.append((sig_id, float(cur_price), exit_reason))
 
             # 가비지 컬렉션 (GC) 및 Broadcaster용 경고 빔 전송
-            for sig_id in keys_to_delete:
+            for sig_id, price, reason in exits_to_process:
                 ticker = STATE['virtual_pos'][sig_id]['ticker']
+                # [v9.0.8] Include stock name from baseline if available
+                name = STATE['baseline'].get(ticker, {}).get('name', ticker)
+                
                 del STATE['virtual_pos'][sig_id]
                 
-                # 🔵 [Unlock Signal] v4.8.0 리밸런싱을 위해 락 해제
                 if ticker in STATE.get('active_tickers', set()):
                     STATE.get('active_tickers', set()).remove(ticker)
-                    logger.info(f"🔓 [Signal Unlocked] {ticker} is now eligible for new recommendations.")
 
                 if not STATE.get('is_backtest'):
                     try:
@@ -100,14 +98,16 @@ async def tracker_task():
                     "type": "EXIT_WARN", 
                     "signal_id": sig_id, 
                     "ticker": ticker,
-                    "reason": exit_reason,
-                    "price": float(cur_price)  # 🔴 [Red Team 핫픽스] 백테스터 Metrics 정산을 위해 청산 실행가(Price) 기명 필수!
+                    "name": name, # [NEW] Added stock name
+                    "reason": reason,
+                    "price": price, # 🔥 [v9.0.8 FIX] Use the correct per-ticker price
+                    "time": STATE.get('current_time', '--:--:--') # [v9.1.2] EXIT 시각 동기화
                 })
 
             if not STATE.get('is_backtest'):
                 await asyncio.sleep(0.5) 
             else:
-                await asyncio.sleep(0) # Yield for other tasks but don't wait
+                await asyncio.sleep(0)
                 
         except asyncio.CancelledError:
             break

@@ -22,8 +22,8 @@ if %ERRORLEVEL% neq 0 (
 )
 
 echo.
-echo [2/8] Backing up original dist folder on AWS Server...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && cp -R dist dist_backup_%TIMESTAMP% 2>/dev/null || echo No existing dist"
+echo [2/8] Ensuring Server Permissions and Backing up dist...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && sudo chown -R %SSH_USER%:%SSH_USER% . && sudo chmod -R 755 . && (cp -R dist dist_backup_%TIMESTAMP% 2>/dev/null || echo No existing dist)"
 
 echo.
 echo [3/8] Syncing latest Git codebase on AWS Server...
@@ -31,33 +31,31 @@ ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJEC
 
 echo.
 echo [4/8] Uploading compiled dist folder and backend scripts to AWS Server...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && (rm -rf dist 2>/dev/null || sudo rm -rf dist) && mkdir -p platform/approval/tdr_bridge/ platform/analysis/scoring/ src/services/ src/utils/ src/routes/ src/components/ prisma/ scripts/ sniper_engine/"
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r dist %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no analyzer.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no server.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no sniper_3m.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no scripts/generateReport.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/scripts/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no scripts/send_top5_report.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/scripts/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/services/kisWebSocketService.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/services/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/services/systemStatsService.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/services/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/auth.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/admin.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/routes/publicReports.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/routes/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/components/AdminDashboard.jsx %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/components/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/components/SystemManagementTab.jsx %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/components/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/nightlyMonitor.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/fullUniversePoller.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
-scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no src/utils/reportUtils.js %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/src/utils/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r src %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r platform %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r scripts %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r sniper_engine %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no prisma/schema.prisma %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/prisma/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no ecosystem.config.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no RELEASE.md %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no -r data/vip_logs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/data/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no remove_test_db.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no remove_test_json.cjs %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no package.json %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
+scp -i "%SSH_KEY%" -o StrictHostKeyChecking=no ROLLBACK.md %SSH_USER%@%SSH_HOST%:%PROJECT_DIR%/
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] Upload failed. Stopping deployment.
     exit /b 1
 )
 
 echo.
-echo [5/8] Applying DB Schema and Permissions (Zero Downtime)...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && npx prisma db push && chmod -R 755 dist && pm2 reload ecosystem.config.cjs --env production"
+echo [5/8] Applying DB Schema, Syncing dist to /var/www, and Permissions (Zero Downtime)...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && npx prisma db push && node remove_test_db.cjs && node remove_test_json.cjs && node scripts/fix_dongkook_name.cjs && mkdir -p data/vip_logs && chmod -R 755 data && sudo mkdir -p /var/www/mp-stock-discovery && sudo rm -rf /var/www/mp-stock-discovery/dist && sudo cp -R dist /var/www/mp-stock-discovery/ && sudo chown -R ubuntu:ubuntu /var/www/mp-stock-discovery && sudo chmod 755 /home/ubuntu && chmod 755 . && chmod -R 755 dist && pm2 reload ecosystem.config.cjs --env production"
 
 echo.
 echo [6/8] Waiting for Health Check (10 seconds)...

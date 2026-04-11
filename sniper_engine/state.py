@@ -13,7 +13,8 @@ STATE = {
     'ask_vol_sum': {},
     'bid_vol_sum': {},
     'is_backtest': False,
-    'active_tickers': set()
+    'active_tickers': set(),
+    'current_time': '--:--:--' # [v9.1.2] 실시간/백테스트 통합 시각 동기화
 }
 
 # 🔴 [Red Team 압박 점검] OOM 틱 폭파 방어망

@@ -4,9 +4,8 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -32,7 +31,7 @@ enum SubscriptionStatus {
 }
 
 model User {
-  id           String    @id @default(uuid()) @db.Uuid
+  id           String    @id @default(uuid())
   email        String    @unique @db.VarChar(255)
   phone        String?   @db.VarChar(50)
   passwordHash String    @map("password_hash") @db.VarChar(255)
@@ -40,6 +39,8 @@ model User {
   telegramId   String?   @map("telegram_id") @db.VarChar(255)
   role         Role      @default(FREE_USER)
   status       Status    @default(ACTIVE)
+  referralCode String?   @unique @map("referral_code") @db.VarChar(10)
+  referralCount Int      @default(0) @map("referral_count")
   lastLoginAt  DateTime? @map("last_login_at")
   createdAt    DateTime  @default(now()) @map("created_at")
 
@@ -54,8 +55,8 @@ model User {
 }
 
 model RefreshToken {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @map("user_id") @db.Uuid
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
   token     String   @unique @db.VarChar(512)
   expiresAt DateTime @map("expires_at")
   isRevoked Boolean  @default(false) @map("is_revoked")
@@ -67,8 +68,8 @@ model RefreshToken {
 }
 
 model UsageLog {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @map("user_id") @db.Uuid
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
   actionType String   @map("action_type") @db.VarChar(100)
   usageCount Int      @default(0) @map("usage_count")
   logDate    DateTime @map("log_date") @db.Date
@@ -80,23 +81,23 @@ model UsageLog {
 }
 
 model AuditLog {
-  id           String   @id @default(uuid()) @db.Uuid
-  adminId      String   @map("admin_id") @db.Uuid
-  targetUserId String?  @map("target_user_id") @db.Uuid
+  id           String   @id @default(uuid())
+  adminId      String?  @map("admin_id")
+  targetUserId String?  @map("target_user_id")
   action       String   @db.VarChar(255)
   details      Json?
   createdAt    DateTime @default(now()) @map("created_at")
 
-  admin      User  @relation("AdminAction", fields: [adminId], references: [id], onDelete: SetNull)
+  admin      User? @relation("AdminAction", fields: [adminId], references: [id], onDelete: SetNull)
   targetUser User? @relation("TargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
 
   @@map("audit_logs")
 }
 
 model Report {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid())
   content   String   @db.Text
-  authorId  String   @map("author_id") @db.Uuid
+  authorId  String   @map("author_id")
   sentAt    DateTime @default(now()) @map("sent_at")
 
   author    User     @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
@@ -106,7 +107,7 @@ model Report {
 }
 
 model Recommendation {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(uuid())
   stockCode     String   @map("stock_code") @db.VarChar(50)
   stockName     String   @map("stock_name") @db.VarChar(100)
   entryPrice    Float    @map("entry_price")
@@ -119,8 +120,8 @@ model Recommendation {
 }
 
 model SubscriptionRequest {
-  id        String             @id @default(uuid()) @db.Uuid
-  userId    String             @map("user_id") @db.Uuid
+  id        String             @id @default(uuid())
+  userId    String             @map("user_id")
   status    SubscriptionStatus @default(PENDING)
   createdAt DateTime           @default(now()) @map("created_at")
   updatedAt DateTime           @updatedAt @map("updated_at")
@@ -131,7 +132,7 @@ model SubscriptionRequest {
 }
 
 model SniperSignal {
-  id         String   @id @default(uuid()) @db.Uuid
+  id         String   @id @default(uuid())
   signalId   String   @unique @map("signal_id") @db.VarChar(255)
   ticker     String   @db.VarChar(50)
   type       String   @db.VarChar(50)  // 'ENTRY', 'EXIT_WARN'
@@ -180,7 +181,7 @@ model SignalCandidate {
 }
 
 model Lead {
-  id        String   @id @default(uuid()) @db.Uuid
+  id        String   @id @default(uuid())
   email     String   @db.VarChar(255)
   source    String?  @db.VarChar(100)
   createdAt DateTime @default(now()) @map("created_at")
@@ -211,6 +212,12 @@ model DailyStockSnapshot {
   foreignBuy   String?  @map("foreign_buy")
   instBuy      String?  @map("inst_buy")
   yield        Float?
+  styleTag     String?  @map("style_tag") @db.VarChar(100)
+  aiComment    String?  @map("ai_comment") @db.Text
+  dailyOpen    Float?   @map("daily_open")
+  dailyHigh    Float?   @map("daily_high")
+  dailyLow     Float?   @map("daily_low")
+  volRate      Float?   @map("vol_rate")
   isExecuted   Boolean? @default(false) @map("is_executed")
   executedAt   String?  @map("executed_at")
   createdAt    DateTime @default(now()) @map("created_at")
@@ -233,7 +240,7 @@ model DailySignalHistory {
 }
 
 model SystemStat {
-  id               String   @id @default(uuid()) @db.Uuid
+  id               String   @id @default(uuid())
   date             String   @unique @db.VarChar(10) // "YYYY-MM-DD"
   visitorCount     Int      @default(0) @map("visitor_count")
   loginCount       Int      @default(0) @map("login_count")
@@ -251,7 +258,7 @@ model SystemStat {
 }
 
 model IncidentLog {
-  id          String    @id @default(uuid()) @db.Uuid
+  id          String    @id @default(uuid())
   title       String    @db.VarChar(255)
   description String?   @db.Text
   severity    String    @default("INFO") // INFO, WARN, ERROR, FATAL
@@ -262,4 +269,65 @@ model IncidentLog {
   createdAt   DateTime  @default(now()) @map("created_at")
 
   @@map("incident_logs")
+}
+
+model DailyTop5 {
+  id           String   @id @default(uuid())
+  date         String   // "YYYY-MM-DD"
+  code         String   @db.VarChar(20)
+  name         String   @db.VarChar(100)
+  score        Int
+  currentPrice Float    @map("current_price")
+  yield        Float    // Change Rate (%)
+  entryPrice1  Float    @map("entry_price1")
+  entryPrice2  Float    @map("entry_price2")
+  stopLoss     Float    @map("stop_loss")
+  targetPrice1 Float    @map("target_price1")
+  category     String   @db.VarChar(100)
+  tradeAmount  BigInt   @map("trade_amount")
+  foreignBuy   Int      @map("foreign_buy")    // Net buying (shares)
+  instBuy      Int      @map("inst_buy")       // Net buying (shares)
+  styleTag     String?  @map("style_tag") @db.VarChar(100)
+  aiComment    String?  @map("ai_comment") @db.Text
+  dailyOpen    Float?   @map("daily_open")
+  dailyHigh    Float?   @map("daily_high")
+  dailyLow     Float?   @map("daily_low")
+  volRate      Float?   @map("vol_rate")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([date, code])
+  @@index([date])
+  @@map("daily_top5_history")
+}
+
+model SyncSaveLog {
+  id          String   @id @default(uuid())
+  tagName     String   @map("tag_name") @db.VarChar(100) // e.g. "2026-04-08 14:30"
+  snapshot    Json     @db.JsonB
+  savedAt     DateTime @default(now()) @map("saved_at")
+
+  @@index([savedAt(sort: Desc)])
+  @@map("sync_save_logs")
+}
+
+model SignalsLog {
+  id             Int       @id @default(autoincrement())
+  stockCode      String    @map("stock_code") @db.VarChar(10)
+  stockName      String?   @map("stock_name") @db.VarChar(50)
+  signalType     String    @map("signal_type") @db.VarChar(20) // 'BUY_STRONG', 'BUY_WATCH', 'SELL'
+  wbs1m          Decimal?  @map("wbs_1m") @db.Decimal(5, 2)
+  wbs3m          Decimal?  @map("wbs_3m") @db.Decimal(5, 2)
+  askBidRatio    Decimal?  @map("ask_bid_ratio") @db.Decimal(5, 2)
+  pScore         Decimal?  @map("p_score") @db.Decimal(5, 2)
+  predictiveRoi  Decimal?  @map("predictive_roi") @db.Decimal(5, 2)
+  entryPrice     Int?      @map("entry_price")
+  targetPrice    Int?      @map("target_price")
+  stopPrice      Int?      @map("stop_price")
+  occurredAt     DateTime  @default(now()) @map("occurred_at") @db.Timestamptz
+  resolvedAt     DateTime? @map("resolved_at") @db.Timestamptz
+  actualMaxGain  Decimal?  @map("actual_max_gain") @db.Decimal(5, 2)
+  isSuccess      Boolean?  @map("is_success")
+
+  @@index([stockCode, occurredAt(sort: Desc)])
+  @@map("signals_log")
 }

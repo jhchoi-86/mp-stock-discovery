@@ -13,12 +13,14 @@ module.exports = {
       kill_timeout: 10000,            // graceful shutdown 10초
       env: {
         NODE_ENV: 'development',
-        PORT: 3001
+        PORT: 3001,
+        TZ: 'Asia/Seoul'
       },
       env_production: {
         NODE_ENV: 'production',
         PORT: 3001,
-        CLIENT_URL: 'https://mpstock.co.kr'
+        CLIENT_URL: 'https://mpstock.co.kr',
+        TZ: 'Asia/Seoul'
       }
     },
 /*
@@ -51,6 +53,7 @@ module.exports = {
         NODE_ENV: 'production'
       }
     },
+*/
     {
       name: 'mp-stock-3m-sniper',
       script: './sniper_3m.cjs',
@@ -63,6 +66,5 @@ module.exports = {
         NODE_ENV: 'production'
       }
     }
-    */
   ]
 };

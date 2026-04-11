@@ -3,61 +3,57 @@ const fs = require('fs');
 const path = require('path');
 const axios = require('axios');
 const { calculateSignals } = require('./analyzer.cjs');
+const { calculateTotalScore } = require('./src/utils/scoreEngine.cjs');
 const { sendTelegramMessage } = require('./telegramBot.cjs');
+const { toKST, getKSTDateString } = require('./src/utils/kst.cjs'); // [TASK-CC02] KST 공통 유틸 도입
 
 const DATA_DIR = path.join(__dirname, 'data');
+const STOCK_MASTER_FILE = path.join(DATA_DIR, 'stock_master.json');
 const SIGNALS_FILE = path.join(DATA_DIR, 'signals.json');
 const KIS_TOKEN_FILE = path.join(DATA_DIR, 'kis_token.json');
+
+// --- [Phase 5] SSOT Integration ---
+const prisma = require('./src/utils/prismaClient.cjs');
+const cache = require('./src/services/cacheService.cjs');
+const ScoringService = require('./src/services/ScoringService.cjs');
 
 const KIS_APP_KEY = (process.env.KIS_APP_KEY || '').trim();
 const KIS_APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
 
-// Target Stocks: Yesterday's Top 10
+// Target Stocks: Top 10 by Star Grade from PostgreSQL SSOT
 let targetStocks = [];
-const alertedCandles = new Set(); // To prevent duplicate alerts (code_timestamp)
+let alertedCandles = new Set(); 
+let lastResetDate = getKSTDateString(); // [TASK-CC02] KST 기준 날짜
 
-async function getKisAccessToken() {
-    if (fs.existsSync(KIS_TOKEN_FILE)) {
-        const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
-        if (saved.expiry > Date.now() + 3600000) return saved.token;
+/**
+ * [Phase 5] DB SSOT 기반 타겟 종목 식별 (signals.json 제거)
+ */
+async function identifyTargetStocks() {
+    try {
+        console.log('[Sniper 3M] Identifying targets from PostgreSQL...');
+        const snapshots = await prisma.dailyStockSnapshot.findMany({
+            where: { 
+                starGrade: { 
+                    not: null,
+                    notIn: ['0', '', 'nullable'] 
+                } 
+            },
+            orderBy: [
+                { starGrade: 'desc' },
+                { createdAt: 'desc' }
+            ],
+            take: 10
+        });
+
+        return snapshots.map(s => ({
+            code: s.code,
+            name: s.name,
+            score: parseInt(s.starGrade || 0)
+        }));
+    } catch (e) {
+        console.error('[Sniper 3M] DB Target identification failed:', e.message);
+        return [];
     }
-    const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
-        grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET
-    });
-    const token = response.data.access_token;
-    const expiry = Date.now() + (response.data.expires_in * 1000);
-    fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({ token, expiry }));
-    return token;
-}
-
-// Identify top stocks from yesterday (scan signals.json)
-function identifyTargetStocks() {
-    if (!fs.existsSync(SIGNALS_FILE)) return [];
-    const allSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
-    
-    // Yesterday range (KST 09:00 - 15:30)
-    // For simplicity, find the latest timestamp in the file and look back 24h
-    const latestTs = Math.max(...allSignals.map(s => s.timestamp));
-    const yesterdayStart = latestTs - (86400 * 1000); // 24h ago
-    
-    const stocks = {};
-    allSignals.filter(s => s.timestamp >= yesterdayStart).forEach(s => {
-        if (!stocks[s.code]) stocks[s.code] = { name: s.name, lastScore: 0 };
-        // We'd ideally re-calculate score here, but let's assume those with high recorded scores or frequent appearances are good targets.
-        // For this sniper, we'll take top 10 unique names from the most recent 500 signals
-        // Actually, let's just use the score audit logic from my previous scan
-    });
-    
-    // Hardcoded demo targets if scan fails, but let's assume the scan finds them
-    // For the demonstration, I will use a few known top stocks from my previous scan
-    return [
-        { code: '086450', name: '동국제약' },
-        { code: '218410', name: 'RFHIC' },
-        { code: '047040', name: '대우건설' },
-        { code: '011070', name: 'LG이노텍' },
-        { code: '025900', name: '동화기업' },
-        { code: '095340', name: 'ISC' }
-    ];
 }
 
 async function fetch3MCandles(code, token) {
@@ -85,6 +81,8 @@ async function fetch3MCandles(code, token) {
 
     // KIS returns newest first. Reverse for analyzer.
     const reversed = [...output2].reverse();
+    const baseDateStr = res.data.output1.stck_bsop_date; // YYYYMMDD
+    
     return {
         open: reversed.map(d => parseInt(d.stck_oprc)),
         high: reversed.map(d => parseInt(d.stck_hgpr)),
@@ -92,8 +90,8 @@ async function fetch3MCandles(code, token) {
         close: reversed.map(d => parseInt(d.stck_prpr)),
         volume: reversed.map(d => parseInt(d.cntg_vol)),
         time: reversed.map(d => {
-            // stck_cntg_hour is HHMMSS
-            const dateStr = res.data.output1.stck_bsop_date; // YYYYMMDD
+            // [TASK-N04] Handle date per record if available, fallback to baseDate
+            const dateStr = d.stck_bsop_date || baseDateStr; 
             const h = d.stck_cntg_hour.substring(0, 2);
             const m = d.stck_cntg_hour.substring(2, 4);
             const s = d.stck_cntg_hour.substring(4, 6);
@@ -102,56 +100,135 @@ async function fetch3MCandles(code, token) {
     };
 }
 
+async function getKisAccessToken() {
+    try {
+        if (fs.existsSync(KIS_TOKEN_FILE)) {
+            const data = fs.readFileSync(KIS_TOKEN_FILE, 'utf8');
+            try {
+                const saved = JSON.parse(data);
+                if (saved.token && saved.expiry > Date.now() + 3600000) return saved.token;
+            } catch (pErr) {
+                console.warn("[Sniper 3M] Token file corrupted. Issuing new token...");
+            }
+        }
+    } catch (fErr) {
+        console.warn("[Sniper 3M] Token file read error:", fErr.message);
+    }
+
+    const response = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/tokenP', {
+        grant_type: 'client_credentials', appkey: KIS_APP_KEY, appsecret: KIS_APP_SECRET
+    });
+    const token = response.data.access_token;
+    const expiry = Date.now() + (response.data.expires_in * 1000);
+    
+    try {
+        fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({ token, expiry }));
+    } catch (wErr) {
+        console.error("[Sniper 3M] Failed to save token to file (Memory only):", wErr.message);
+    }
+    return token;
+}
+
+let running = true;
+process.on('SIGTERM', () => { 
+    console.log('[Sniper 3M] SIGTERM received. Shutting down...');
+    running = false; 
+});
+process.on('SIGINT',  () => { 
+    console.log('[Sniper 3M] SIGINT received. Shutting down...');
+    running = false; 
+});
+
 async function runSniper() {
     console.log(`[Sniper 3M] Starting engine at ${new Date().toLocaleString()}`);
+    
+    // [TASK-E05] Send ready signal to PM2
+    if (process.send) {
+        process.send('ready');
+        console.log('[PM2] Sent ready signal.');
+    }
+
     let token;
     try { token = await getKisAccessToken(); } catch(e) { console.error("KIS Token missing"); return; }
     
-    targetStocks = identifyTargetStocks();
+    targetStocks = await identifyTargetStocks();
     console.log(`[Sniper 3M] Target Stocks: ${targetStocks.map(s => s.name).join(', ')}`);
 
-    while (true) {
-        // Market check (09:00 - 15:40 KST)
-        const now = new Date();
-        const kstHeader = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-        const hour = kstHeader.getUTCHours();
-        const min = kstHeader.getUTCMinutes();
-        
-        const isMarketOpen = (hour > 9 || (hour === 9 && min >= 0)) && (hour < 20 || (hour === 20 && min <= 0));
-        
-        if (!isMarketOpen) {
-            console.log(`[Sniper 3M] Market Closed (${hour}:${min}). Waiting...`);
-            await new Promise(r => setTimeout(r, 60000));
-            continue;
-        }
+    while (running) {
+        try {
+            // Market check (09:00 - 15:40 KST)
+            const kstHeader = toKST(); // [TASK-CC02] 공통 유틸 사용
+            const hour = kstHeader.getHours();
+            const min = kstHeader.getMinutes();
 
-        for (const stock of targetStocks) {
-            try {
-                const history = await fetch3MCandles(stock.code, token);
-                if (history) {
-                    const signal = calculateSignals(history, '3M');
-                    if (signal && signal.is_strong_signal) {
-                        const lastTs = history.time[history.time.length - 1];
-                        const alertKey = `${stock.code}_${lastTs}`;
-                        
-                        if (!alertedCandles.has(alertKey)) {
-                            console.log(`[Sniper 3M] ALERT! ${stock.name} (${stock.code}) Absolute Signal at ${signal.current_price}`);
-                            const msg = `🎯 [스나이퍼-3M 절대신호]\n종목: ${stock.name}\n현재가: ${signal.current_price.toLocaleString()}원\n전략: 전일 추천주 실시간 돌파 포착`;
-                            await sendTelegramMessage(msg);
-                            alertedCandles.add(alertKey);
+            // [TASK-N06] Daily Reset for alertedCandles
+            const today = getKSTDateString();
+            if (today !== lastResetDate) {
+                console.log(`[Sniper 3M] Daily reset of alertedCandles Cache (${lastResetDate} -> ${today})`);
+                alertedCandles.clear();
+                lastResetDate = today;
+            }
+
+            // Extended Market Hours support (up to 20:00)
+            const isMarketOpen = (hour > 9 || (hour === 9 && min >= 0)) && (hour < 20 || (hour === 20 && min <= 0));
+            
+            if (!isMarketOpen) {
+                console.log(`[Sniper 3M] Market Closed (${hour}:${min}). Waiting...`);
+                await new Promise(r => setTimeout(r, 60000));
+                continue;
+            }
+
+            // Refresh targets periodically (every hour)
+            if (now.getMinutes() === 0 && now.getSeconds() < 40) {
+                targetStocks = await identifyTargetStocks();
+            }
+
+            for (const stock of targetStocks) {
+                if (!running) break;
+                try {
+                    const history = await fetch3MCandles(stock.code, token);
+                    if (history) {
+                        const signal = calculateSignals(history, '3M');
+                        if (signal && signal.is_strong_signal) {
+                            const lastTs = history.time[history.time.length - 1];
+                            const alertKey = `${stock.code}_${lastTs}`;
+                            
+                             if (!alertedCandles.has(alertKey)) {
+                                console.log(`[Sniper 3M] ALERT! ${stock.name} (${stock.code}) Absolute Signal at ${signal.current_price}`);
+                                const msg = `🎯 [스나이퍼-3M 절대신호]\n종목: ${stock.name}\n현재가: ${signal.current_price.toLocaleString()}원\n전략: 전일 추천주 실시간 돌파 포착`;
+                                
+                                // [TASK-N08] Retry logic for Telegram
+                                let sent = false;
+                                for (let attempt = 1; attempt <= 3; attempt++) {
+                                    try {
+                                        await sendTelegramMessage(msg);
+                                        sent = true;
+                                        break;
+                                    } catch (err) {
+                                        console.error(`[Sniper 3M] Telegram attempt ${attempt} failed:`, err.message);
+                                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                                    }
+                                }
+                                if (sent) alertedCandles.add(alertKey);
+                            }
                         }
                     }
+                    // Rate limit (TPS 20)
+                    await new Promise(r => setTimeout(r, 1000));
+                } catch (e) {
+                    console.error(`[Sniper 3M] Error monitoring ${stock.name}: ${e.message}`);
                 }
-                // Rate limit (TPS 20)
-                await new Promise(r => setTimeout(r, 1000));
-            } catch (e) {
-                console.error(`[Sniper 3M] Error monitoring ${stock.name}: ${e.message}`);
             }
+            
+            console.log(`[Sniper 3M] Cycle complete. Waiting 10s...`); // [TASK-N09] Reduced delay
+            await new Promise(r => setTimeout(r, 10000));
+        } catch (mainErr) {
+            console.error('[Sniper 3M] Main loop error:', mainErr.message);
+            await new Promise(r => setTimeout(r, 10000)); // Cool down
         }
-        
-        console.log(`[Sniper 3M] Cycle complete. Waiting 30s...`);
-        await new Promise(r => setTimeout(r, 30000));
     }
+    console.log('[Sniper 3M] Engine stopped gracefully.');
+    process.exit(0);
 }
 
 runSniper();

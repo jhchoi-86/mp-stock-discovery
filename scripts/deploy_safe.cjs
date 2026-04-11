@@ -17,6 +17,7 @@ const CONFIG = {
     USER: "ubuntu",
     KEY_PATH: "C:/Users/danbe/Documents/mp-key.pem",
     REMOTE_DIR: "~/mp-stock-discovery/",
+    NGINX_ROOT: "/var/www/mp-stock-discovery/dist",
     LOCAL_DIST: "./dist/",
     PM2_NAME: "mp-stock-discovery" 
 };
@@ -62,6 +63,24 @@ function autoUpdateReleaseHistory() {
 try {
     log("Starting Robust Deployment (v5.3.0)...");
 
+    // 0.5 Validate Syntax (v7.8.5 Permanent Fix)
+    log("Step 0.5: Validating server-side syntax (Permanent Stability Fix)...");
+    const serverFiles = [
+        'server.cjs',
+        'analyzer.cjs',
+        ...fs.readdirSync('src/routes').filter(f => f.endsWith('.cjs')).map(f => `src/routes/${f}`),
+        ...fs.readdirSync('src/utils').filter(f => f.endsWith('.cjs')).map(f => `src/utils/${f}`)
+    ];
+    
+    serverFiles.forEach(file => {
+        try {
+            execSync(`node -c "${file}"`, { stdio: 'pipe' });
+            log(`  ✔ ${file} syntax OK`);
+        } catch (e) {
+            error(`  ✖ Syntax Error in ${file}:\n${e.stderr.toString()}`);
+        }
+    });
+
     // 0. Auto-increment version
     log("Step 0: Incrementing version (npm version patch)...");
     execSync('npm version patch --no-git-tag-version', { stdio: 'inherit' });
@@ -73,6 +92,10 @@ try {
 
     // [v6.2.9] Auto-update RELEASE.md before upload
     autoUpdateReleaseHistory();
+
+    log("Step 1.5: Cleaning remote dist and fixing permissions...");
+    const fixPermCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "sudo rm -rf ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && mkdir -p ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}"`;
+    execSync(fixPermCmd, { stdio: 'inherit' });
 
     log("Step 2: Uploading all backend assets to server...");
     const assets = [
@@ -99,9 +122,9 @@ try {
     ].join(' && ');
 
 
-    const sshCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "${remoteCommands}"`;
+    const sshCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "${remoteCommands} && sudo rm -rf ${CONFIG.NGINX_ROOT} && sudo cp -r ${CONFIG.REMOTE_DIR}dist ${CONFIG.NGINX_ROOT} && sudo chown -R www-data:www-data ${CONFIG.NGINX_ROOT}"`;
     execSync(sshCmd, { stdio: 'inherit' });
-    log("Server-side sync and reload complete.");
+    log("Server-side sync, Nginx root update, and reload complete.");
 
     // 4. Verification (Health Check)
     log("Step 4: Performing Remote Health Check (HTTP 200 OK Verification)...");

@@ -40,6 +40,11 @@ class BacktestSimulator:
             if cum_volume[ticker] > 0:
                 STATE['vwap'][ticker] = float(cum_amount[ticker]) / cum_volume[ticker]
 
+            # [v9.1.2] 시뮬레이션 시각 동기화 (analyzer/tracker가 이를 참조)
+            tick_time = tick.get("time")
+            if tick_time:
+                STATE['current_time'] = tick_time
+
             # 큐 무한 폭주를 막기 위해 maxsize 제한을 존중하며 적재 (Full 시 잠시 대기 Asyncio 블로킹)
             await TICK_QUEUE.put(tick)
             
@@ -49,8 +54,8 @@ class BacktestSimulator:
         """Broadcaster Task를 대체하여 ENTRY/EXIT 신호를 가로채서 백테스트 로그에 박제합니다."""
         while True:
             try:
-                # 레드팀 방어: 무한 루프 갇힘 방지 (큐 텅 빔 감지)
-                alert = await asyncio.wait_for(BROADCAST_QUEUE.get(), timeout=2.0)
+                # 레드팀 방어: 무한 루프 갇힘 방지 (큐 텅 빔 감지 시간을 5초로 확장하여 엔진 처리 지연 대응)
+                alert = await asyncio.wait_for(BROADCAST_QUEUE.get(), timeout=5.0)
                 self.trade_log.append(alert)
                 
                 sig_type = alert.get("type", "UNKNOWN")

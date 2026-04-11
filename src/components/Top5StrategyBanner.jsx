@@ -1,8 +1,8 @@
-import React from 'react';
-import { Target, TrendingUp, AlertTriangle, ExternalLink, Zap, Award, Lock, Newspaper, FileText, BarChart2 } from 'lucide-react';
+import React, { useMemo } from 'react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
 import useAuthStore from '../store/authStore';
+// [v7.7.50] 하드코딩 데이터셋(OFFICIAL_TOP5) 제거 및 순수 DB SSOT 연동
 
 // 뉴스/공시 링크 생성 헬퍼
 const getInfoLinks = (code, name) => [
@@ -34,10 +34,33 @@ const getInfoLinks = (code, name) => [
 
 const Top5StrategyBanner = ({ onLoginClick }) => {
     const { isAuthenticated } = useAuthStore();
-    const { data, error, isLoading } = useSWR(isAuthenticated ? 'public/top5-strategy' : null, reportService.getTop5Strategy, {
+    const { data: ssotData, error, isLoading } = useSWR(isAuthenticated ? 'ssot/top/5' : null, reportService.getTop5Strategy, {
         revalidateOnFocus: true,
         refreshInterval: 60000 
     });
+
+    // [v7.7.51] Move all hooks to the top to avoid Rule of Hooks violation (#310)
+    const officialTop5 = useMemo(() => {
+        if (!ssotData || !ssotData.data) return [];
+        return (ssotData.data || []).map(s => ({
+            ...s,
+            code: s.stock_code || s.code,
+            name: s.stock_name || s.name,
+            price: s.current_price || s.currentPrice || s.price || 0,
+            score: s.score || s.star_grade || 0,
+            entry1: s.entry_price_1 || s.entryPrice1 || s.entry1 || 0,
+            entry2: s.entry_price_2 || s.entryPrice2 || s.entry2 || 0,
+            target: s.target_price_1 || s.targetPrice1 || s.target || 0,
+            sl: s.stop_loss || s.stopLoss || s.sl || 0,
+            trade_amount: s.trade_amount || s.tradeAmount || 0,
+            vol_ratio: s.vol_ratio || s.volRate || '0.00%', // [v9.1.10] Fixed: stop using style_tag
+            foreign: s.foreign_buy || s.foreignBuy || s.foreign || '0',
+            inst: s.inst_buy || s.instBuy || s.inst || '0',
+            style_tag: s.style_tag || s.styleTag || '',
+            ai_comment: s.ai_comment || s.aiComment || '',
+            status: s.status || '분석 중'
+        })).sort((a, b) => b.score - a.score); // [v8.8.30] 점수순 내림차순 정렬 강제
+    }, [ssotData]);
 
     if (isLoading) return (
         <div className="strategy-banner-skeleton" style={{ height: '200px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '20px', margin: '2rem 0' }}></div>
@@ -55,11 +78,11 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
                 position: 'relative',
                 overflow: 'hidden'
             }}>
-                <div style={{ position: 'absolute', top: '-20px', right: '-20px', opacity: 0.1 }}>
-                    <Award size={200} color="var(--primary)" />
+                <div style={{ position: 'absolute', top: '-20px', right: '-20px', opacity: 0.1, transform: 'rotate(15deg)' }}>
+                    <span style={{ fontSize: '200px' }}>🏆</span>
                 </div>
                 
-                <Lock size={48} color="var(--primary)" style={{ marginBottom: '1.5rem' }} />
+                <div style={{ fontSize: '3rem', marginBottom: '1.5rem' }}>🔒</div>
                 <h2 style={{ fontSize: '1.75rem', fontWeight: 900, color: '#fff', marginBottom: '1rem' }}>
                     오늘의 추천 종목 <span style={{ color: 'var(--primary)' }}>매매 전략 (Locked)</span>
                 </h2>
@@ -96,24 +119,29 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
         </section>
     );
 
-    if (error || !data || !data.stocks) return null;
+    // [v7.7.50] SSOT API(DB) 데이터가 없을 경우 빈 배열 반환 (하드코딩 폴백 박멸)
+    if (error || !ssotData || !ssotData.data || officialTop5.length === 0) {
+        if (error) console.error('[SSOT-Banner] Fetch error:', error);
+        return (
+            <div style={{ textAlign: 'center', padding: '3rem', color: 'rgba(255,255,255,0.4)', background: 'rgba(255,255,255,0.02)', borderRadius: '20px' }}>
+                오늘의 추천 전략 데이터를 불러오는 중이거나 데이터가 아직 생성되지 않았습니다.
+            </div>
+        );
+    }
 
     return (
         <section className="strategy-banner-wrap" style={{ margin: '3rem 0', animation: 'fadeInUp 0.8s ease-out' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginBottom: '1.5rem' }}>
                 <div style={{ backgroundColor: 'var(--primary)', color: '#000', padding: '0.4rem', borderRadius: '8px' }}>
-                    <Award size={20} />
+                    🏆
                 </div>
                 <h2 style={{ fontSize: '1.5rem', fontWeight: 900, color: '#fff', margin: 0 }}>
                     오늘의 추천 종목 <span style={{ color: 'var(--primary)' }}>매매 전략</span>
                 </h2>
-                <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.5)', marginLeft: 'auto' }}>
-                    Last Update: {new Date(data.updatedAt).toLocaleTimeString()}
-                </span>
             </div>
 
             <div className="strategy-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
-                {data.stocks.map((stock, idx) => {
+                {officialTop5.map((stock, idx) => {
                     const infoLinks = getInfoLinks(stock.code, stock.name);
                     return (
                         <div key={stock.code} className="strategy-card" style={{
@@ -125,12 +153,39 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
                             position: 'relative',
                             overflow: 'hidden'
                         }}>
-                            {/* 순위 + 이름 + 점수 */}
+                            {/* 순위 + 이름 + 현재가 + 점수 */}
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
                                 <div>
-                                    <span style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{idx+1}위</span>
+                                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        <span style={{ color: 'var(--primary)', fontSize: '0.7rem', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px' }}>{idx+1}위</span>
+                                        {(() => {
+                                            let badgeStyle = { fontSize: '0.65rem', padding: '0.1rem 0.5rem', borderRadius: '4px', fontWeight: 800, border: '1px solid' };
+                                            if (stock.status === '보유 중') badgeStyle = { ...badgeStyle, backgroundColor: 'rgba(74,222,128,0.1)', color: '#4ADE80', borderColor: 'rgba(74,222,128,0.2)' };
+                                            else if (stock.status === '목표 도달') badgeStyle = { ...badgeStyle, backgroundColor: 'rgba(251,191,36,0.1)', color: '#FBBF24', borderColor: 'rgba(251,191,36,0.2)' };
+                                            else if (stock.status === '손절 완료') badgeStyle = { ...badgeStyle, backgroundColor: 'rgba(248,113,113,0.1)', color: '#F87171', borderColor: 'rgba(248,113,113,0.2)' };
+                                            else badgeStyle = { ...badgeStyle, backgroundColor: 'rgba(156,163,175,0.1)', color: '#9CA3AF', borderColor: 'rgba(156,163,175,0.2)' };
+                                            
+                                            return <span style={badgeStyle}>{stock.status}</span>;
+                                        })()}
+                                    </div>
                                     <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', margin: '0.25rem 0' }}>{stock.name}</h3>
-                                    <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{stock.code}</span>
+                                    <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--accent)' }}>{stock.price.toLocaleString()}원</div>
+                                    <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+                                        <span style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{stock.code}</span>
+                                        {stock.style_tag && (
+                                            <span style={{ 
+                                                fontSize: '0.7rem', 
+                                                padding: '0.1rem 0.4rem', 
+                                                backgroundColor: 'rgba(74,222,128,0.1)', 
+                                                color: '#4ADE80', 
+                                                borderRadius: '4px', 
+                                                fontWeight: 800,
+                                                border: '1px solid rgba(74,222,128,0.2)'
+                                            }}>
+                                                {stock.style_tag}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
                                 <div style={{ textAlign: 'right' }}>
                                     <div style={{ fontSize: '1.5rem', fontWeight: 900, color: 'var(--primary)' }}>{stock.score}<span style={{ fontSize: '0.8rem' }}>점</span></div>
@@ -138,34 +193,110 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
                                 </div>
                             </div>
 
+                            {/* [v8.8.24] 선정 사유 (Qualitative Reasoning) */}
+                            {stock.ai_comment && (
+                                <div style={{ 
+                                    backgroundColor: 'rgba(212,175,55,0.05)', 
+                                    padding: '0.75rem', 
+                                    borderRadius: '12px', 
+                                    marginBottom: '1rem',
+                                    border: '1px solid rgba(212,175,55,0.1)',
+                                    fontSize: '0.85rem',
+                                    color: 'rgba(255,255,255,0.8)',
+                                    lineHeight: 1.4
+                                }}>
+                                    <span style={{ fontWeight: 800, color: 'var(--primary)', marginRight: '0.4rem' }}>💡 선정 사유:</span>
+                                    {stock.ai_comment}
+                                </div>
+                            )}
+
                             {/* 매매 전략 수치 */}
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1rem' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                    <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <Zap size={14} className="text-yellow-500" /> 1차 매수진입가(2H)
-                                    </span>
-                                    <span style={{ color: '#fff', fontWeight: 700 }}>{Math.round(stock.entryPrice1 || stock.entryPrice).toLocaleString()}원</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                    <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <Zap size={14} className="text-yellow-500" /> 2차 매수진입가
-                                    </span>
-                                    <span style={{ color: '#fff', fontWeight: 700 }}>{Math.round(stock.entryPrice2).toLocaleString()}원</span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                    <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <Target size={14} className="text-blue-400" /> 목표가
-                                    </span>
-                                    <span style={{ color: '#ff4d4d', fontWeight: 700 }}>
-                                        {Math.round(stock.targetPrice).toLocaleString()}원
-                                        {stock.targetPrice2 ? ` / ${Math.round(stock.targetPrice2).toLocaleString()}원` : ''}
-                                    </span>
-                                </div>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9rem' }}>
-                                    <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                                        <AlertTriangle size={14} className="text-red-400" /> 손절가
-                                    </span>
-                                    <span style={{ color: '#4da6ff', fontWeight: 700 }}>{Math.round(stock.stopLoss).toLocaleString()}원</span>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', marginBottom: '1rem' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }} title="2시간(2H) 차트 분석 기준 정밀 매수 타점">
+                                            ⚡ 1차 진입가(2H) ⓘ
+                                        </span>
+                                        <span style={{ color: '#fff', fontWeight: 700 }}>{Math.round(stock.entry1).toLocaleString()}원</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            ⚡ 2차 진입가
+                                        </span>
+                                        <span style={{ color: '#fff', fontWeight: 700 }}>{Math.round(stock.entry2).toLocaleString()}원</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            🎯 목표가
+                                        </span>
+                                        <span style={{ color: '#ff6b6b', fontWeight: 700 }}>{Math.round(stock.target).toLocaleString()}원</span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.9rem' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.6)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                                            ⚠️ 손절가
+                                        </span>
+                                        <span style={{ color: '#4da6ff', fontWeight: 700 }}>{Math.round(stock.sl).toLocaleString()}원</span>
+                                    </div>
+                                
+                                <div style={{ marginTop: '0.4rem', paddingTop: '0.6rem', borderTop: '1px solid rgba(255,255,255,0.06)', display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                                    {/* [v8.8.29] 수급/거래대금 UI 스타일 격상 (Premium Alignment) */}
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                                            📊 거래량 (전일대비 %)
+                                        </span>
+                                        <span style={{ color: 'var(--accent)', fontWeight: 800, fontSize: '0.95rem' }}>
+                                            {(() => {
+                                                const ratio = stock.vol_ratio || '0.00%';
+                                                if (!stock.trade_amount || stock.trade_amount === '0') return '-';
+                                                return `${ratio}`;
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                                            📊 외국인 순매수(+),순매도(-)
+                                        </span>
+                                        <span style={{ 
+                                            color: (() => {
+                                                const s = String(stock.foreign);
+                                                if (s.includes('+')) return '#ff6b6b';
+                                                if (s.includes('-')) return '#339af0';
+                                                const n = parseFloat(s.replace(/[^0-9.-]/g, ''));
+                                                return n > 0 ? '#ff6b6b' : (n < 0 ? '#339af0' : '#fff');
+                                            })(), 
+                                            fontWeight: 800, 
+                                            fontSize: '0.95rem' 
+                                        }}>
+                                            {(() => {
+                                                const val = String(stock.foreign);
+                                                const n = parseFloat(val.replace(/[^0-9.-]/g, ''));
+                                                if (isNaN(n) || n === 0) return '0주';
+                                                return (n > 0 ? '+' : '') + n.toLocaleString() + '주';
+                                            })()}
+                                        </span>
+                                    </div>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                        <span style={{ color: 'rgba(255,255,255,0.5)', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem' }}>
+                                            📊 기관 순매수(+),순매도(-)
+                                        </span>
+                                        <span style={{ 
+                                            color: (() => {
+                                                const s = String(stock.inst);
+                                                if (s.includes('+')) return '#ff6b6b';
+                                                if (s.includes('-')) return '#339af0';
+                                                const n = parseFloat(s.replace(/[^0-9.-]/g, ''));
+                                                return n > 0 ? '#ff6b6b' : (n < 0 ? '#339af0' : '#fff');
+                                            })(), 
+                                            fontWeight: 800, 
+                                            fontSize: '0.95rem' 
+                                        }}>
+                                            {(() => {
+                                                const val = String(stock.inst);
+                                                const n = parseFloat(val.replace(/[^0-9.-]/g, ''));
+                                                if (isNaN(n) || n === 0) return '0주';
+                                                return (n > 0 ? '+' : '') + n.toLocaleString() + '주';
+                                            })()}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
 
@@ -193,7 +324,7 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
                                     marginBottom: '0.75rem'
                                 }}
                             >
-                                실시간 차트 보기 <ExternalLink size={14} />
+                                실시간 차트 보기 🔗
                             </a>
 
                             {/* 뉴스 & 공시 링크 박스 */}
@@ -204,7 +335,7 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
                                 padding: '0.75rem',
                             }}>
                                 <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
-                                    <Newspaper size={11} /> 최신 뉴스 · 공시 확인
+                                    📰 최신 뉴스 · 공시 확인
                                 </div>
                                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
                                     {infoLinks.map(link => (

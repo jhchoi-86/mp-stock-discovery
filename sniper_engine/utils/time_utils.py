@@ -1,4 +1,55 @@
-# sniper_engine/utils/time_utils.py
+import json
+import os
+from datetime import datetime, timezone, timedelta
+
+def get_market_hours_config():
+    """공통 market_hours.json 로드"""
+    base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    config_path = os.path.join(base_dir, "platform", "markets", "kr_equity", "market_hours.json")
+    try:
+        if os.path.exists(config_path):
+            with open(config_path, "r", encoding="utf-8") as f:
+                return json.load(f)["kr_equity"]
+    except Exception as e:
+        print(f"[MarketHours] Failed to load config: {e}")
+    
+    # Fallback default values
+    return {
+        "trading_hours": {"start": "08:00", "end": "20:00"},
+        "holidays": {}
+    }
+
+def is_trading_day():
+    """주말 및 공휴일 체크 (KST 기준)"""
+    now = datetime.now(timezone(timedelta(hours=9))) # KST
+    if now.weekday() >= 5: return False # 토(5)/일(6) 제외
+    
+    year = str(now.year)
+    config = get_market_hours_config()
+    holidays = config.get("holidays", {}).get(year, [])
+    date_str = now.strftime("%Y-%m-%d")
+    
+    return date_str not in holidays
+
+def is_market_open():
+    """장 운영 시간 체크 (KST 기준)"""
+    if not is_trading_day(): return False
+    
+    now = datetime.now(timezone(timedelta(hours=9))) # KST
+    config = get_market_hours_config()
+    hours = config.get("trading_hours", {})
+    
+    try:
+        start_h, start_m = map(int, hours.get("start", "08:00").split(':'))
+        end_h, end_m = map(int, hours.get("end", "20:00").split(':'))
+        
+        current_val = now.hour * 100 + now.minute
+        start_val = start_h * 100 + start_m
+        end_val = end_h * 100 + end_m
+        
+        return start_val <= current_val <= end_val
+    except:
+        return False
 
 def hms_to_window_index(hms_str: str, window_seconds: int = 10) -> int:
     """

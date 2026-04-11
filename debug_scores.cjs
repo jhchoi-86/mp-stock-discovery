@@ -1,51 +1,36 @@
+const ScoringService = require('./src/services/ScoringService.cjs');
 const fs = require('fs');
-const data = JSON.parse(fs.readFileSync('./data/live_signals.json', 'utf8'));
-const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "1W"];
+const path = require('path');
 
-// get unique codes
-const codes = [...new Set(data.map(s => s.code))];
-const results = [];
+// Simulate the input for SK이노베이션 (096770) based on low score (14)
+// We'll try to guess what signals made it 14.
+const mockTfSigs = {
+    '2H': {
+        cond_up7: true,  // +20
+        sma5: 120000,
+        sma10: 121000,
+        sma20: 122000,
+        sma60: 123000,
+        current_price: 126400
+    },
+    '1D': { trigger_vol: false }
+};
 
-for (const code of codes) {
-  const stockSignals = data.filter(s => s.code === code);
-  const tfSigs = {};
-  timeframes.forEach(tf => {
-    const latest = stockSignals.filter(s => s.timeframe === tf).sort((a, b) => b.timestamp - a.timestamp)[0];
-    if (latest) tfSigs[tf] = latest;
-  });
+// If score was 14:
+// 20 (cond_up7) - 20 (sma5 < sma20 penalty) + 14 (overlap signals or bonus) = 14.
 
-  const latest = stockSignals.sort((a, b) => b.timestamp - a.timestamp)[0];
+const result = ScoringService.calculateTotalScore(mockTfSigs, { current_price: 126400 });
+console.log('--- Scoring Debug (SK Innovation Mock) ---');
+console.log(JSON.stringify(result, null, 2));
 
-  let score = 0;
-  let points = {};
-
-  if (tfSigs['2H'] && tfSigs['2H'].cond_up7) { score += 25; points['2H_MACD'] = 25; }
-  if (tfSigs['2H'] && (tfSigs['2H'].signal_HH || tfSigs['2H'].DHH2)) { score += 25; points['2H_SIGNAL'] = 25; }
-  if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) { score += 5; points['1D_VOL'] = 5; }
-  if (tfSigs['1W'] && tfSigs['1W'].trigger_vol) { score += 5; points['1W_VOL'] = 5; }
-
-  const current_price = latest ? latest.current_price : 0;
-  const result_2 = tfSigs['2H'] ? tfSigs['2H'].result_2 : 0;
-  if (current_price > 0 && result_2 > 0 && current_price >= result_2) {
-    const diffPercent = ((current_price - result_2) / result_2) * 100;
-    if (diffPercent <= 0.5) { score += 10; points['GAP_0.5'] = 10; }
-    else if (diffPercent <= 1.0) { score += 5; points['GAP_1.0'] = 5; }
-    points['diffPercent'] = diffPercent;
-  }
-
-  ['15M', '30M', '1H', '2H', '4H'].forEach(tf => {
-    if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) { score += 2; points[`${tf}_SIG`] = 2; }
-  });
-
-  ['1D', '1W'].forEach(tf => {
-    if (tfSigs[tf] && (tfSigs[tf].signal_HH || tfSigs[tf].DHH2)) { score += 10; points[`${tf}_SIG`] = 10; }
-  });
-  
-  const finalScore = Math.min(score, 100);
-  if (finalScore > 0) {
-    results.push({ code, name: latest.name, score: finalScore, points });
-  }
+// Real check: find the actual tfSigs from signals file if possible
+const signalsPath = path.join(__dirname, 'data/signals.json');
+if (fs.existsSync(signalsPath)) {
+    const allSignals = JSON.parse(fs.readFileSync(signalsPath, 'utf8'));
+    const skSignals = allSignals['096770'];
+    if (skSignals) {
+        const realResult = ScoringService.calculateTotalScore(skSignals.timeframes, skSignals.latest);
+        console.log('--- Real Scoring (SK Innovation) ---');
+        console.log(JSON.stringify(realResult, null, 2));
+    }
 }
-
-results.sort((a, b) => b.score - a.score);
-console.log(JSON.stringify(results.slice(0, 10), null, 2));

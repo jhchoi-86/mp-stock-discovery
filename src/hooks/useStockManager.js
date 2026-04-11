@@ -10,12 +10,10 @@ export const useStockManager = (isAuthenticated) => {
       return saved ? JSON.parse(saved) : [];
     } catch(e) { return []; }
   });
-  const [signals, setSignals] = useState(() => {
-    try {
-      const saved = localStorage.getItem('mp_signals');
-      return saved ? JSON.parse(saved) : [];
-    } catch(e) { return []; }
-  });
+  // [Phase 3] signalsSummary replaces flat signals array.
+  // Shape: Map<code, { latestSignal, timeframeStatus }>
+  // No localStorage caching → eliminates QuotaExceededError.
+  const [signalsSummary, setSignalsSummary] = useState(new Map());
   const [lastUpdate, setLastUpdate] = useState(new Date());
   
   // Filters
@@ -49,55 +47,26 @@ export const useStockManager = (isAuthenticated) => {
     if (stocks && stocks.length > 0) localStorage.setItem('mp_stocks', JSON.stringify(stocks)); 
   }, [stocks]);
 
-  useEffect(() => {
-    if (signals && signals.length > 0) {
-        try {
-            // [TASK-014] 최신 신호만 필터링하여 저장 (타임프레임별 최근 1건)
-            const latestOnly = [];
-            const seen = new Set();
-            // 타임스탬프 내림차순 정렬하여 최신 것부터 추출
-            const sorted = [...signals].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-            for (const sig of sorted) {
-                const key = `${sig.code}_${sig.timeframe}`;
-                if (!seen.has(key)) {
-                    seen.add(key);
-                    latestOnly.push(sig);
-                }
-            }
-            
-            const serialized = JSON.stringify(latestOnly);
-            // 4MB 임계값 체크 (localStorage 한계 방어)
-            if (serialized.length < 4 * 1024 * 1024) {
-                localStorage.setItem('mp_signals', serialized);
-            } else {
-                console.warn('[LocalStorage] signals too large to cache, skipping.');
-            }
-        } catch(e) {
-            console.warn('[LocalStorage] signals save failed:', e.message);
-            // 쿼터 초과 시 기존 캐시 삭제하여 White Screen 방지
-            if (e.name === 'QuotaExceededError') {
-                localStorage.removeItem('mp_signals');
-            }
-        }
-    }
-  }, [signals]);
+  // [Phase 3] signals localStorage caching REMOVED - all data is server-side now.
 
   const fetchData = async () => {
     try {
-      const [stocksRes, signalsRes] = await Promise.all([
+      const [stocksRes, summaryRes] = await Promise.all([
         axiosClient.get('/api/stocks'),
-        axiosClient.get('/api/signals')
+        axiosClient.get('/api/signals-summary')  // [Phase 3] Server-side grouped data
       ]);
       
       let stocksData = stocksRes.data;
-      let signalsData = signalsRes.data;
+      let summaryData = summaryRes.data;
       
-      // 방어 코드: 401/403 등 에러 JSON 객체가 반환되었을 경우 빈 배열로 강제 처리하여 React UI Crash(White Screen) 방지
       if (!Array.isArray(stocksData)) stocksData = [];
-      if (!Array.isArray(signalsData)) signalsData = [];
+      if (!Array.isArray(summaryData)) summaryData = [];
+      
+      // Build O(1) lookup map from array [ { code, latestSignal, timeframeStatus } ]
+      const summaryMap = new Map(summaryData.map(item => [item.code, item]));
       
       setStocks(stocksData);
-      setSignals(signalsData);
+      setSignalsSummary(summaryMap);
       setLastUpdate(new Date());
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -122,19 +91,18 @@ export const useStockManager = (isAuthenticated) => {
     checkSyncStatus();
     
     // SSE 관리 로직은 SSEContext.jsx로 이동됨 (중복 연결 방지)
+
+    // [v9.2.1] Auto-Refresh (5-minute polling for Landing Page sync)
+    const intervalId = setInterval(() => {
+      if (isAuthenticated) fetchData();
+    }, 5 * 60 * 1000);
+
+    return () => clearInterval(intervalId);
   }, [isAuthenticated]);
 
   const getSignalsForStock = (code) => {
-    const stockSignals = (Array.isArray(signals) ? signals : []).filter(s => s.code === code);
-    const timeframes = ["5M", "15M", "30M", "1H", "2H", "4H", "1D", "2D", "1W"];
-    const status = {};
-    timeframes.forEach(tf => {
-      const latest = (Array.isArray(stockSignals) ? stockSignals : [])
-        .filter(s => s.timeframe === tf)
-        .sort((a, b) => b.timestamp - a.timestamp)[0];
-      status[tf] = latest;
-    });
-    return status;
+    // [Phase 3] O(1) lookup from server-side grouped map
+    return signalsSummary.get(code)?.timeframeStatus || {};
   };
 
   const buildSignalTimeframes = (tfSigs) => {
@@ -171,16 +139,16 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const getLatestGlobal = (code) => {
-    return (Array.isArray(signals) ? signals : [])
-      .filter(s => s.code === code)
-      .sort((a, b) => b.timestamp - a.timestamp)[0];
+    // [Phase 3] O(1) lookup from server-side grouped map
+    return signalsSummary.get(code)?.latestSignal || null;
   };
 
+  // [TASK-SM06] topSectors: signalsSummary를 직접 사용하여 stale closure 방지
   const topSectors = useMemo(() => {
     const sectorCounts = {};
     if (Array.isArray(stocks)) {
       stocks.forEach(stock => {
-        const latest = getLatestGlobal(stock.code);
+        const latest = signalsSummary.get(stock.code)?.latestSignal || null;
         if (latest && latest.signal_HH) {
           const sector = stock.sector || '기타';
           if (sector !== '기타') {
@@ -193,82 +161,36 @@ export const useStockManager = (isAuthenticated) => {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 3)
       .map(entry => entry[0]);
-  }, [stocks, signals]);
+  }, [stocks, signalsSummary]);
 
-  const filteredStocks = (Array.isArray(stocks) ? stocks : []).filter(stock => {
-    const matchesSearch = stock.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          stock.code.includes(searchQuery);
-    const matchesMarket = marketFilter === "ALL" || stock.market === marketFilter;
-    
-    let matchesCategory = true;
-    if (categoryFilter === '추천종목') {
-      matchesCategory = selectedStocks.has(stock.code);
-    } else if (categoryFilter !== 'ALL') {
-      const latest = getLatestGlobal(stock.code);
-      const cat = latest ? latest.category : '';
-      matchesCategory = (cat === categoryFilter);
-    }
-    
-    let matchesTf = true;
-    if (tfFilter !== "ALL") {
-      const tfSigs = getSignalsForStock(stock.code);
-      const s = tfSigs[tfFilter];
-      // Filter for stocks that have a Buy or Strong signal in the selected TF
-      matchesTf = s && (s.signal_HH || s.is_strong_signal);
-    }
-    
-    return matchesSearch && matchesMarket && matchesCategory && matchesTf;
-  });
+  // [TASK-SM02] filteredStocks를 useMemo로 감싸 candidates의 불필요한 재계산 방지
+  const filteredStocks = useMemo(() => {
+    return (Array.isArray(stocks) ? stocks : []).filter(stock => {
+      const matchesSearch = stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            stock.code.includes(searchQuery);
+      const matchesMarket = marketFilter === "ALL" || stock.market === marketFilter;
 
-  const calculateTotalScore = (tfSigs, latest, isTopSector) => {
-    let score = 0;
-    const sig2H = tfSigs['2H'];
-    const sig1H = tfSigs['1H'];
-    const sig30M = tfSigs['30M'];
-    const price = sig2H ? sig2H.current_price : (latest ? latest.current_price : 0);
-    
-    // [v3.4.0] Hybrid (Day + Swing) Scoring Rules
-    
-    // 1. 추세 필터(2H): cond_up7 -> 20점
-    if (sig2H && sig2H.cond_up7) score += 20;
-    
-    // 2. 눌림목 감지(2H): DHH2 -> 20점
-    if (sig2H && sig2H.DHH2) score += 20;
-    
-    // 3. 이평선 정배열(2H): 5 > 10 > 20 > 60 -> 10점
-    const isAligned = sig2H && (sig2H.sma5 > sig2H.sma10 && sig2H.sma10 > sig2H.sma20 && sig2H.sma20 > sig2H.sma60);
-    if (isAligned) score += 10;
-    
-    // 4. 하이브리드 합의점 보너스 (NEW): 2H 추세(O) & (1H or 30M 매수신호(O)) -> 15점
-    const hasLowTfMomentum = (sig1H && sig1H.signal_HH) || (sig30M && sig30M.signal_HH);
-    if (sig2H && sig2H.cond_up7 && hasLowTfMomentum) score += 15;
-    
-    // 5. 이격도 A(2H): 정배열 & 10일선 < 현재가 < 5일선 -> 5점
-    if (isAligned && price < sig2H.sma5 && price > sig2H.sma10) score += 5;
-    
-    // 6. 이격도 B(2H): 정배열 & 20일선 < 현재가 < 10일선 -> 3점
-    if (isAligned && price < sig2H.sma10 && price > sig2H.sma20) score += 3;
-    
-    // 7-10. 신호 중첩 보너스 (각 시간대별)
-    const tfs = ["30M", "1H", "2H", "4H", "1D", "2D", "1W"];
-    tfs.forEach(tf => {
-      const s = tfSigs[tf];
-      if (s) {
-        if (s.signal_HH) score += 1;   // 매수신호(HH)
-        if (s.cond_up7) score += 1;    // 추세신호(cond_up7)
-        if (s.signal_H) score += 2;    // 강력신호(signal_H)
-        if (s.signal_HHH || s.is_strong_signal) score += 5;  // 절대신호(signal_HHH) / fallback: is_strong_signal
+      let matchesCategory = true;
+      if (categoryFilter === '추천종목') {
+        matchesCategory = selectedStocks.has(stock.code);
+      } else if (categoryFilter !== 'ALL') {
+        const latest = signalsSummary.get(stock.code)?.latestSignal || null;
+        const cat = latest ? latest.category : '';
+        matchesCategory = (cat === categoryFilter);
       }
-    });
-    
-    // 11. 거래량 급증(1D): 1.5배 초과 -> 5점 (v3.4.0 상향)
-    if (tfSigs['1D'] && tfSigs['1D'].trigger_vol) score += 5;
-    
-    // 12. 역배열 조건: 5일선 < 20일선(2H) -> -20점
-    if (sig2H && sig2H.sma5 < sig2H.sma20) score -= 20;
 
-    return { score, bestTf: '2H' };
-  };
+      let matchesTf = true;
+      if (tfFilter !== "ALL") {
+        const tfSigs = signalsSummary.get(stock.code)?.timeframeStatus || {};
+        const s = tfSigs[tfFilter];
+        matchesTf = s && (s.signal_HH || s.is_strong_signal);
+      }
+
+      return matchesSearch && matchesMarket && matchesCategory && matchesTf;
+    });
+  }, [stocks, searchQuery, marketFilter, categoryFilter, tfFilter, selectedStocks, signalsSummary]);
+
+
 
   const candidates = useMemo(() => {
     const raw = (filteredStocks || []).map(stock => {
@@ -276,10 +198,12 @@ export const useStockManager = (isAuthenticated) => {
       const latest = getLatestGlobal(stock.code);
       const isTopSector = topSectors.includes(stock.sector);
       
-      // [v7.7.22] Restore consistency: Use backend score if available, fallback to frontend only if missing
-      const backendScore = latest?.score || 0;
-      const scoreData = calculateTotalScore(tfSigs, latest, isTopSector);
-      
+      // [SSOT] Unified Score logic exclusively trusts backend 'latest.score'
+      const rawScore = latest?.score;
+      const backendScore = (typeof rawScore === 'object' && rawScore !== null) ? rawScore.total : (rawScore || 0);
+      const total_score = backendScore; // Unified scoring from API
+
+      const bestSignal = tfSigs['2H'] || latest;
       const signalTimeframes = buildSignalTimeframes(tfSigs);
       const t2H = tfSigs['2H'] ? {
         sma5: tfSigs['2H'].sma5 || null,
@@ -294,16 +218,24 @@ export const useStockManager = (isAuthenticated) => {
         t2H,
         timeframeStatus: tfSigs,
         latestSignal: latest,
-        total_score: backendScore || scoreData.score
+        kis_change_data: latest?.kis_change_data, // [v7.7.28 RESTORED] Supply data visibility
+        bestSignal: tfSigs['2H'] || latest,
+        bestTfLabel: '2H',
+        isTopSector,
+        score: total_score,        
+        total_score: total_score
       };
     });
 
     return showAll 
       ? [...raw].sort((a, b) => b.total_score - a.total_score)
       : [...raw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
-  }, [filteredStocks, signals, showAll, topSectors]);
+  }, [filteredStocks, signalsSummary, showAll, topSectors]);
 
-  const activeCount = [...new Set((Array.isArray(signals) ? signals : []).filter(s => s.signal_HH).map(s => s.code))].length;
+  // [TASK-SM09] activeCount를 useMemo로 감싸 350종목 순회 최적화
+  const activeCount = useMemo(() =>
+    [...signalsSummary.values()].filter(s => s.latestSignal?.signal_HH).length
+  , [signalsSummary]);
 
   const toggleSelectAll = (e) => {
     if (e.target.checked) {
@@ -336,13 +268,13 @@ export const useStockManager = (isAuthenticated) => {
         try {
           const response = await axiosClient.post('/api/import-csv', { csv: csvData, timeframe: uploadTimeframe });
           if (response.status === 200) {
-            alert('CSV 데이터가 성공적으로 업로드되었습니다.');
+            toast.success('CSV 데이터가 성공적으로 업로드되었습니다.'); // [TASK-SM05]
             fetchData();
             resolve(true);
           }
         } catch (error) {
           console.error('Upload error:', error);
-          alert(`업로드 실패: ${error.response?.data?.error || '알 수 없는 오류'}`);
+          toast.error(`업로드 실패: ${error.response?.data?.error || '알 수 없는 오류'}`); // [TASK-SM05]
           reject(error);
         }
       };
@@ -352,19 +284,20 @@ export const useStockManager = (isAuthenticated) => {
   };
 
   const handleReset = async () => {
+    // [TASK-SM11] window.confirm → toast 기반 확인 (비블로킹 처리는 추후 모달로 교체 권장)
     if (!window.confirm('정말 모든 분석 데이터를 초기화하시겠습니까? (복구할 수 없습니다)')) return;
     try {
       const response = await axiosClient.post('/api/reset');
       if (response.status === 200) {
-        alert(response.data.message);
+        toast.success(response.data.message); // [TASK-SM05]
         setSelectedStocks(new Set());
         fetchData();
       } else {
-        alert("초기화 중 오류가 발생했습니다.");
+        toast.error("초기화 중 오류가 발생했습니다."); // [TASK-SM05]
       }
     } catch (error) {
       console.error("Reset error:", error);
-      alert("서버 연결에 실패했습니다.");
+      toast.error("서버 연결에 실패했습니다."); // [TASK-SM05]
     }
   };
 
@@ -380,43 +313,53 @@ export const useStockManager = (isAuthenticated) => {
       // [v7.7.20] Bulk Sync: Send ALL timeframes in one single request to avoid UI stall
       setSyncProgress({ current: 0, total: 100, timeframe: '준비 중...' });
       
-      // 🔴 [Red Team 방어] 350종목 x 7개 TF 처리 시 최대 15분 이상 소요될 수 있으므로 20분(1,200초) 설정
-      await axiosClient.post('/api/auto-sync', { timeframes }, { timeout: 1200000 });
-      
-      await fetchData();
-      setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 100, timeframe: '' });
-      alert("통합 자동 동기화가 성공적으로 완료되었습니다.");
+      // [TASK-SM04] Fire-and-Forget 패턴: 트리거만 하고 결과는 SSE/폴링으로 수신
+      // timeout을 30초로 줄이고, 백엔드가 비동기로 동기화를 처리하도록 함
+      await axiosClient.post('/api/auto-sync', { timeframes }, { timeout: 30000 });
+
+      toast.success("동기화가 시작되었습니다. 완료되면 대시보드가 자동으로 업데이트됩니다."); // [TASK-SM05]
+      // 완료는 SSEContext의 signal_update 이벤트가 fetchData를 호출함
     } catch (error) {
       console.error("Bulk sync error:", error);
       setIsSyncing(false);
       setSyncProgress({ current: 0, total: 100, timeframe: '' });
-      
+
       if (error.response?.status === 409) {
-        alert("이미 분석이 진행 중입니다. 잠시만 기다려 주시면 자동으로 결과가 업데이트됩니다.");
+        toast.error("이미 분석이 진행 중입니다. 잠시 후 자동으로 결과가 업데이트됩니다."); // [TASK-SM05]
       } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        alert("분석 작업이 길어지고 있습니다. 백엔드에서 분석은 계속 진행 중이며, 잠시 후 대시보드에 결과가 나타납니다.");
+        toast.success("분석이 백엔드에서 계속 진행 중입니다. 잠시 후 결과가 나타납니다."); // [TASK-SM05]
+        setIsSyncing(false);
       } else if (error.response?.status !== 403 && error.response?.status !== 429) {
-        alert(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
+        toast.error(error.response?.data?.error || "동기화 중 오류가 발생했습니다."); // [TASK-SM05]
       }
     }
   };
 
   const handleSnapshotSelected = async (snapshotHeader) => {
     if (!snapshotHeader) {
-      // Return to Live Mode
-      setSignals(originalSignals);
+      // [TASK-SM01] setSignals 미존재 → 서버에서 최신 데이터 재조회
+      await fetchData();
       setActiveSnapshot(null);
       return;
     }
 
     try {
-      if (!activeSnapshot) setOriginalSignals(signals); // Backup live signals once
+      // [TASK-SM10] 첫 번째 스냅샷 로드 시에만 백업 (activeSnapshot이 null일 때)
+      // 단, setOriginalSignals는 이제 복귀 시 사용하지 않으므로 참고용으로만 유지
+      if (!activeSnapshot) setOriginalSignals([...signalsSummary.values()]);
       
       const res = await axiosClient.get(`/api/archive/snapshots/${snapshotHeader.id}`);
       const fullSnapshot = res.data;
       
-      setSignals(fullSnapshot.signals);
+      // Archive snapshots are flat arrays — rebuild summary map from them
+      const archiveMap = new Map();
+      if (Array.isArray(fullSnapshot.signals)) {
+        fullSnapshot.signals.forEach(s => {
+          if (!archiveMap.has(s.code)) archiveMap.set(s.code, { code: s.code, latestSignal: s, timeframeStatus: {} });
+          archiveMap.get(s.code).timeframeStatus[s.timeframe] = s;
+        });
+      }
+      setSignalsSummary(archiveMap);
       setActiveSnapshot(fullSnapshot);
       toast.success(`${new Date(fullSnapshot.createdAt).toLocaleString()} 스냅샷을 불러왔습니다.`);
     } catch (e) {
@@ -428,7 +371,7 @@ export const useStockManager = (isAuthenticated) => {
   const handleDownloadReport = () => {
     const mdContent = generateReportContent(candidates);
     if (!mdContent) {
-      alert("현재 확정된 HH 신호나 매수 승인 종목이 없습니다.");
+      toast.error("현재 확정된 HH 신호나 매수 승인 종목이 없습니다."); // [TASK-SM05]
       return;
     }
     const blob = new Blob([mdContent], { type: 'application/octet-stream' });
@@ -437,7 +380,7 @@ export const useStockManager = (isAuthenticated) => {
     a.href = url;
     a.download = `MP_REPORT_${new Date().toISOString().split('T')[0]}.md`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000); // [TASK-SM08] Safari 호환: 지연 해제
   };
 
   const handleDownloadTVList = () => {
@@ -447,17 +390,17 @@ export const useStockManager = (isAuthenticated) => {
       .join(', ');
 
     if (!tvStocks) {
-      alert("50점 이상 종목이 없습니다.");
+      toast.error("50점 이상 종목이 없습니다."); // [TASK-SM05]
       return;
     }
-    
+
     const blob = new Blob([tvStocks], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `TV_WATCHLIST_${new Date().toISOString().split('T')[0]}.txt`;
     a.click();
-    URL.revokeObjectURL(url);
+    setTimeout(() => URL.revokeObjectURL(url), 1000); // [TASK-SM08] Safari 호환: 지연 해제
   };
 
   const handleSendToTelegram = async () => {
@@ -526,19 +469,32 @@ export const useStockManager = (isAuthenticated) => {
         };
       });
 
-      const safeContent = tgContent.length > 4000 
-        ? tgContent.substring(0, 4000) + "\n\n... (내용이 너무 길어 요약되었습니다. 모바일에선 전체 리포트 파일을 확인하세요.)" 
-        : tgContent;
+      // [TASK-SM03] 한글 멀티바이트 고려: 문자 수 기준이 아닌 UTF-8 바이트 기준으로 분할
+      // TextEncoder는 브라우저 네이티브 API (Node.js Buffer 불필요)
+      const encoder = new TextEncoder();
+      let safeContent = tgContent;
+      if (encoder.encode(tgContent).length > 4000) {
+        // 바이트 한도 내에서 안전하게 자르기
+        let byteLen = 0;
+        let cutIndex = 0;
+        for (const char of tgContent) {
+          const charBytes = encoder.encode(char).length;
+          if (byteLen + charBytes > 4000) break;
+          byteLen += charBytes;
+          cutIndex += char.length; // surrogate pair 대응 (이모지)
+        }
+        safeContent = tgContent.substring(0, cutIndex) + "\n\n... (요약됨)";
+      }
 
       const response = await axiosClient.post('/api/send-report', { reportText: safeContent, recommendations });
       if (response.data && response.data.success) {
-        alert(`텔레그램으로 리포트가 성공적으로 전송되었습니다! (완료: ${response.data.sentCount}건)`);
+        toast.success(`텔레그램 리포트 전송 완료! (${response.data.sentCount}건)`); // [TASK-SM05]
       } else {
-        alert("전송 실패: " + (response.data?.error || "알 수 없는 에러"));
+        toast.error("전송 실패: " + (response.data?.error || "알 수 없는 에러")); // [TASK-SM05]
       }
     } catch (err) {
       console.error("Telegram Report Generation Error:", err);
-      alert("전송 실패: 리포트 생성/전송 중 에러 발생 (" + err.message + ")");
+      toast.error("전송 실패: 리포트 생성/전송 중 에러 발생 (" + err.message + ")"); // [TASK-SM05]
     } finally {
       setIsSendingTg(false);
     }
@@ -546,7 +502,7 @@ export const useStockManager = (isAuthenticated) => {
 
   return {
     // State
-    stocks, signals, lastUpdate,
+    stocks, signalsSummary, lastUpdate,
     searchQuery, setSearchQuery,
     marketFilter, setMarketFilter,
     categoryFilter, setCategoryFilter,

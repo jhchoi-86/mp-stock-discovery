@@ -832,16 +832,18 @@ if (require.main === module) {
                             else if (interval === '1wk') fetchDays = 1000;
 
                             try {
-                            rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
-                        } catch (fetchErr) {
-                            if (fetchErr.type === 'TOKEN_EXPIRED') {
-                                console.log(`[Analyzer CLI] Token expired during ${stock.code}. Refreshing...`);
-                                kisToken = await getKisAccessToken(true);
                                 rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
-                            } else {
-                                throw fetchErr;
+                            } catch (fetchErr) {
+                                if (fetchErr.type === 'TOKEN_EXPIRED') {
+                                    console.log(`[Analyzer CLI] Token expired during ${stock.code}. Refreshing...`);
+                                    kisToken = await getKisAccessToken(true);
+                                    rawHistory = await fetchHybridHistory(stock, fetchDays, interval, kisToken);
+                                } else {
+                                    console.error(`[Analyzer CLI] Data Fetching Error for ${stock.code}: ${fetchErr.message}`);
+                                    // [v7.7.50] RED TEAM FIX: Don't throw. Continue to next stock.
+                                    continue; 
+                                }
                             }
-                        }
                         if (rawHistory) globalHistoryCache[cacheKey] = rawHistory;
                         }
 

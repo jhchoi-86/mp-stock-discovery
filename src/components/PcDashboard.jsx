@@ -10,6 +10,7 @@ import SignalIndicator from '../SignalIndicator.jsx';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
+import adminService from '../api/adminService';
 import useSWR from 'swr';
 import { useSSE } from '../context/SSEContext';
 import { 
@@ -19,7 +20,8 @@ import {
   Activity, 
   RotateCcw, 
   Share2, 
-  ExternalLink 
+  ExternalLink,
+  HelpCircle
 } from 'lucide-react';
 
 // KST 기준 장중 상태 판별
@@ -50,7 +52,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
   });
 
   const {
-      stocks: originalStocks, signals, lastUpdate,
+      stocks: originalStocks, lastUpdate,
       searchQuery, setSearchQuery,
       marketFilter, setMarketFilter,
       categoryFilter, setCategoryFilter,
@@ -80,7 +82,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
 
   return (
     <div className="container">
-      <div className="version-badge">v{__APP_VERSION__}</div>
+        <div className="version-badge">v9.2.1 [Stable]</div>
     <header className="fade-in">
         <div style={{ display: 'flex', alignItems: 'center', gap: '3rem', flex: 1 }}>
             <div className="logo-section" style={{ minWidth: '300px' }}>
@@ -138,9 +140,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           <SyncProgressHeader 
             onUpdateRequested={manager.fetchData} 
             fallbackCount={(() => {
-              const VALID_TFS = ["30M", "1H", "2H", "4H", "1D", "2D", "1W"];
-              return (signals || []).filter(s => VALID_TFS.includes(s.timeframe)).length;
-            })()} 
+              // [Phase 3] signalsSummary Map 기반 카운트
+              const summary = manager.signalsSummary;
+              if (!summary) return 0;
+              return [...summary.values()].filter(s => {
+                  const tf = s.timeframeStatus || {};
+                  return Object.keys(tf).some(k => ['30M','1H','2H','4H','1D','2D','1W'].includes(k));
+              }).length;
+          })()} 
           />
           <div className="stat-item">
             <div className="stat-label">강력 신호 (HH)</div>
@@ -331,6 +338,60 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             >
               <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 30M, 1H, 2H, 4H, 1D, 2D, 1W"}
             </button>
+            <button 
+              onClick={async () => {
+                const rawTop5 = (candidates || []).slice(0, 5);
+                if (rawTop5.length === 0) {
+                  alert('저장할 종목 데이터가 없습니다. 먼저 동기화를 진행해주세요.');
+                  return;
+                }
+                
+                // [v9.1.7] 데이터 정합성 보강: 화면에 표시되는 보정된 가격 정보들을 객체에 직접 주입
+                const top5 = rawTop5.map(s => {
+                  const t2H = s.latestSignal || s.t2H;
+                  const t1D = s.timeframeStatus?.['1D'] || {};
+                  const curPrice = realtimePrices?.[s.code]?.price || s.current_price || 0;
+                  
+                  const ePrice1 = Math.round(t2H?.entry_price || t2H?.result_2 || 0);
+                  const ePrice2 = Math.round(t2H?.result_3 || 0);
+                  const sPrice = Math.round(t2H?.stop_loss || (ePrice2 > 0 ? ePrice2 * 0.98 : 0));
+                  const tPrice = Math.round(t1D?.bb_upper || s.latestSignal?.target_price || 0);
+                  
+                  return {
+                    ...s,
+                    currentPrice: curPrice,
+                    entryPrice1: ePrice1,
+                    entryPrice2: ePrice2,
+                    stopLoss: sPrice,
+                    targetPrice1: tPrice,
+                    yield: ePrice1 > 0 ? ((curPrice - ePrice1) / ePrice1 * 100) : 0,
+                    category: s.sector || s.trend_type || '기타',
+                    // [v9.1.8] Enrich for SSOT Landing Page Consistency
+                    aiComment: s.ai_comment || s.latestSignal?.ai_comment || s.aiComment || '',
+                    foreignBuy: s.foreign_buy || s.kis_change_data?.frgn_ntby_qty || 0,
+                    instBuy: s.inst_buy || s.kis_change_data?.orgn_ntby_qty || 0,
+                    tradeAmount: s.trade_amount || s.kis_change_data?.acml_vol || 0,
+                    styleTag: s.style_tag || s.latestSignal?.style_tag || '',
+                    adx: s.adx || s.latestSignal?.adx || 0
+                  };
+                });
+
+                if (window.confirm(`현재 화면의 상위 5개 종목 상태를 히스토리로 정합 저장하시겠습니까?\n대상: ${top5.map(s => s.name).join(', ')}`)) {
+                  try {
+                    const res = await adminService.saveSyncHistory(top5);
+                    alert(`[성공] 동기화 및 퍼블리싱이 완료되었습니다.\n태그: ${res.tagName}`);
+                  } catch (e) {
+                    console.error('[Sync Save Error]', e);
+                    const errorMsg = e.response?.data?.error || e.message;
+                    alert('동기화 저장에 실패했습니다.\n사유: ' + errorMsg);
+                  }
+                }
+              }}
+              className="card" 
+              style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Share2 size={18} /> 동기화 저장
+            </button>
           </div>
         )}
         
@@ -440,7 +501,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   const t4H = stock.timeframeStatus?.['4H'];
                   const t1D = stock.timeframeStatus?.['1D'];
                   
-                  const curPrice = s?.current_price || s?.entry_price || 0;
+                  const rt = realtimePrices[stock.code];
+                  const curPrice = (marketStatus === 'live' && rt) ? rt.price : (s?.current_price || s?.entry_price || 0);
                   
                   // KIS data might be attached to a specific synced timeframe (like 1D) rather than the latest webhook signal
                   let kisData = s?.kis_change_data;
@@ -468,9 +530,9 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   
                   // Helper to format percentage with triangle
                   const renderChange = (current, base) => {
-                    if (!current || !base) return null;
+                    if (!current || !base || base === 0) return null;
                     const pct = ((current - base) / base) * 100;
-                    if (Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
+                    if (!Number.isFinite(pct) || Math.abs(pct) < 0.01) return <span style={{ color: 'var(--text-muted)', marginLeft: '4px' }}>0.00%</span>;
                     const isUp = pct > 0;
                     const color = isUp ? '#ff4d4d' : '#4d94ff';
                     const arrow = isUp ? '▲' : '▼';
@@ -491,13 +553,17 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   };
 
                   const renderKISChange = (currentPrice, fallbackBase, kisInfo) => {
-                    if (kisInfo) {
+                    if (kisInfo && kisInfo.rate) {
                       const signCode = String(kisInfo.sign);
                       const isUp = signCode === '1' || signCode === '2';
                       const isDown = signCode === '4' || signCode === '5';
                       const color = isUp ? '#ff4d4d' : (isDown ? '#4d94ff' : 'var(--text-muted)');
                       const arrow = isUp ? '▲' : (isDown ? '▼' : '-');
-                      const absRate = Math.abs(parseFloat(kisInfo.rate));
+                      const rawRate = parseFloat(kisInfo.rate);
+                      const absRate = Number.isFinite(rawRate) ? Math.abs(rawRate) : 0;
+                      
+                      if (absRate === 0 && arrow === '-') return null;
+                      
                       return (
                         <span style={{ color, marginLeft: '4px', fontSize: '0.65rem' }}>
                           {arrow} {absRate.toFixed(2)}%
@@ -505,7 +571,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       );
                     }
                     // Fallback if KIS data missing
-                    return fallbackBase > 0 ? renderChange(currentPrice, fallbackBase) : null;
+                    return (fallbackBase > 0 && fallbackBase !== 0) ? renderChange(currentPrice, fallbackBase) : null;
                   };
 
                   return (
@@ -618,7 +684,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const target2H = t2H?.result_2 || 0;
+                          const target2H = t2H?.entry_price || t2H?.result_2 || 0;
                           const target2H_3 = t2H?.result_3 || 0;
                           const target1D = t1D?.bb_upper || 0;
                           const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
@@ -631,43 +697,63 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   {renderKISChange(curPrice, dailyPrevClose, kisData)}
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
-                                <span style={{ color: '#FFD700', fontWeight: 'normal' }}>
-                                  1차 매수진입가 (2H): {target2H > 0 ? Math.round(target2H).toLocaleString() : '-'}원
-                                  {curPrice > 0 && target2H > 0 ? (
-                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target2H >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({target2H > curPrice ? '+' : ''}{(Math.round(target2H - curPrice)).toLocaleString()}원, {((target2H - curPrice) / curPrice * 100).toFixed(2)}%)
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <span style={{ color: 'var(--success)', fontWeight: 'bold' }}>
-                                  2차 매수진입가 (2H): {target2H_3 > 0 ? Math.round(target2H_3).toLocaleString() : '-'}원
-                                  {curPrice > 0 && target2H_3 > 0 ? (
-                                    <span style={{ marginLeft: '6px', fontSize: '0.75rem', color: target2H_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                      ({target2H_3 > curPrice ? '+' : ''}{(Math.round(target2H_3 - curPrice)).toLocaleString()}원, {((target2H_3 - curPrice) / curPrice * 100).toFixed(2)}%)
-                                    </span>
-                                  ) : null}
-                                </span>
-                                <span style={{ color: '#ff6b6b', fontWeight: 'bold' }}>
-                                  손절가 (SL): {(() => {
-                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
-                                    return sl > 0 ? Math.round(sl).toLocaleString() : '-';
-                                  })()}원
-                                  {(() => {
-                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
-                                    if (curPrice > 0 && sl > 0) {
+                                <div style={{ color: '#FFD700', fontWeight: 'normal', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 매수진입가 (2H):</span>
+                                  <span>{target2H > 0 ? Math.round(target2H).toLocaleString() : '-'}원</span>
+                                  <HelpCircle size={12} style={{ opacity: 0.6, cursor: 'help' }} title="현재가 및 시장 변동성을 반영하여 보정된 실전 매수 타점입니다." />
+                                  {curPrice > 0 && target2H > 0 && curPrice !== 0 ? (() => {
+                                    const pct = ((target2H - curPrice) / curPrice * 100);
+                                    if (Number.isFinite(pct)) {
                                       return (
-                                        <span style={{ marginLeft: '6px', fontSize: '0.75rem' }}>
-                                          ({sl > curPrice ? '+' : ''}{(Math.round(sl - curPrice)).toLocaleString()}원, {((sl - curPrice) / curPrice * 100).toFixed(2)}%)
+                                        <span style={{ marginLeft: '4px', fontSize: '0.75rem', color: target2H >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                                          ({target2H > curPrice ? '+' : ''}{(Math.round(target2H - curPrice)).toLocaleString()}원, {pct.toFixed(2)}%)
                                         </span>
                                       );
                                     }
                                     return null;
+                                  })() : null}
+                                </div>
+                                <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>2차 매수진입가 (2H):</span>
+                                  <span>{target2H_3 > 0 ? Math.round(target2H_3).toLocaleString() : '-'}원</span>
+                                  {curPrice > 0 && target2H_3 > 0 && curPrice !== 0 ? (() => {
+                                    const pct = ((target2H_3 - curPrice) / curPrice * 100);
+                                    if (Number.isFinite(pct)) {
+                                      return (
+                                        <span style={{ marginLeft: '4px', fontSize: '0.75rem', color: target2H_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                                          ({target2H_3 > curPrice ? '+' : ''}{(Math.round(target2H_3 - curPrice)).toLocaleString()}원, {pct.toFixed(2)}%)
+                                        </span>
+                                      );
+                                    }
+                                    return null;
+                                  })() : null}
+                                </div>
+                                <div style={{ color: '#ff6b6b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>손절가 (SL):</span>
+                                  <span>{(() => {
+                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
+                                    return sl > 0 ? Math.round(sl).toLocaleString() : '-';
+                                  })()}원</span>
+                                  {(() => {
+                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
+                                    if (curPrice > 0 && sl > 0 && curPrice !== 0) {
+                                      const slPct = ((sl - curPrice) / curPrice * 100);
+                                      if (Number.isFinite(slPct)) {
+                                        return (
+                                          <span style={{ marginLeft: '4px', fontSize: '0.75rem' }}>
+                                            ({sl > curPrice ? '+' : ''}{(Math.round(sl - curPrice)).toLocaleString()}원, {slPct.toFixed(2)}%)
+                                          </span>
+                                        );
+                                      }
+                                    }
+                                    return null;
                                   })()}
-                                </span>
-                                <span style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px' }}>
-                                  1차 목표가 (1D): {target1D > 0 ? Math.round(target1D).toLocaleString() : '-'}원
+                                </div>
+                                <div style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 목표가 (1D):</span>
+                                  <span>{target1D > 0 ? Math.round(target1D).toLocaleString() : '-'}원</span>
                                   {target1D > 0 && dailyPrevClose > 0 ? renderChange(target1D, dailyPrevClose) : null}
-                                </span>
+                                </div>
                               </>
                             );
                           } else {
@@ -707,7 +793,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                           latestSignal={stock.latestSignal}
                           bestTfLabel={stock.bestTfLabel}
                           totalScore={stock.total_score} 
-                          kisData={kisData} 
+                          kisData={stock.kis_change_data} 
                         />
                       </td>
                     </tr>

@@ -1,7 +1,5 @@
 require('dotenv').config();
-const { PrismaClient } = require('@prisma/client');
-BigInt.prototype.toJSON = function() { return this.toString() };
-const prisma = new PrismaClient(); // [TASK-003] Global instance moved to top
+const prisma = require('./src/utils/prismaClient.cjs');
 
 const express = require('express');
 const axios = require('axios');
@@ -16,7 +14,8 @@ const { v4: uuidv4 } = require('uuid'); // [MP-DEBUG-001] Added missing uuidv4
 // const TelegramBot = require('node-telegram-bot-api'); // [MP-DEBUG-002] Disabled pending usage
 dns.setDefaultResultOrder('ipv4first');
 
-const { calculateTotalScore } = require('./src/utils/scoreEngine.cjs');
+const { calculateTotalScore, getCategory, getStars } = require('./src/utils/scoreEngine.cjs');
+const { toKST, getKSTDateString, nowKST } = require('./src/utils/kst.cjs'); // [TASK-CC02] KST 공통 유틸 도입
 
 // 플랜 3: 백엔드 무결성 자동 검증 시스템 가동
 const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
@@ -32,6 +31,9 @@ const { Queue } = require('bullmq');
 const { startWebSocketService, updateSubscriptions, getSubscribedCodes } = require('./src/services/kisWebSocketService.cjs');
 const systemStatsService = require('./src/services/systemStatsService.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
+const { isKSTTradingHours, isTradingDay } = require('./platform/markets/kr_equity/marketHours.cjs');
+const PublishingService = require('./src/services/publishingService.cjs');
+global.publishingService = new PublishingService();
 
 let aiScoringQueue = null;
 try {
@@ -43,6 +45,10 @@ try {
 }
 
 const app = express();
+// [TASK-S14] Safe BigInt Serialization (Alternative to global prototype patch)
+app.set('json replacer', (key, value) => {
+    return typeof value === 'bigint' ? value.toString() : value;
+});
 const PORT = process.env.PORT || 3001;
 
 // [MP-DEBUG-003] Platform routers MOVED below middleware for proper CORS/Auth parsing
@@ -52,6 +58,22 @@ const TELEGRAM_BOT_TOKEN = (process.env.TELEGRAM_BOT_TOKEN || '').trim();
 // 콤마(,)로 구분하여 여러 명의 챗 아이디 입력 가능. 단체방/채널은 음수(-) 아이디를 사용해야 합니다.
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
 const alertCache = new Map(); // Prevent telegram spam
+
+// [TASK-S12] Memory Leak Defense: Periodic TTL Cleanup for alertCache (Every 1 hour)
+setInterval(() => {
+    const now = Date.now();
+    const TTL = 4 * 60 * 60 * 1000; // 4 hours
+    let deletedCount = 0;
+    for (const [key, timestamp] of alertCache.entries()) {
+        if (now - timestamp > TTL) {
+            alertCache.delete(key);
+            deletedCount++;
+        }
+    }
+    if (deletedCount > 0) {
+        console.log(`[AlertCache] Cleaned up ${deletedCount} expired keys. Current size: ${alertCache.size}`);
+    }
+}, 60 * 60 * 1000);
 
 async function sendTelegramAlert(signal, stockName) {
     if (!TELEGRAM_BOT_TOKEN || TELEGRAM_CHAT_IDS.length === 0) return;
@@ -138,11 +160,16 @@ async function getKisAccessToken(force = false) { // [MP-DEBUG-006] Added force 
     }
 
     // Load from file if not in memory
-    if (!force && !kisAccessToken && fs.existsSync(KIS_TOKEN_FILE)) {
+    if (!force && !kisAccessToken) {
         try {
-            const saved = JSON.parse(fs.readFileSync(KIS_TOKEN_FILE, 'utf8'));
-            kisAccessToken = saved.token;
-            kisTokenExpiry = saved.expiry;
+            // [TASK-S05] 비동기 파일 읽기로 전환 (이벤트 루프 블로킹 방지)
+            const fileExists = await fs.promises.access(KIS_TOKEN_FILE).then(() => true).catch(() => false);
+            if (fileExists) {
+                const savedData = await fs.promises.readFile(KIS_TOKEN_FILE, 'utf8');
+                const saved = JSON.parse(savedData);
+                kisAccessToken = saved.token;
+                kisTokenExpiry = saved.expiry;
+            }
         } catch (e) {
             console.error("[KIS API] Failed to read token cache file:", e);
         }
@@ -166,13 +193,18 @@ async function getKisAccessToken(force = false) { // [MP-DEBUG-006] Added force 
         kisTokenExpiry = Date.now() + (response.data.expires_in * 1000);
         
         // Save to file to survive PM2 restarts
-        if (!fs.existsSync(TOKEN_DIR)) {
-            fs.mkdirSync(TOKEN_DIR);
+        // [TASK-S05] 비동기/원자적 파일 쓰기로 전환
+        const dirExists = await fs.promises.access(TOKEN_DIR).then(() => true).catch(() => false);
+        if (!dirExists) {
+            await fs.promises.mkdir(TOKEN_DIR, { recursive: true });
         }
-        fs.writeFileSync(KIS_TOKEN_FILE, JSON.stringify({
+        
+        const tempPath = KIS_TOKEN_FILE + '.tmp';
+        await fs.promises.writeFile(tempPath, JSON.stringify({
             token: kisAccessToken,
             expiry: kisTokenExpiry
-        }));
+        }, null, 2));
+        await fs.promises.rename(tempPath, KIS_TOKEN_FILE);
         
         console.log(`[KIS API] Token successfully issued and cached. Expires in ${response.data.expires_in}s`);
         
@@ -326,25 +358,14 @@ async function withSignalLock(fn) {
     }
 }
 
-// [v5.0.0] Live Signal Board Poller Functions
-function isKSTTradingHours() {
-    const now = new Date(Date.now() + (9 * 60 * 60 * 1000)); // KST
-    const day = now.getUTCDay(); // 0=일, 6=토
-    if (day === 0 || day === 6) return false; // 주말 제외
-    
-    const hour = now.getUTCHours();
-    const min = now.getUTCMinutes();
-    const timeVal = hour * 100 + min;
-    
-    return timeVal >= 900 && timeVal <= 1540; // 09:00~15:40
-}
+// [v5.0.0] Live Signal Board Poller Functions (Standardized via marketHours.cjs)
 
 function startLiveSignalPoller() {
     const { exec } = require('child_process');
-    const poller = () => {
-        if (!isKSTTradingHours()) return; // ← 개선된 체크
+    const poller = async () => {
+        if (!isKSTTradingHours()) return; 
         
-        // ... 나머지 로직
+        // [TASK-S08] Load TOP 5 stocks from latest.json
         let top5 = [];
         try {
             const latestPath = path.join(__dirname, 'data/vip_logs/latest.json');
@@ -352,21 +373,59 @@ function startLiveSignalPoller() {
                 const report = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
                 top5 = (report.stocks || []).slice(0, 5).map(s => s.code);
             }
-        } catch (e) { return; }
+        } catch (e) { 
+            console.error('[SignalPoller] TOP 5 로드 실패:', e.message);
+            return; 
+        }
+        
         if (top5.length === 0) return;
 
         const codes = top5.join(',');
         const env = { ...process.env, STOCK_FILTER: codes, ADDITIVE_SAVE: 'true' };
         
         console.log(`[SignalPoller] Checking 2M/5M signals for TOP 5: ${codes}`);
-        exec(`node analyzer.cjs 2M 5M`, { env }, (err, stdout) => {
-            if (err) {
-                console.error('[SignalPoller] Analyzer error:', err.message);
-                return;
-            }
-            updateTimeSlotSignals(top5);
-        });
+        
+        const runAnalyzer = (retryCount = 0) => {
+            exec(`node analyzer.cjs 2M 5M`, { env }, async (err, stdout, stderr) => {
+                if (err) {
+                    console.error(`[SignalPoller] Analyzer error (Retry ${retryCount}):`, err.message);
+                    if (retryCount < 2) {
+                        const delay = (retryCount + 1) * 30000;
+                        console.log(`[SignalPoller] ${delay/1000}초 후 재시도합니다...`);
+                        setTimeout(() => runAnalyzer(retryCount + 1), delay);
+                    }
+                    return;
+                }
+                
+                if (stderr) console.warn('[SignalPoller] Analyzer Stderr:', stderr);
+                
+                updateTimeSlotSignals(top5);
+                
+                if (global.publishingService) {
+                    try {
+                        const snapshots = await prisma.dailyStockSnapshot.findMany({
+                            where: { code: { in: top5 } },
+                            orderBy: { createdAt: 'desc' },
+                            take: 10
+                        });
+                        const latestSnaps = [];
+                        const seen = new Set();
+                        for (const s of snapshots) {
+                            if (!seen.has(s.code)) { seen.add(s.code); latestSnaps.push(s); }
+                        }
+                        if (latestSnaps.length > 0) {
+                            await global.publishingService.publishToAll(latestSnaps);
+                        }
+                    } catch (autoErr) {
+                        console.error('[AutoSync] Error:', autoErr.message);
+                    }
+                }
+            });
+        };
+        
+        runAnalyzer();
     };
+    
     setInterval(poller, 600000);
     poller();
 }
@@ -562,20 +621,20 @@ setInterval(async () => {
     } catch(e) {}
 }, 5000);
 
-function refreshCacheNow() {
-    try {
-        if (fs.existsSync(STOCK_MASTER_FILE)) {
-            CACHED_STOCKS = fs.readFileSync(STOCK_MASTER_FILE, 'utf8');
-            lastStocksMtimeMs = fs.statSync(STOCK_MASTER_FILE).mtimeMs;
+    async function refreshCacheNow() {
+        try {
+            if (fs.existsSync(STOCK_MASTER_FILE)) {
+                CACHED_STOCKS = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+                lastStocksMtimeMs = (await fs.promises.stat(STOCK_MASTER_FILE)).mtimeMs;
+            }
+            if (fs.existsSync(SIGNALS_FILE)) {
+                CACHED_SIGNALS = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
+                lastSignalsMtimeMs = (await fs.promises.stat(SIGNALS_FILE)).mtimeMs;
+            }
+        } catch(e) {
+            console.error('[Cache Refresh] Error:', e.message);
         }
-        if (fs.existsSync(SIGNALS_FILE)) {
-            CACHED_SIGNALS = fs.readFileSync(SIGNALS_FILE, 'utf8');
-            lastSignalsMtimeMs = fs.statSync(SIGNALS_FILE).mtimeMs;
-        }
-    } catch(e) {
-        console.error('[Cache Refresh] Error:', e.message);
     }
-}
 
 // Phase 12-2 Zero-Day Patch: Lightweight Auth Guard (No DB Hits)
 const authenticateToken = (req, res, next) => {
@@ -743,17 +802,7 @@ const broadcastToClients = (payload) => {
 };
 
 // [v3.8.1] Production Stabilized - No Heartbeat Needed
-app.get('/api/admin/online-users', (req, res) => {
-    const token = req.cookies?.accessToken;
-    let isAdmin = false;
-    if (token) {
-        try {
-            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-            if (decoded.role === 'ADMIN') isAdmin = true;
-        } catch(e) {}
-    }
-    if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
-    
+app.get('/api/admin/online-users', authenticateToken, isAdmin, (req, res) => {
     const now = Date.now();
     // 1. Get IDs from active SSE connections
     const sseIds = clients.map(c => c.userId).filter(Boolean);
@@ -788,18 +837,7 @@ app.post('/api/admin/daily-signals/backup', authenticateToken, isAdmin, async (r
 });
 
 // [Admin] 성과 통계 조회
-app.get('/api/admin/daily-snapshots', async (req, res) => {
-    let isAdmin = false;
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
-        try {
-            const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
-            if (decoded.role === 'ADMIN') isAdmin = true;
-        } catch(e) {}
-    }
-    if (!isAdmin) return res.status(403).json({ error: 'Forbidden' });
-
+app.get('/api/admin/daily-snapshots', authenticateToken, isAdmin, async (req, res) => {
     const { date, code, sortBy = 'yield', order = 'desc' } = req.query;
     try {
         const snapshots = await getPerformanceSnapshotData({ date, code, sortBy, order });
@@ -822,16 +860,21 @@ app.get('/api/public/daily-snapshots', async (req, res) => {
     }
 });
 
+// [TASK-S07] KST 00:00:00 및 23:59:59 타임스탬프 생성 헬퍼
+const toKSTMidnight = (dateStr, endOfDay = false) => {
+    const d = new Date(`${dateStr}T00:00:00+09:00`);
+    if (endOfDay) d.setTime(d.getTime() + 86399999);
+    return d;
+};
+
 // Helper for performance snapshots
 async function getPerformanceSnapshotData({ date, code, sortBy, order }) {
     const where = {};
     const isToday = !date || date === 'all' || date === new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString().split('T')[0];
 
     if (date && date !== 'all') {
-        const start = new Date(date);
-        start.setHours(0,0,0,0);
-        const end = new Date(date);
-        end.setHours(23,59,59,999);
+        const start = toKSTMidnight(date);
+        const end = toKSTMidnight(date, true);
         where.createdAt = { gte: start, lte: end };
     }
     if (code) {
@@ -1039,7 +1082,8 @@ app.post('/api/webhook', async (req, res) => {
     if (newSignal.entry_approved) {
         let stockName = code;
         try {
-            const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
+            const stocksRaw = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+            const stocks = JSON.parse(stocksRaw);
             const found = stocks.find(s => s.code === code);
             if (found) stockName = found.name;
         } catch (e) {}
@@ -1048,7 +1092,7 @@ app.post('/api/webhook', async (req, res) => {
         sendTelegramAlert(newSignal, stockName).catch(err => console.error(err));
     }
 
-    refreshCacheNow();
+    await refreshCacheNow();
     // Notify clients instantly
     broadcastUpdate();
 
@@ -1108,6 +1152,96 @@ app.post('/api/sniper/webhook', async (req, res) => {
         res.status(200).json({ message: 'Sniper webhook processed' });
     } catch (error) {
         console.error("[Sniper Webhook] Error:", error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+// ─────────────────────────────────────────────────────────────────────────
+// [TASK-RS01] realtime_engine.py → Node.js → SSE 재브로드캐스트 라우트
+// realtime_engine.py 가 /api/realtime/signal, /api/realtime/wbs-status 로
+// POST 요청을 보내면, Node.js 가 이를 SSE 클라이언트에게 재전달한다.
+// 인증: x-internal-api-key 헤더 (INTERNAL_API_SECRET 환경변수)
+// ─────────────────────────────────────────────────────────────────────────
+const verifyInternalKey = (req, res, next) => {
+    const internalSecret = process.env.INTERNAL_API_SECRET;
+    if (!internalSecret) {
+        console.warn('[SECURITY] INTERNAL_API_SECRET 미설정 — 내부 API 라우트 비활성화');
+        return res.status(503).json({ error: 'Internal API not configured' });
+    }
+    if (req.headers['x-internal-api-key'] !== internalSecret) {
+        console.warn(`[SECURITY] 무단 내부 API 접근 차단 (IP: ${req.ip})`);
+        return res.status(403).json({ error: 'Forbidden: Invalid internal API key' });
+    }
+    next();
+};
+
+/**
+ * POST /api/realtime/signal
+ * realtime_engine.py 에서 감지한 WBS 절대신호를 SSE로 모든 클라이언트에게 재브로드캐스트.
+ * 어드민에게만 브로드캐스트하는 스나이퍼 웹훅(/api/sniper/webhook)과 달리,
+ * 구독 티어(FREE/STANDARD/PREMIUM)에 따라 차별 배포.
+ */
+app.post('/api/realtime/signal', verifyInternalKey, async (req, res) => {
+    try {
+        const payload = req.body;
+        if (!payload || !payload.stockCode) {
+            return res.status(400).json({ error: 'Invalid signal payload: stockCode required' });
+        }
+
+        console.log(`[Realtime Signal] 수신: ${payload.stockCode} (${payload.signalType})`);
+
+        // SSE 클라이언트에게 sniper_alert 타입으로 재브로드캐스트
+        // useRealtimeSignal.js 가 'sniper_alert' 타입을 구독한다 (TASK-RS01 정렬)
+        const eventData = JSON.stringify({ type: 'sniper_alert', payload });
+        clients.forEach(client => {
+            try {
+                // PREMIUM/STANDARD 구독자 및 ADMIN에게 전달 (FREE 제외)
+                const tier = client.userTier || 'FREE';
+                if (tier === 'PREMIUM' || tier === 'STANDARD' || client.userRole === 'ADMIN') {
+                    client.write(`data: ${eventData}\n\n`);
+                    if (client.flush) client.flush();
+                }
+            } catch (e) { /* 연결 끊김 클라이언트 무시 */ }
+        });
+
+        res.status(200).json({ success: true, message: 'Signal broadcasted' });
+    } catch (error) {
+        console.error('[Realtime Signal Relay] Error:', error);
+        res.status(500).json({ error: 'Internal Server Error' });
+    }
+});
+
+/**
+ * POST /api/realtime/wbs-status
+ * realtime_engine.py 에서 1초 주기로 전송하는 WBS 게이지 업데이트.
+ * price_snapshot 타입으로 SSE 브로드캐스트하여 기존 price 배치 처리 파이프라인과 통합.
+ * 주파수가 높으므로 로그는 DEBUG 레벨에서만 출력.
+ */
+app.post('/api/realtime/wbs-status', verifyInternalKey, (req, res) => {
+    try {
+        const { ticker, wbs1m, wbs3m } = req.body;
+        if (!ticker) {
+            return res.status(400).json({ error: 'Invalid wbs payload: ticker required' });
+        }
+
+        // wbs_gauge 전용 이벤트 타입으로 브로드캐스트 (PREMIUM 이상)
+        const eventData = JSON.stringify({
+            type: 'wbs_gauge',
+            data: { ticker, wbs1m, wbs3m, timestamp: Date.now() }
+        });
+        clients.forEach(client => {
+            try {
+                const tier = client.userTier || 'FREE';
+                if (tier === 'PREMIUM' || client.userRole === 'ADMIN') {
+                    client.write(`data: ${eventData}\n\n`);
+                    if (client.flush) client.flush();
+                }
+            } catch (e) { /* 연결 끊김 무시 */ }
+        });
+
+        res.status(200).json({ success: true });
+    } catch (error) {
+        console.error('[WBS Status Relay] Error:', error);
         res.status(500).json({ error: 'Internal Server Error' });
     }
 });
@@ -1190,7 +1324,7 @@ app.post('/api/import-csv', requireProAuth, async (req, res) => {
         });
 
         console.log(`[Batch Import] ${newSignals.length} signals imported via CSV.`);
-        refreshCacheNow();
+        await refreshCacheNow();
         broadcastUpdate();
 
         res.status(200).json({ message: `${newSignals.length}개의 종목이 성공적으로 불러와졌습니다.`, count: newSignals.length });
@@ -1256,11 +1390,11 @@ app.post('/api/auto-sync', async (req, res) => {
     if (isSyncMutexLocked) {
         return res.status(409).json({ error: '현재 다른 사용자에 의해 분석 갱신이 진행 중입니다. 잠시 후(1~2분 뒤) 다시 시도해주세요' });
     }
-    isSyncMutexLocked = true;
-    const { timeframe, timeframes } = req.body;
-    const tfList = Array.isArray(timeframes) && timeframes.length > 0 ? timeframes : [(timeframe || '1D')];
-    
+
     try {
+        isSyncMutexLocked = true;
+        const { timeframe, timeframes } = req.body;
+        const tfList = Array.isArray(timeframes) && timeframes.length > 0 ? timeframes : [(timeframe || '1D')];
         const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
         let kisTokenGlobal = null;
         try {
@@ -1283,11 +1417,12 @@ app.post('/api/auto-sync', async (req, res) => {
             });
         };
 
+        const stocksRaw = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+        const stocks = JSON.parse(stocksRaw);
+
         for (const tf of tfList) {
             const intervalMap = { '2M': '2m', '5M': '5m', '15M': '15m', '30M': '30m', '1H': '1h', '2H': '1h', '4H': '1h', '1D': '1d', '2D': '1d', '1W': '1wk' };
             const interval = intervalMap[tf] || '1d';
-
-            const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
             let syncResults = [];
             let errorCount = 0;
 
@@ -1295,14 +1430,19 @@ app.post('/api/auto-sync', async (req, res) => {
             emitProgress(0, stocks.length, tf);
 
     // Helper to fetch Hybrid Data (Yahoo history + KIS real-time current price)
-    const fetchHybridHistory = async (stock) => {
-        // [MP-DEBUG-HIGH-003] Set days for 2M timeframe (Yahoo limits 2M to 60 days)
-        if (tf === '2M') days = 2; // Yahoo 2m support is max 60 days, safer with 2 days
-        if (tf === '5M') days = 5;
-        if (tf === '15M') days = 15;
-        if (tf === '30M') days = 30;
-        if (tf === '1D' || tf === '2D') days = 365;
-        if (tf === '1W') days = 1000;
+    const fetchHybridHistory = async (stock, currentTf) => {
+        // [v9.3.0 TASK-S01] Fix ReferenceError: Declare 'days' and map all timeframes
+        let days;
+        if (currentTf === '2M') days = 2; // Yahoo 2m support is max 60 days
+        else if (currentTf === '5M') days = 5;
+        else if (currentTf === '15M') days = 15;
+        else if (currentTf === '30M') days = 30;
+        else if (currentTf === '1H') days = 30;
+        else if (currentTf === '2H') days = 60;
+        else if (currentTf === '4H') days = 90;
+        else if (currentTf === '1D' || currentTf === '2D') days = 365;
+        else if (currentTf === '1W') days = 1000;
+        else days = 30; // Default safety fallback
 
         const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
         const symbolKS = stock.code + suffix;
@@ -1367,33 +1507,19 @@ app.post('/api/auto-sync', async (req, res) => {
                 const currentVolume = parseInt(kisData.acml_vol);
                 const tradeAmount = parseInt(kisData.acml_tr_pbmn);
                 
-                let foreignBuy = '-';
-                let instBuy = '-';
-                let frgnScore = 0;
-                let orgnScore = 0;
-                let ssangScore = 0;
-                let penaltyScore = 0;
-                
+                let frgn = 0, orgn = 0, prsn = 0;
                 try {
                     const invUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor';
                     const invRes = await axios.get(invUrl, {
-                        headers: {
-                            'authorization': 'Bearer ' + kisTokenGlobal,
-                            'appkey': KIS_APP_KEY,
-                            'appsecret': KIS_APP_SECRET,
-                            'tr_id': 'FHKST01010900'
-                        },
-                        params: {
-                            "FID_COND_MRKT_DIV_CODE": "J",
-                            "FID_INPUT_ISCD": stock.code
-                        },
+                        headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010900' },
+                        params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
                         timeout: 5000
                     });
                     const out = invRes.data.output;
                     if (out && out.length > 0) {
-                        const frgn = parseInt(out[0].frgn_ntby_qty || '0');
-                        const orgn = parseInt(out[0].orgn_ntby_qty || '0');
-                        const prsn = parseInt(out[0].prsn_ntby_qty || '0');
+                        frgn = parseInt(out[0].frgn_ntby_qty || '0');
+                        orgn = parseInt(out[0].orgn_ntby_qty || '0');
+                        prsn = parseInt(out[0].prsn_ntby_qty || '0');
                         
                         if (frgn === 0 && orgn === 0 && prsn === 0) {
                             foreignBuy = '장마감 후 집계';
@@ -1402,20 +1528,15 @@ app.post('/api/auto-sync', async (req, res) => {
                             foreignBuy = frgn >= 0 ? `+${frgn.toLocaleString()}주` : `${frgn.toLocaleString()}주`;
                             instBuy = orgn >= 0 ? `+${orgn.toLocaleString()}주` : `${orgn.toLocaleString()}주`;
                         }
-                        
-                        if (frgn > 0) frgnScore = 3;
-                        if (orgn > 0) orgnScore = 3;
-                        if (frgn > 0 && orgn > 0 && prsn < 0) ssangScore = 5;
-                        
-                        if (frgn < 0 && orgn < 0 && prsn > 0) penaltyScore = -3;
                     }
                 } catch(e) {
                     if (e.response && e.response.status === 429) {
                         console.error(`[KIS Investor API 429] 10분간 KIS 통신 차단 (서킷브레이커 작동)`);
-                        kisCircuit.bypass = true;kisCircuit.bypassUntil = Date.now() + (10 * 60 * 1000);saveCircuitState();
+                        kisCircuit.bypass = true; kisCircuit.bypassUntil = Date.now() + (10 * 60 * 1000); saveCircuitState();
                     }
                 }
 
+                const { calculateBonusScore } = require('./src/utils/scoreEngine.cjs');
                 chartData.kis_change_data = {
                     sign: kisData.prdy_vrss_sign,
                     change: parseInt(kisData.prdy_vrss),
@@ -1423,7 +1544,7 @@ app.post('/api/auto-sync', async (req, res) => {
                     trade_amount: tradeAmount,
                     foreign_buy: foreignBuy,
                     inst_buy: instBuy,
-                    bonus_score: (frgnScore + orgnScore + ssangScore + penaltyScore)
+                    bonus_score: calculateBonusScore(frgn, orgn, prsn)
                 };
 
                 const lastIdx = chartData.close.length - 1;
@@ -1559,7 +1680,7 @@ app.post('/api/auto-sync', async (req, res) => {
     for (let i = 0; i < stocks.length; i++) {
         const stock = stocks[i];
         try {
-            const history = await fetchHybridHistory(stock);
+            const history = await fetchHybridHistory(stock, tf);
             if (history && history.close && history.close.length > 50) {
                 const signal = calculateSignals(history, tf);
                 if (signal) {
@@ -1572,7 +1693,7 @@ app.post('/api/auto-sync', async (req, res) => {
                     kisTokenGlobal = await getKisAccessToken(true); // Force Refresh
                     // Retry once
                     try {
-                        const historyRetry = await fetchHybridHistory(stock);
+                        const historyRetry = await fetchHybridHistory(stock, tf);
                         if (historyRetry && historyRetry.close && historyRetry.close.length > 50) {
                             const signal = calculateSignals(historyRetry, tf);
                             if (signal) {
@@ -1619,8 +1740,10 @@ app.post('/api/auto-sync', async (req, res) => {
                 currentSignals = [];
             }
             
-            // Remove old signals for the matching code and timeframe
-            const merged = [...currentSignals, ...syncResults];
+            // [v9.3.0 TASK-S02] Filter existing signals to prevent bloat (Replacement Strategy)
+            const newKeys = new Set(syncResults.map(s => `${s.code}_${s.timeframe}`));
+            const filtered = currentSignals.filter(s => !newKeys.has(`${s.code}_${s.timeframe}`));
+            const merged = [...filtered, ...syncResults];
             const scored = merged.map(s => ({
                 ...s,
                 score: scoreSignal(s, s.kis_change_data?.bonus_score || 0)
@@ -1640,16 +1763,16 @@ app.post('/api/auto-sync', async (req, res) => {
     // [MP-DEBUG-HIGH-006] Bulk Sync Success Notification
     emitProgress(currentSyncProgress.total, currentSyncProgress.total, "전체완료");
 
-
     // --- NEW: Final Persistence after ALL timeframes (v7.7.12) ---
     try {
-        console.log(`[Auto-Sync] ALL timeframes complete. Finalizing persistence to DB and latest.json...`);
-        const stocksMap = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE));
+        console.log(`[Auto-Sync] ALL timeframes complete. Finalizing latest.json...`);
+        const stocksRaw = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+        const stocksMap = JSON.parse(stocksRaw);
         const currentSignalsRaw = await fs.promises.readFile(SIGNALS_FILE, 'utf8');
         const currentSignals = JSON.parse(currentSignalsRaw);
         
         const getSignalsForStock = (code) => {
-            const stockSignals = currentSignals.filter(s => s.code === code); // [MP-DEBUG-MEDIUM-003] Added code filter
+            const stockSignals = currentSignals.filter(s => s.code === code);
             const status = {};
             ["30M", "1H", "2H", "4H", "1D", "2D", "1W"].forEach(targetTf => {
                 status[targetTf] = stockSignals.find(s => s.timeframe === targetTf);
@@ -1669,7 +1792,7 @@ app.post('/api/auto-sync', async (req, res) => {
             return {
                 code: stock.code,
                 name: stock.name,
-                category: score >= 80 ? '추천종목' : '스나이퍼 포착',
+                category: getCategory(score),
                 score: score,
                 adx: latest?.adx || 0,
                 currentPrice: latest?.current_price || latest?.entry_price || 0,
@@ -1689,10 +1812,10 @@ app.post('/api/auto-sync', async (req, res) => {
             };
         }).filter(s => s && s.score > 0);
 
+        // [TASK-CC03] DB 저장은 21:00 Cron으로 일원화하고 여기서는 latest.json 업데이트만 수행
+        console.log(`[Auto-Sync] Snapshot data prepared for latest.json.`);
+
         if (snapshotData.length > 0) {
-            // [MP-DEBUG-HIGH-002] skipDuplicates to avoid DB errors on repeated runs
-            await prisma.dailyStockSnapshot.createMany({ data: snapshotData, skipDuplicates: true });
-            console.log(`[Auto-Sync] Final Persisted ${snapshotData.length} snapshots to DB.`);
 
             const VIP_LOGS_DIR = path.join(__dirname, 'data/vip_logs');
             if (!fs.existsSync(VIP_LOGS_DIR)) fs.mkdirSync(VIP_LOGS_DIR, { recursive: true });
@@ -1706,7 +1829,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 yield_pct: s.yield,
                 is_legacy: false,
                 score: s.score,
-                stars: s.score >= 95 ? 5 : (s.score >= 90 ? 4 : 3),
+                stars: getStars(s.score),
                 entry_price: s.entryPrice1,
                 entry_price_2: s.entryPrice2,
                 stop_loss: s.stopLoss,
@@ -1810,7 +1933,7 @@ if (isPrimaryWorker) {
                 }
                 
                 console.log(`[Archive] Archived ${toArchive.length} signals. Remaining: ${toKeep.length}.`);
-                refreshCacheNow();
+                await refreshCacheNow();
             }
             
             // [TASK-010] Clean up old archives - archiveDir 이미 선언됨
@@ -1840,30 +1963,9 @@ if (isPrimaryWorker) {
         });
     }
 
-    // [v7.4.1] Morning Cron Removed per user request. Retaining Holiday Logic.
-    const isTradingDay = () => {
-        const now = new Date();
-        const kst = new Date(now.getTime() + (9 * 60 * 60 * 1000));
-        const day = kst.getUTCDay();
-        if (day === 0 || day === 6) return false; // 토/일 제외
+    // [v7.4.1] Morning Cron Removed per user request. Holiday logic moved to marketHours.cjs.
 
-        // [TASK-016] 연도별 공휴일 DB - 2027년까지 준비
-        const holidaysByYear = {
-            2026: ["2026-01-01","2026-02-16","2026-02-17","2026-02-18","2026-03-01",
-                   "2026-05-05","2026-05-24","2026-06-06","2026-08-15","2026-09-24",
-                   "2026-09-25","2026-09-26","2026-10-03","2026-10-09","2026-12-25"],
-            2027: ["2027-01-01","2027-01-27","2027-01-28","2027-01-29","2027-03-01",
-                   "2027-05-05","2027-05-13","2027-06-06","2027-08-15","2027-09-14",
-                   "2027-09-15","2027-09-16","2027-10-03","2027-10-09","2027-12-25"]
-        };
-        // [MP-DEBUG-HIGH-005] Correct KST day calculation
-        const year = kst.getUTCFullYear();
-        const holidays = holidaysByYear[year] || [];
-        const dateStr = `${year}-${(kst.getUTCMonth()+1).toString().padStart(2,'0')}-${kst.getUTCDate().toString().padStart(2,'0')}`;
-        return !holidays.includes(dateStr);
-    };
-
-    cron.schedule(process.env.ARCHIVE_CRON_TIME || '0 2 * * *', () => archiveOldSignals());
+    cron.schedule(process.env.ARCHIVE_CRON_TIME || '0 2 * * *', () => archiveOldSignals(), { timezone: "Asia/Seoul" });
 
     cron.schedule('0 21 * * 1-5', async () => {
         if (!isTradingDay()) {
@@ -1872,9 +1974,7 @@ if (isPrimaryWorker) {
         }
         console.log('[Cron] 자동 종목 발굴 및 텔레그램 발송 시작...');
         try {
-            const now = new Date();
-            now.setUTCHours(now.getUTCHours() + 9);
-            const dateStr = `${now.getUTCFullYear()}-${(now.getUTCMonth()+1).toString().padStart(2,'0')}-${now.getUTCDate().toString().padStart(2,'0')}`;
+            const dateStr = getKSTDateString(); // [TASK-CC02] 공통 유틸 사용
             
             const LOCK_FILE = path.join(__dirname, 'data', 'last_sent_date.json');
             if (fs.existsSync(LOCK_FILE)) {
@@ -1892,7 +1992,8 @@ if (isPrimaryWorker) {
             });
 
             const signals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'));
-            const stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+            const stocksRaw = await fs.promises.readFile(STOCK_MASTER_FILE, 'utf8');
+            const stocks = JSON.parse(stocksRaw);
 
             const getSignalsForStock = (code) => {
               const stockSignals = signals.filter(s => s.code === code);
@@ -1930,9 +2031,10 @@ if (isPrimaryWorker) {
             const reviewText = await evaluatePastRecommendations(kisToken, KIS_APP_KEY, KIS_APP_SECRET);
 
             // [MP-DEBUG-HIGH-005/MEDIUM-001] Safe KST Date handling
-            const isFriday = now.getUTCDay() === 5;
-            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-            const isEndOfMonth = tomorrow.getUTCMonth() !== now.getUTCMonth();
+            const kstNow = toKST();
+            const isFriday = kstNow.getDay() === 5;
+            const tomorrow = new Date(kstNow.getTime() + 24 * 60 * 60 * 1000);
+            const isEndOfMonth = tomorrow.getMonth() !== kstNow.getMonth();
 
             let weeklyText = null;
             let monthlyText = null;
@@ -1966,7 +2068,10 @@ if (isPrimaryWorker) {
                 // 2. 15초 Timeout Fallback 방어 로직 적용 (V5 패치)
                 const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
                   { stocks: aiPayload }, 
-                  { timeout: 30000 } // 🔴 [Red Team 방어] 10개 이상 종목 분석 대비 30초로 증설 (기존 25초)
+                  { 
+                    timeout: 30000,
+                    headers: { 'x-internal-api-key': process.env.INTERNAL_API_SECRET || 'fallback_secret' } // [TASK-CC01] 내부 인증 헤더 추가
+                  } 
               );
                 
                 let commentsArray = [];
@@ -2036,15 +2141,19 @@ if (isPrimaryWorker) {
                 verifyAndApprove(s).then(approval => {
                   if (approval && approval.status === 'PASS') {
                     // DB 저장 성공이라 가정하고 (Mock) ML 워커에게 분석 요청 넘김. 응답은 기다리지 않음.
-                    aiScoringQueue.add('scorePredict', {
-                      candidateId: approval.candidateId || s.code,
-                      symbol: s.code,
-                      category: s.latestSignal.category,
-                      indicators: {
-                        score: score,
-                        adx: s.latestSignal.adx || 0
-                      }
-                    }, { removeOnComplete: true, removeOnFail: 1000 }).catch(err => console.error('[BullMQ] Queue Add Error:', err));
+                    if (aiScoringQueue) {
+                      aiScoringQueue.add('scorePredict', {
+                        candidateId: approval.candidateId || s.code,
+                        symbol: s.code,
+                        category: s.latestSignal.category,
+                        indicators: {
+                          score: score,
+                          adx: s.latestSignal.adx || 0
+                        }
+                      }, { removeOnComplete: true, removeOnFail: 1000 }).catch(err => console.error('[BullMQ] Queue Add Error:', err));
+                    } else {
+                      console.warn(`[BullMQ] AI Scoring Queue is not initialized. Skipping job push for ${s.code}`);
+                    }
                   }
                 }).catch(err => console.error('[TDRGate] Error:', err));
                 
@@ -2081,7 +2190,7 @@ if (isPrimaryWorker) {
                     return {
                         code: s.code,
                         name: s.name,
-                        category: s.total_score >= 80 ? '추천종목' : '스나이퍼 포착',
+                        category: getCategory(s.total_score),
                         score: s.total_score,
                         adx: s.latestSignal?.adx || 0,
                         currentPrice: s.latestSignal?.current_price || s.latestSignal?.entry_price || 0,
@@ -2101,21 +2210,68 @@ if (isPrimaryWorker) {
                     };
                 });
                 
-                // [MP-DEBUG-HIGH-002] skipDuplicates added
-                await prisma.dailyStockSnapshot.createMany({ data: snapshotData, skipDuplicates: true });
-                console.log(`[Cron] Successfully persisted ${snapshotData.length} records to DB.`);
+                // [TASK-S09] deleteMany + createMany transaction for reliable updates
+                const todayStr = new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString().split('T')[0];
+                const todayStart = toKSTMidnight(todayStr);
+                const todayEnd = toKSTMidnight(todayStr, true);
+
+                await prisma.$transaction([
+                    prisma.dailyStockSnapshot.deleteMany({
+                        where: {
+                            createdAt: { gte: todayStart, lte: todayEnd },
+                            code: { in: snapshotData.map(s => s.code) }
+                        }
+                    }),
+                    prisma.dailyStockSnapshot.createMany({ data: snapshotData })
+                ]);
+                console.log(`[Cron] Successfully persisted ${snapshotData.length} records to DB (Upsert Pattern).`);
             } catch (snapErr) {
                 console.error('[Cron] Snapshot Persistence Error:', snapErr);
             }
 
-            // [MP-DEBUG-LOW-001] Split long content for Telegram (Max 4096 chars)
-            const MAX_TG_LENGTH = 4000;
+            // [TASK-S06] Telegram 메시지 분할 기준 오류 수정 (Buffer 기반 바이트 길이 계산)
+            const MAX_TG_BYTES = 4000; // API 제한 4096보다 넉넉하게 설정
             const chunks = [];
-            let remaining = content;
-            while (remaining.length > 0) {
-                chunks.push(remaining.substring(0, MAX_TG_LENGTH));
-                remaining = remaining.substring(MAX_TG_LENGTH);
+            let currentChunk = "";
+            let currentBytes = 0;
+
+            const lines = content.split('\n');
+            for (const line of lines) {
+                const lineWithNewline = line + '\n';
+                const lineBytes = Buffer.from(lineWithNewline).length;
+
+                if (currentBytes + lineBytes > MAX_TG_BYTES) {
+                    if (currentChunk) {
+                        chunks.push(currentChunk);
+                        currentChunk = "";
+                        currentBytes = 0;
+                    }
+
+                    // 한 줄 자체가 제한을 초과하는 경우 바이트 단위로 분할
+                    if (lineBytes > MAX_TG_BYTES) {
+                        let remainingLine = lineWithNewline;
+                        while (Buffer.from(remainingLine).length > 0) {
+                            let charCount = 0;
+                            let sliceSize = 0;
+                            while (charCount < remainingLine.length) {
+                                const charBytes = Buffer.from(remainingLine[charCount]).length;
+                                if (sliceSize + charBytes > MAX_TG_BYTES) break;
+                                sliceSize += charBytes;
+                                charCount++;
+                            }
+                            chunks.push(remainingLine.substring(0, charCount));
+                            remainingLine = remainingLine.substring(charCount);
+                        }
+                    } else {
+                        currentChunk = lineWithNewline;
+                        currentBytes = lineBytes;
+                    }
+                } else {
+                    currentChunk += lineWithNewline;
+                    currentBytes += lineBytes;
+                }
             }
+            if (currentChunk) chunks.push(currentChunk);
 
             for (const chatId of TELEGRAM_CHAT_IDS) {
                 for (const chunk of chunks) {
