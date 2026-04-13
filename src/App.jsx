@@ -19,6 +19,7 @@ const PerformancePage = React.lazy(() => import('./pages/PerformancePage.jsx'));
 const AnalysisPage = React.lazy(() => import('./pages/AnalysisPage.jsx'));
 const SignalsPage = React.lazy(() => import('./pages/SignalsPage.jsx'));
 const BacktestPage = React.lazy(() => import('./components/BacktestPage.jsx'));
+const MaintenancePage = React.lazy(() => import('./pages/MaintenancePage.jsx'));
 
 // 프리미엄 스켈레톤 로더
 const PageLoader = () => (

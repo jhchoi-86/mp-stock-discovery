@@ -462,7 +462,7 @@ if (require.main === module) {
 
         // Save to signals.json (Atomic)
         const currentSigs = fs.existsSync(SIGNALS_FILE) ? JSON.parse(fs.readFileSync(SIGNALS_FILE)) : [];
-        const merged = [...currentSigs.filter(s => !timeframes.includes(s.timeframe)), ...allSignals];
+        const merged = [...currentSigs.filter(s => !timeframes.includes(s.timeframe)), ...allSignals].slice(-5000);
         fs.writeFileSync(SIGNALS_FILE + '.tmp', JSON.stringify(merged, null, 2));
         if (fs.existsSync(SIGNALS_FILE)) fs.unlinkSync(SIGNALS_FILE);
         fs.renameSync(SIGNALS_FILE + '.tmp', SIGNALS_FILE);

@@ -1,48 +1,32 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useSSE } from '../hooks/useSSE';
 import useSWR from 'swr';
-import reportService from '../api/reportService';
-import { CheckCircle, LayoutGrid, Flame, History } from 'lucide-react';
+import { LayoutGrid, History, CheckCircle, Flame } from 'lucide-react';
+import { useSSE } from '../hooks/useSSE';
 import adminService from '../api/adminService';
 import { useTop5Stocks } from '../hooks/useStockSnapshot';
 // [v8.0.0] DailyTop5 DB Sync & Multi-Timeframe Integration
 // [v8.8.12] Price Update Highlight Animation
 
 const PriceDisplay = ({ price, changeRate, label }) => {
-  const [isFlashing, setIsFlashing] = useState(false);
-  const [key, setKey] = useState(0); // Forcing re-animation
+  const isPositive = changeRate > 0;
+  const isNegative = changeRate < 0;
+  const color = isPositive ? '#ff4d4d' : (isNegative ? '#4da6ff' : '#888');
   
-  useEffect(() => {
-    if (price > 0) {
-      setIsFlashing(true);
-      setKey(prev => prev + 1);
-      const timer = setTimeout(() => setIsFlashing(false), 2000);
-      return () => clearTimeout(timer);
-    }
-  }, [price]);
-
   return (
-    <div key={key} className={isFlashing ? 'price-update-flash' : ''}>
-      <div style={{display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'flex-end'}}>
-        <div style={{fontSize: '0.95rem', fontWeight: 600, color: '#fff'}}>
-            {Math.round(price).toLocaleString()}원
-        </div>
-        {changeRate !== undefined && (
-          <div style={{
-            fontSize: '0.8rem', 
-            fontWeight: 700,
-            color: changeRate > 0 ? '#ff4d4d' : (changeRate < 0 ? '#4da6ff' : '#888')
-          }}>
-            {changeRate > 0 ? '+' : ''}{changeRate.toFixed(2)}%
-          </div>
-        )}
+    <div style={{ textAlign: 'right' }}>
+      <div style={{ fontSize: '1.1rem', fontWeight: 700, color: '#fff' }}>
+        {price?.toLocaleString()}원
       </div>
-      <div style={{fontSize: '0.75rem', color: '#555'}}>{label}</div>
+      <div style={{ fontSize: '0.8rem', color, display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '2px' }}>
+        <span>{isPositive ? '▲' : (isNegative ? '▼' : '')}</span>
+        <span>{Math.abs(changeRate || 0).toFixed(2)}%</span>
+      </div>
+      {label && <div style={{ fontSize: '0.7rem', color: '#555', marginTop: '2px' }}>{label}</div>}
     </div>
   );
 };
 
-const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
+const MPStockDailyReport = ({ data, isLoading }) => {
   const { realtimePrices } = useSSE();
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
@@ -442,9 +426,8 @@ const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
                                 displayYield = 0;
                             }
                         }
-                        const bodyFontSize = '0.95rem';
 
-                        return (
+                         return (
                             <tr key={idx} style={{borderBottom: '1px solid #222'}}>
                                 <td style={{padding: '16px 8px'}}>
                                     <a 

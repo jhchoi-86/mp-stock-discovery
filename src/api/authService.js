@@ -1,5 +1,5 @@
-import axiosClient, { setAccessToken, getAccessToken } from './axiosClient';
 import useAuthStore from '../store/authStore';
+import axiosClient, { setAccessToken, getAccessToken } from './axiosClient';
 
 /**
  * Authentication Service

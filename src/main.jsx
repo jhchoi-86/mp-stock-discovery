@@ -3,6 +3,47 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
+// [F-03] 전역 에러 핸들러 — ReactDOM.createRoot 이전에 등록
+// TDZ ReferenceError는 React ErrorBoundary로 잡히지 않음
+window.addEventListener('error', (event) => {
+  const msg  = event.error?.message || event.message || '';
+  const file = event.filename        || '';
+  const line = event.lineno          || 0;
+
+  // TDZ / 미초기화 변수 패턴 감지
+  if (
+    msg.includes('before initialization') ||
+    msg.includes('is not defined') ||
+    msg.includes('Cannot access')
+  ) {
+    console.error('[GlobalError][TDZ 감지]', msg);
+    console.error('[GlobalError] 파일:', file, '줄:', line);
+
+    // 프로덕션 알림 — Telegram으로 즉시 발송 (서버 연동)
+    if (import.meta.env.PROD) {
+      fetch('/api/admin/error-report', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type:    'TDZ_ERROR',
+          message: msg,
+          file,
+          line,
+          userAgent: navigator.userAgent,
+          timestamp: new Date().toISOString(),
+        }),
+      }).catch(() => {}); 
+    }
+  } else {
+    // 일반 런타임 에러
+    console.error('[GlobalError]', msg, file, line);
+  }
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[GlobalError][UnhandledPromise]', event.reason);
+});
+
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);

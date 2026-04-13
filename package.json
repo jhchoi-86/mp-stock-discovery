@@ -1,10 +1,13 @@
 {
   "name": "-",
   "private": true,
-  "version": "9.4.20",
+  "version": "9.4.25",
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "check:circular": "madge --circular --extensions js,jsx,ts,tsx src/",
+    "lint": "eslint src/ --max-warnings=0",
+    "prebuild": "npm run check:circular && npm run lint",
     "build": "tsc && vite build",
     "release": "npm version patch --no-git-tag-version && cmd /c \"node_modules/.bin/vite.cmd build\" && cmd /c \"C:/Users/danbe/AppData/Roaming/npm/pm2.cmd reload ecosystem.config.cjs --env production\"",
     "safe-deploy": "node scripts/deploy_safe.cjs",
@@ -15,8 +18,14 @@
     "sync:verify": "npm run sync:save && npm run check:consistency"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@prisma/client": "^5.0.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "eslint": "^8.57.0",
+    "eslint-plugin-import": "^2.32.0",
+    "eslint-plugin-react": "^7.37.5",
+    "globals": "^17.5.0",
+    "madge": "^8.0.0",
     "prisma": "^5.0.0",
     "typescript": "~5.9.3",
     "vite": "^8.0.0"

@@ -1,7 +1,7 @@
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import toast from 'react-hot-toast';
 import axiosClient from '../api/axiosClient';
 import { generateReportContent, generateTelegramContent } from '../utils/reportUtils';
-import toast from 'react-hot-toast';
 
 export const useStockManager = (isAuthenticated) => {
   const [stocks, setStocks] = useState(() => {
@@ -21,7 +21,6 @@ export const useStockManager = (isAuthenticated) => {
   const [marketFilter, setMarketFilter] = useState(() => localStorage.getItem('mp_marketFilter') || "ALL");
   const [categoryFilter, setCategoryFilter] = useState(() => localStorage.getItem('mp_categoryFilter') || 'ALL');
   const [showAll, setShowAll] = useState(() => localStorage.getItem('mp_showAll') === 'true');
-  const [showOnlyTopSectors, setShowOnlyTopSectors] = useState(false);
   const [uploadTimeframe, setUploadTimeframe] = useState(() => localStorage.getItem('mp_uploadTimeframe') || "1D");
   const [tfFilter, setTfFilter] = useState("ALL"); // 7-Timeframe Dynamic Filter
   
@@ -31,7 +30,6 @@ export const useStockManager = (isAuthenticated) => {
 
   // Archive Mode
   const [activeSnapshot, setActiveSnapshot] = useState(null); // { id, signals, createdAt }
-  const [originalSignals, setOriginalSignals] = useState([]); // Backup of live signals
 
   // Selections
   const [selectedStocks, setSelectedStocks] = useState(new Set());
@@ -156,7 +154,9 @@ export const useStockManager = (isAuthenticated) => {
             if (data.type === 'sync_progress' || data.type === 'progress') {
                 setIsSyncing(true);
             }
-        } catch (e) {}
+        } catch (e) {
+            console.error('[useStockManager] SSE Parse Error:', e);
+        }
     };
 
     window.addEventListener('mp_sse_message', handleSseMessage);
@@ -270,7 +270,7 @@ export const useStockManager = (isAuthenticated) => {
       const backendScore = (typeof rawScore === 'object' && rawScore !== null) ? rawScore.total : (rawScore || 0);
       const total_score = backendScore; // Unified scoring from API
 
-      const bestSignal = tfSigs['2H'] || latest;
+
       const signalTimeframes = buildSignalTimeframes(tfSigs);
       const t2H = tfSigs['2H'] ? {
         sma5: tfSigs['2H'].sma5 || null,
@@ -418,8 +418,6 @@ export const useStockManager = (isAuthenticated) => {
 
     try {
       // [TASK-SM10] 첫 번째 스냅샷 로드 시에만 백업 (activeSnapshot이 null일 때)
-      // 단, setOriginalSignals는 이제 복귀 시 사용하지 않으므로 참고용으로만 유지
-      if (!activeSnapshot) setOriginalSignals([...signalsSummary.values()]);
       
       const res = await axiosClient.get(`/api/archive/snapshots/${snapshotHeader.id}`);
       const fullSnapshot = res.data;
