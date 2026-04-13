@@ -4,7 +4,7 @@ const prisma = new PrismaClient();
 async function main() {
   const result = await prisma.dailyStockSnapshot.deleteMany({
     where: {
-      code: {
+      ticker: {
         in: ['TEST_ERR', 'TEST_EXM']
       }
     }
