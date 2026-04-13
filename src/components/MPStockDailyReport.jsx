@@ -44,15 +44,15 @@ const PriceDisplay = ({ price, changeRate, label }) => {
 
 const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
   const { realtimePrices } = useSSE();
-  const today = useMemo(() => new Date().toLocaleDateString('en-CA'), []); 
-  const { data: top5Response } = useTop5Stocks(selectedDate || today);
-  const dbTop5 = top5Response;
-  const { data: historyTags } = useSWR('/api/public/sync-history-tags', adminService.getSyncHistoryTags);
-  
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedTag, setSelectedTag] = useState('');
   const [historicalData, setHistoricalData] = useState(null);
   const [isHistoricalLoading, setIsHistoricalLoading] = useState(false);
+
+  const today = useMemo(() => new Date().toLocaleDateString('en-CA'), []); 
+  const { data: top5Response } = useTop5Stocks(selectedDate || today);
+  const dbTop5 = top5Response;
+  const { data: historyTags } = useSWR('/api/public/sync-history-tags', adminService.getSyncHistoryTags);
 
   // [v9.4.17] Robust mapping for both legacy (.stocks) and SSOT (.data) formats
   const stocks = useMemo(() => {
