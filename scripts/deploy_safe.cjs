@@ -94,7 +94,7 @@ try {
     autoUpdateReleaseHistory();
 
     log("Step 1.5: Cleaning remote dist and fixing permissions...");
-    const fixPermCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "sudo rm -rf ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && mkdir -p ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}"`;
+    const fixPermCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "sudo rm -rf ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && mkdir -p ${CONFIG.REMOTE_DIR}dist/assets ${CONFIG.REMOTE_DIR}scripts && sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}"`;
     execSync(fixPermCmd, { stdio: 'inherit' });
 
     log("Step 2: Uploading all backend assets to server...");

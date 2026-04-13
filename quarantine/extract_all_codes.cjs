@@ -25,4 +25,4 @@ const kospi = extractStockData('C:\\Users\\danbe\\Downloads\\KOSPI200종목.xls'
 const kosdaq = extractStockData('C:\\Users\\danbe\\Downloads\\KOSDAQ150종목.xls');
 
 fs.writeFileSync('data/codes_full.json', JSON.stringify({ kospi, kosdaq }, null, 2));
-console.log('Saved 348 codes to data/codes_full.json');
+console.log('Saved 350 codes to data/codes_full.json');

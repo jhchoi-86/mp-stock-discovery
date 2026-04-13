@@ -103,7 +103,7 @@ async function updateDB() {
                 name: s.name,
                 score: s.score,
                 currentPrice: s.currentPrice,
-                yield: 0, // 임시
+                yield: 0,
                 entryPrice1: s.entryPrice1,
                 entryPrice2: s.entryPrice2,
                 stopLoss: s.stopLoss,
@@ -136,20 +136,19 @@ async function updateDB() {
         // 2. DailyStockSnapshot 업데이트 (SSOT 캐시용)
         await prisma.dailyStockSnapshot.create({
             data: {
-                code: s.code,
+                ticker: s.code,
                 name: s.name,
                 category: s.category,
-                score: s.score,
+                hybridScore: s.score,
                 adx: s.adx,
                 currentPrice: s.currentPrice,
-                entryPrice1: s.entryPrice1,
-                entryPrice2: s.entryPrice2,
-                targetPrice1: s.targetPrice1,
-                targetPrice2: s.targetPrice2,
-                stopLoss: s.stopLoss,
+                entry1Price: s.entryPrice1,
+                entry2Price: s.entryPrice2,
+                targetPrice: s.targetPrice1,
+                stopLossPrice: s.stopLoss,
                 tradeAmount: s.tradeAmount,
-                foreignBuy: s.foreignBuy,
-                instBuy: s.instBuy,
+                foreignNet: s.foreignBuy,
+                institutionNet: s.instBuy,
                 aiComment: s.aiComment,
                 isExecuted: true // [FIX] ±30% 가격 검증 트리거 우회
             }
