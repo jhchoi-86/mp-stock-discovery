@@ -253,6 +253,16 @@ const isAdmin = (req, res, next) => {
     }
 };
 
+// [v6.6.0] PAID 이상 등급 전용 접근 미들웨어 (작업지시서 GAP-1)
+const requirePaidOrAdmin = (req, res, next) => {
+    const ALLOWED_ROLES = ['PAID', 'PRO_USER', 'ADMIN'];
+    if (req.user && ALLOWED_ROLES.includes(req.user.role)) {
+        next();
+    } else {
+        res.status(403).json({ error: '유료 회원 전용 기능입니다. 프리미엄 구독 후 이용해 주세요.' });
+    }
+};
+
 const requireProAuth = (req, res, next) => {
     const token = req.cookies?.accessToken;
     if (!token) return res.status(401).json({ error: '인증이 필요합니다.' });
@@ -1070,7 +1080,7 @@ app.get('/api/admin/daily-snapshots', authenticateToken, isAdmin, async (req, re
 });
 
 // [Public] 성과 통계 조회 (Landing Page용 - 누구나 접근 가능)
-app.get('/api/public/daily-snapshots', async (req, res) => {
+app.get('/api/public/daily-snapshots', authenticateToken, requirePaidOrAdmin, async (req, res) => {
     const { date, code, sortBy = 'yield', order = 'desc' } = req.query;
     try {
         const snapshots = await getPerformanceSnapshotData({ date, code, sortBy, order });
@@ -1426,6 +1436,29 @@ app.post('/api/realtime/signal', verifyInternalKey, async (req, res) => {
                 }
             } catch (e) { /* 연결 끊김 클라이언트 무시 */ }
         });
+
+
+        // [v9.4.19 / R-08] signals_log 테이블에 시그널 영구 저장
+        try {
+            await prisma.signalsLog.create({
+                data: {
+                    stockCode:     payload.stockCode,
+                    stockName:     payload.stockName   || null,
+                    signalType:    payload.signalType  || 'BUY',
+                    wbs1m:         payload.wbs1m       != null ? payload.wbs1m       : null,
+                    wbs3m:         payload.wbs3m       != null ? payload.wbs3m       : null,
+                    pScore:        payload.pScore      != null ? payload.pScore      : null,
+                    predictiveRoi: payload.predictiveRoi != null ? payload.predictiveRoi : null,
+                    entryPrice:    payload.entryPrice  != null ? Math.round(payload.entryPrice)  : null,
+                    targetPrice:   payload.targetPrice != null ? Math.round(payload.targetPrice) : null,
+                    stopPrice:     payload.stopPrice   != null ? Math.round(payload.stopPrice)   : null,
+                    occurredAt:    payload.occurredAt  ? new Date(payload.occurredAt) : new Date(),
+                }
+            });
+            console.log(`[Realtime Signal] DB 저장 완료: ${payload.stockCode}`);
+        } catch (dbErr) {
+            console.error('[Realtime Signal] DB 저장 실패 (SSE는 정상 발송):', dbErr.message);
+        }
 
         res.status(200).json({ success: true, message: 'Signal broadcasted' });
     } catch (error) {
