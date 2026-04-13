@@ -31,6 +31,15 @@ const useAuthStore = create((set, get) => ({
 
   // Initialize Auth Phase - Called in App.jsx useEffect
   initAuth: async () => {
+    // [v9.4.10] Break circular dependency by registering listener during init
+    if (typeof window !== 'undefined' && !window._mpAuthListenerRegistered) {
+      window.addEventListener('mp_auth_failed', (e) => {
+        console.warn('[authStore] Auth failure detected via event:', e.detail?.reason);
+        get().clearAuth();
+      });
+      window._mpAuthListenerRegistered = true;
+    }
+
     try {
       // Silently request a token refresh to check if an active HttpOnly Refresh Cookie is present
       const response = await axiosClient.post('/api/auth/refresh');
@@ -43,8 +52,8 @@ const useAuthStore = create((set, get) => ({
         try {
           const base64Url = token.split('.')[1];
           const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-          const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(c) {
-              return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+          const jsonPayload = decodeURIComponent(window.atob(base64).split('').map(function(byte) {
+              return '%' + ('00' + byte.charCodeAt(0).toString(16)).slice(-2);
           }).join(''));
           
           const payloadObj = JSON.parse(jsonPayload);
@@ -74,5 +83,6 @@ const useAuthStore = create((set, get) => ({
     }
   }
 }));
+
 
 export default useAuthStore;

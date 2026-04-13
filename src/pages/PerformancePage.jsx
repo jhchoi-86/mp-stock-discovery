@@ -4,12 +4,10 @@ import MPStockDailyReport from '../components/MPStockDailyReport';
 import { Lock, Rocket } from 'lucide-react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
+import { useTop5Stocks } from '../hooks/useStockSnapshot';
 
 const PerformancePage = ({ isAuthenticated, onLogoutClick, onLoginClick }) => {
-  const { data, error, isLoading } = useSWR('reports/latest', reportService.getLatestReport, {
-    revalidateOnFocus: true,
-    refreshInterval: 3000
-  });
+  const { data, isLoading } = useTop5Stocks();
 
   const isFallback = !data && !isLoading;
 

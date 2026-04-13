@@ -56,7 +56,7 @@ axiosClient.interceptors.response.use(
 
       // Avoid trying to refresh if the failure WAS the refresh endpoint itself or login
       if (originalRequest.url.includes('/api/auth/refresh') || originalRequest.url.includes('/api/auth/login')) {
-        import('../store/authStore.js').then((module) => module.default.getState().clearAuth());
+        window.dispatchEvent(new CustomEvent('mp_auth_failed', { detail: { reason: 'REFRESH_FAILED' } }));
         return Promise.reject(error);
       }
 
@@ -76,11 +76,8 @@ axiosClient.interceptors.response.use(
 
       } catch (refreshError) {
         console.error('[Token Refresh Failed]', refreshError);
-        // Refresh token is expired or invalid too -> Force Logout
-        // Use Zustand getState to break outside of React Component scope and prevent circular imports
-        import('../store/authStore.js').then((module) => {
-          module.default.getState().clearAuth();
-        });
+        // Refresh token is expired or invalid too -> Force Logout via Event
+        window.dispatchEvent(new CustomEvent('mp_auth_failed', { detail: { reason: 'TOKEN_EXPIRED' } }));
         return Promise.reject(refreshError);
       }
     }

@@ -20,7 +20,15 @@ class ScoringService {
         if (!tfSigs) tfSigs = {};
         
         let score = 0;
-        const sig2H = tfSigs['2H'];
+        let sig2H = tfSigs['2H'];
+        let isFallback = false;
+
+        // [RL-01] 2H 데이터 부재 시 1H로 대체 (10% 패널티)
+        if (!sig2H && tfSigs['1H']) {
+            sig2H = tfSigs['1H'];
+            isFallback = true;
+        }
+
         const sig1H = tfSigs['1H'];
         const sig30M = tfSigs['30M'];
         const price = sig2H?.current_price || latest?.current_price || 0;
@@ -32,6 +40,7 @@ class ScoringService {
         if (sig2H && sig2H.DHH2) score += 20;
 
         // 3. 이평선 정배열(2H): 5 > 10 > 20 > 60 -> 10점
+        // analyzer.cjs가 반환하는 sma5, sma10 등 필드 사용
         const isAligned = sig2H && (sig2H.sma5 > sig2H.sma10 && sig2H.sma10 > sig2H.sma20 && sig2H.sma20 > sig2H.sma60);
         if (isAligned) score += 10;
 
@@ -70,10 +79,12 @@ class ScoringService {
         const kisBonus = latest?.bonus_score || latest?.kis_change_data?.bonus_score || 0;
         score += kisBonus;
 
-        const finalScore = Math.max(0, Math.min(100, score));
+        let finalScore = Math.max(0, Math.min(100, score));
+        if (isFallback) finalScore = Math.round(finalScore * 0.9); // 10% penalty
+
         return { 
             totalScore: finalScore, 
-            bestTf: '2H',
+            bestTf: isFallback ? '1H' : '2H',
             grade: this.getGrade(finalScore),
             starGrade: this.getStarGrade(finalScore)
         };

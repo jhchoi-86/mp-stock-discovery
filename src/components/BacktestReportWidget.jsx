@@ -241,7 +241,7 @@ export default function BacktestReportWidget() {
                     <div>
                         <h2 style={{ fontSize: '30px', fontWeight: '900', margin: 0 }}>
                             {isRealtime ? '실시간 ' : '전략 성능 '} <span style={{ color: isRealtime ? '#10b981' : '#3b82f6' }}>{isRealtime ? '수급 모니터링' : '교차 검증 리포트'}</span>
-                            <span style={{ fontSize: '10px', color: '#475569', marginLeft: '10px', verticalAlign: 'middle' }}>v9.1.2</span>
+                            <span style={{ fontSize: '10px', color: '#475569', marginLeft: '10px', verticalAlign: 'middle' }}>v9.4.17</span>
                         </h2>
                         {isRealtime && (
                             <div style={styles.statusIndicator}>

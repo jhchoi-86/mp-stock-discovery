@@ -179,7 +179,7 @@ async function runSniper() {
             }
 
             // Refresh targets periodically (every hour)
-            if (now.getMinutes() === 0 && now.getSeconds() < 40) {
+            if (kstHeader.getMinutes() === 0 && kstHeader.getSeconds() < 40) {
                 targetStocks = await identifyTargetStocks();
             }
 

@@ -190,40 +190,51 @@ model Lead {
 }
 
 model DailyStockSnapshot {
-  id           Int      @id @default(autoincrement())
-  code         String   @db.VarChar(20)
-  name         String   @db.VarChar(100)
-  category     String?  @db.VarChar(100)
-  score        Int?
-  adx          Int?
-  trend        String?  @db.VarChar(20)
-  currentPrice Float?   @map("current_price")
-  entryPrice1  Float?   @map("entry_price1")
-  entryPrice2  Float?   @map("entry_price2")
-  entryPrice3  Float?   @map("entry_price3")
-  targetPrice1 Float?   @map("target_price1")
-  targetPrice2 Float?   @map("target_price2")
-  stopLoss     Float?   @map("stop_loss")
-  ema5         Float?   @map("ema5")
-  ema10        Float?   @map("ema10")
-  ema20        Float?   @map("ema20")
-  ema60        Float?   @map("ema60")
-  tradeAmount  BigInt?  @map("trade_amount")
-  foreignBuy   String?  @map("foreign_buy")
-  instBuy      String?  @map("inst_buy")
-  yield        Float?
-  styleTag     String?  @map("style_tag") @db.VarChar(100)
-  aiComment    String?  @map("ai_comment") @db.Text
-  dailyOpen    Float?   @map("daily_open")
-  dailyHigh    Float?   @map("daily_high")
-  dailyLow     Float?   @map("daily_low")
-  volRate      Float?   @map("vol_rate")
-  isExecuted   Boolean? @default(false) @map("is_executed")
-  executedAt   String?  @map("executed_at")
-  createdAt    DateTime @default(now()) @map("created_at")
+  id              Int      @id @default(autoincrement())
+  ticker          String   @map("code")        // DB의 code 컬럼을 ticker로 매핑
+  name            String   @db.VarChar(100)    // UI 표시용 필수 필드
+  syncDate        DateTime? @default(now())    // 기존 데이터 호환을 위해 선택 사항으로 변경
+  
+  // 현재가 (Int 타입 요청 반영)
+  currentPrice    Int?     @map("current_price")
+  
+  // 매수 전략 가격
+  entry1Price     Int?     @map("entry_price1")
+  entry2Price     Int?     @map("entry_price2")
+  targetPrice     Int?     @map("target_price1")
+  stopLossPrice   Int?     @map("stop_loss")
+  
+  // 점수 및 등급
+  hybridScore     Int      @default(0) @map("score")
+  starRating      Float    @default(0)
+  
+  // 보존/추가 필드
+  yield           Float?                       // 등락률 (UI 필수)
+  tradeAmount     BigInt?  @map("trade_amount") // 거래대금 (UI 필수)
+  aiComment       String?  @map("ai_comment") @db.Text
+  
+  // 이평선 및 수급 (신경)
+  maArrangement   String?  @db.VarChar(20)
+  ma5             Int?     @map("ema5")        // 기존 ema5 매핑
+  ma10            Int?     @map("ema10")
+  ma20            Int?     @map("ema20")
+  ma60            Int?     @map("ema60")
+  ma120           Int?
+  
+  foreignNet      String?  @map("foreign_buy") // 기존 필드를 문자열로 호환
+  institutionNet  String?  @map("inst_buy")
+  
+  // 메타 및 순위
+  category        String?  @db.VarChar(100)
+  signalVersion   String   @default("v9.3.3")
+  isTop5          Boolean  @default(false)
+  rank            Int?
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime? @updatedAt          // 기존 데이터 호환을 위해 선택 사항으로 변경
 
-  @@index([createdAt])
-  @@index([code])
+  @@unique([ticker, syncDate], name: "ticker_syncDate")
+  @@index([syncDate, isTop5])
   @@map("daily_stock_snapshots")
 }
 

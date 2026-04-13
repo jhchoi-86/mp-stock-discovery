@@ -127,8 +127,22 @@ const SignalIndicator = ({ signal, latestSignal, bestTfLabel, totalScore, kisDat
             </span>
           </div>
           <div style={{ display: 'flex', gap: '12px' }}>
-            <span>외국인: <strong style={{ color: String(resolvedKisData.foreign_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.foreign_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.foreign_buy}</strong></span>
-            <span>기관: <strong style={{ color: String(resolvedKisData.inst_buy).includes('+') ? '#FF4D4D' : (String(resolvedKisData.inst_buy).includes('-') ? '#4D94FF' : '#fff') }}>{resolvedKisData.inst_buy}</strong></span>
+            {(() => {
+              const parseSupply = (val) => {
+                if (val === null || val === undefined || val === '-') return { num: 0, text: '-' };
+                const text = String(val);
+                const num = parseFloat(text.replace(/,/g, ''));
+                return { num, text };
+              };
+              const foreign = parseSupply(resolvedKisData.foreign_buy);
+              const inst = parseSupply(resolvedKisData.inst_buy);
+              return (
+                <>
+                  <span>외국인: <strong style={{ color: foreign.num > 0 ? '#FF4D4D' : (foreign.num < 0 ? '#4D94FF' : '#fff') }}>{foreign.text}</strong></span>
+                  <span>기관: <strong style={{ color: inst.num > 0 ? '#FF4D4D' : (inst.num < 0 ? '#4D94FF' : '#fff') }}>{inst.text}</strong></span>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}

@@ -8,7 +8,7 @@ import { useSSE } from '../hooks/useSSE';
 const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
     const { progress, isConnected, error } = useSSE();
 
-    const isSyncing = progress.current > 0 && progress.current < progress.total;
+    const isSyncing = progress.current >= 0 && progress.current < progress.total;
 
     return (
         <div className="stat-item" style={{ minWidth: '120px' }}>
@@ -16,8 +16,8 @@ const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
             <div className="stat-value">
                 {isSyncing ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                            {progress.timeframe ? `[${progress.timeframe}] ` : ''}{progress.current} / {progress.total}
+                        <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
+                            {progress.group ? `${progress.group} 분석 중 (${progress.timeframe}) — ${progress.pct}%` : `${progress.timeframe ? `[${progress.timeframe}] ` : ''}${progress.current}/${progress.total} (${progress.pct}%)`}
                         </span>
                         {/* 미니 프로그레스 바 */}
                         <div style={{ 

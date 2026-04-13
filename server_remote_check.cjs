@@ -543,7 +543,7 @@ app.get('/api/signals', requireProAuth, (req, res) => {
 });
 
 // 🔴 [Red Team 방어 - R9] 동기화 상태 복구 지원
-let currentSyncProgress = { current: 0, total: 348, timeframe: '준비' };
+let currentSyncProgress = { current: 0, total: 350, timeframe: '준비' };
 app.get('/api/auto-sync/status', requireProAuth, (req, res) => {
     res.json({ isSyncing: isSyncMutexLocked, progress: currentSyncProgress });
 });

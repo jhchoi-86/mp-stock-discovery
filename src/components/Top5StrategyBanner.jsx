@@ -48,18 +48,20 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
             name: s.stock_name || s.name,
             price: s.current_price || s.currentPrice || s.price || 0,
             score: s.score || s.star_grade || 0,
-            entry1: s.entry_price_1 || s.entryPrice1 || s.entry1 || 0,
-            entry2: s.entry_price_2 || s.entryPrice2 || s.entry2 || 0,
-            target: s.target_price_1 || s.targetPrice1 || s.target || 0,
+            // [v9.4.10] SSOT Mapping: result_1=Target, result_2=Entry1, result_3=Entry2
+            entry1: s.result_2 || s.entry_price_1 || s.entryPrice1 || s.entry1 || 0,
+            entry2: s.result_3 || s.entry_price_2 || s.entryPrice2 || s.entry2 || 0,
+            target: s.result_1 || s.target_price_1 || s.targetPrice1 || s.target || 0,
             sl: s.stop_loss || s.stopLoss || s.sl || 0,
             trade_amount: s.trade_amount || s.tradeAmount || 0,
-            vol_ratio: s.vol_ratio || s.volRate || '0.00%', // [v9.1.10] Fixed: stop using style_tag
-            foreign: s.foreign_buy || s.foreignBuy || s.foreign || '0',
-            inst: s.inst_buy || s.instBuy || s.inst || '0',
+            vol_ratio: s.vol_ratio || s.volRate || '0.00%',
+            // [v9.4.10] Use null-coalescing for supply to preserve 0
+            foreign: s.foreignBuy ?? s.foreign_buy ?? s.foreign ?? 0,
+            inst: s.instBuy ?? s.inst_buy ?? s.inst ?? 0,
             style_tag: s.style_tag || s.styleTag || '',
             ai_comment: s.ai_comment || s.aiComment || '',
             status: s.status || '분석 중'
-        })).sort((a, b) => b.score - a.score); // [v8.8.30] 점수순 내림차순 정렬 강제
+        })).sort((a, b) => b.score - a.score);
     }, [ssotData]);
 
     if (isLoading) return (

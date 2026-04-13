@@ -51,6 +51,29 @@ const reportService = {
       console.error(`Failed to fetch daily top 5 for ${date}:`, error);
       return [];
     }
+  },
+
+  getStockSnapshot: async (ticker, date) => {
+    try {
+      const params = new URLSearchParams({ ticker });
+      if (date) params.append('date', date);
+      const response = await axiosClient.get(`/api/stock-snapshot?${params.toString()}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Failed to fetch snapshot for ${ticker}:`, error);
+      throw error;
+    }
+  },
+
+  getTop5Stocks: async (date) => {
+    try {
+      const params = date ? `?date=${date}` : '';
+      const response = await axiosClient.get(`/api/top5${params}`);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to fetch Top 5 stocks:', error);
+      throw error;
+    }
   }
 };
 

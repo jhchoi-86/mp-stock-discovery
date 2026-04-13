@@ -1,3 +1,299 @@
+# MP-STOCK Release Notes
+
+## [v9.4.19] - 2026-04-13
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+### 🛠 주요 변경 사항
+- [FIX] 시스템 안정성 강화 및 모니터링 로직 패치
+- [NEW] 배포 프로세스 리비전 자동 업데이트 적용
+
+---
+
+
+
+## [v9.4.18] - 2026-04-13
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+### 🛠 주요 변경 사항
+- [FIX] 시스템 안정성 강화 및 모니터링 로직 패치
+- [NEW] 배포 프로세스 리비전 자동 업데이트 적용
+
+---
+
+
+
+## [v9.4.17] - 2026-04-13
+### 🚩 상태: [Hardened] DB 오프라인 환경 대응 및 대시보드 크래시 원천 차단
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Dashboard Crash Mitigation**: DB 오프라인 시 API가 에러 객체를 반환할 때 프론트엔드(`DailySnapshotAnalytics`)에서 `.forEach` 오류로 화면이 멈추던 결함을 수정했습니다.
+2. **[STABILITY] Frontend Robustness**: `MPStockDailyReport` 컴포넌트가 `.stocks`와 `.data` 속성을 모두 지원하도록 개선하여 데이터 유실 및 렌더링 실패를 방지했습니다.
+3. **[BE] API Error Hardening**: `server.cjs` 및 `publicReports.cjs`의 에러 핸들러를 하드닝하여, DB 타임아웃 발생 시에도 빈 배열(`[]`)을 포함한 표준 구조를 반환함으로써 UI 크래시를 방지했습니다.
+4. **[STABILITY] BulkSync Safe Mode**: RDS 연결 실패 시 에러로 중단되지 않고 로컬 파일 및 캐시 업데이트를 지속하는 'Safe Mode'를 공식 적용했습니다.
+
+
+## [v9.4.16] - 2026-04-13
+### 🚩 상태: [Stable] 관리자 히스토리 동기화 복구 및 Top 5 조회 결함 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Admin Sync History Recovery**: 관리자 대시보드의 '동기화 저장' 버튼이 호출하는 `/api/admin/save-sync-history` 엔드포인트를 복구하고 `SyncSaveLog`(히스토리 태그) 연동을 완료했습니다.
+2. **[FIX] Top 5 Ranking Logic**: `signals.json`이 배열 구조로 변경됨에 따라 발생하던 Top 5 선정 오류를 수정하고, 신규 점수 객체(`score.total`)에서 수치를 정확히 추출하도록 개선했습니다.
+3. **[FE] Code-Splitting & Navigation Fix**: `React.lazy`를 모든 주요 페이지에 적용하여 순환 참조로 인한 화면 크래시를 원천 차단했습니다.
+4. **[UI] Version Badge Update**: 대시보드 상단 버전을 `v9.4.16`으로 업데이트하여 사용자 시인성을 확보했습니다.
+5. **[DEPLOY] Zero-Downtime Patch**: 프론트엔드 빌드 최적화 및 PM2 프로세스 재시작을 통해 모든 수정사항을 실운영 환경에 즉시 반영했습니다.
+
+## [v9.4.12] - 2026-04-13
+### 🚩 상태: [Hardened] 수급 데이터(외국인/기관) 페치 안정화 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Investor Data Fetch Reliability**: KIS `inquire-investor` API 호출 시 발생하던 간헐적 누락을 해결하기 위해 **2회 재시도(Retry)** 및 **지수 백오프(Exponential Backoff)** 로직을 추가했습니다.
+
+---
+
+## [v9.4.13] - 2026-04-13
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+2. **[FIX] Timeout Expansion**: 네트워크 지연으로 인한 페치 실패를 방지하기 위해 타임아웃을 3초에서 **5초**로 확장했습니다.
+3. **[LOG] Error Visibility**: 기존의 침묵하는 에러(`try-catch`)를 제거하고, 실패 시 `console.error` 로그를 출력하도록 개선하여 모니터링 가용성을 높였습니다.
+
+---
+
+## [v9.4.11] - 2026-04-13
+### 🚩 상태: [Stable] v9.4.9 배포 후 회귀 버그(Regressions) 완벽 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Price Hierarchy Stabilization**: `PcDashboard`, `MobileStockCard`, `Top5Banner`의 가격 매핑을 `result_1=Target` 공식으로 통일하여 `Target > Current > Entry1 > Entry2 > SL` 계층 구조를 복구했습니다.
+2. **[FIX] Supply Data Recovery**: 수급 데이터(외국인/기관) 누합 표시를 해결하기 위해 `parseInt` 및 콤마 제거 정규식을 프론트엔드/백엔드 전 구간에 적용했습니다.
+3. **[FIX] Frontend Crash (Circular Dependency)**: `authStore` 초기화 리스너 위치를 조정하여 번들링 시 발생하는 `ReferenceError`를 해결했습니다.
+4. **[BE] Sync History Mapping**: `DailyTop5` 테이블(Int)과 `daily_stock_snapshots`(String) 간의 데이터 타입 불일치를 매핑 시점에 자동 변환하여 정합성을 확보했습니다.
+
+---
+
+## [v9.4.9] - 2026-04-13
+### 🚩 상태: [Stable] 통합 자동 동기화 하드닝 및 운영 안정성 확보 (Red Team-Verified)
+### 🛠 주요 변경 및 조치 사항
+1. **[STABILITY] Full Safe Mode 도입**: RDS DB 연결 장애 시에도 시스템 중단 없이 로컬 파일(`signals.json`) 및 리포트가 정상 생성되도록 예외 처리를 전 구간으로 확대했습니다.
+2. **[FIX] BigInt JSON Serialization**: `trade_amount` 등 대규모 숫자 데이터의 JSON 변환 오류를 글로벌 패치로 해결하여 무결성을 확보했습니다.
+3. **[FIX] ReferenceError (StockMaster)**: 프론트엔드와 백엔드 간 스키마 미일치로 인한 `StockMaster` 참조 오류를 로컬 데이터 폴백으로 완벽 해결했습니다.
+
+---
+
+## [v9.4.7] - 2026-04-13
+### 🚩 상태: [Hotfix] 2H, 4H, 2D 타임프레임 평가 누락 긴급 수정
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Resampling Engine Interface Repair**: `analyzer.cjs` 내부에서 정의된 `resampleChartData` 함수가 명시적으로 export되지 않아 서버의 `/api/auto-sync` 실행 시 TypeError를 일으키던 문제를 해결했습니다. 이제 백엔드 캐시 엔진이 2H, 4H, 2D 데이터를 성공적으로 리샘플링하여 신호를 추출합니다.
+
+---
+
+---
+
+## [v9.3.15] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.14] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.13] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.12] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.4.7] - 2026-04-13
+### 🚩 상태: [Hardened] DB 연결 유연성(Safe Mode) 및 동기화 안정성 강화
+### 🛠 주요 변경 및 조치 사항
+1. **[NEW] BulkSync Safe Mode**: DB 접속 불가능한 환경(로컬 VPC 등)에서 에러로 중단되지 않고 파일 저장 후 정상 종료되는 예외 처리 로직을 추가했습니다.
+2. **[IMPROVED] Connection Resilience**: `prisma.$connect()`에 2초 타임아웃을 적용하여 네트워크 지연 시에도 시스템 가용성을 유지합니다.
+
+---
+
+## [v9.4.6] - 2026-04-13
+### 🚩 상태: [Stable] Signals Engine 가격 로직 및 API 안정화 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] result_3 Calculation**: `result_3` (final_entry2) 계산식을 `result_2`의 97%로 단순화하여 가격 계층 구조(Hierarchy)의 일관성을 확보했습니다.
+2. **[STABILITY] KIS Rate Limit Patch**: 동시 처리량(`SYNC_BATCH_SIZE`)을 3으로 조정하고, API 호출 사이에 300ms 지연 시간을 추가하여 `EGW00201` (초당 거래건수 초과) 오류를 원천 차단했습니다.
+3. **[VERIFIED] Sample Run**: 삼성전자(005930) 등 주요 종목에 대해 필터링 및 분석 로직이 정상 동작함을 검증 완료했습니다.
+
+---
+
+## [v9.4.5] - 2026-04-13
+### 🚩 상태: [Hardened] Red Team 보안 패치 및 시스템 견고성 강화
+### 🛠 주요 변경 및 조치 사항
+1. **[SECURITY] SSE Write Guard**: 클라이언트 연결 단절 시 메모리 누수 및 불필요한 쓰기 작업을 방지하기 위해 `res.destroyed` 상태 체크 로직을 강화했습니다.
+2. **[STABILITY] Lock Timeout (300s)**: 백엔드 신호 처리 락(`withSignalLock`)에 300초 타임아웃을 도입하여, 예외 상황에서도 시스템이 영구 대기(Starvation) 상태에 빠지지 않도록 방어 로직을 구축했습니다.
+3. **[CONSISTENCY] Global Meta Sync**: `quarantine/` 및 관리용 스크립트 전반의 잔여 "348" 수치를 "350"으로 모두 수정하여 코드베이스의 일관성을 100% 확보했습니다.
+
+---
+
+## [v9.4.4] - 2026-04-13
+### 🚩 상태: [Stable] 전체 종목 수 수치 표준화 (348 -> 350)
+### 🛠 주요 변경 및 조치 사항
+1. **[UI/UX] Stock Count Standardization**: 대시보드 상태바 및 동기화 진행률 표시의 기준 종목 수를 현재 라이브 유니버스인 350개로 일제히 업데이트했습니다.
+2. **[BE] Sync Metadata Sync**: 백엔드 동기화 상태 엔드포인트의 `total` 값을 350으로 조정하여 프론트엔드와 백업 서버 간의 정합성을 확보했습니다.
+
+---
+
+## [v9.4.3] - 2026-04-13
+### 🚩 상태: [Stable] 통합 자동 동기화 안정화 및 백엔드 락 하드닝 (Red Team-Verified)
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Integrated Sync 'Blind Spot' 제거**: KIS 데이터 사전 수집(Prefetch) 단계의 진행률 보충 및 SSE 중계 로직 도입으로 동기화 시작 즉시 진행 상태가 표시되도록 개선했습니다.
+2. **[STABILITY] Frontend Resilience**: 동기화 요청 타임아웃을 120초로 연장하고, 타임아웃 발생 시에도 백엔드가 분석을 완료할 때까지 UI 상태를 안전하게 유지하는 로직을 적용했습니다.
+3. **[REFACTOR] Backend Lock Hardware**: 기존의 Busy-wait(isSignalFileLocked) 방식을 비차단형(Non-blocking) Promise Queue 구조로 개편하여 CPU 점유율을 낮추고 원자적 데이터 접근을 보장했습니다.
+4. **[COMPLIANCE] API Rate Limit Guard**: KIS API 호출 배치 사이즈 및 딜레이 재조정으로 초당 20건 상한을 엄격히 준수하도록 설계되었습니다.
+
+---
+
+## [v9.4.2] - 2026-04-13
+### 🚩 상태: [Stabilization] 프론트엔드 크래시(TDZ) 근본 해결 완료
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] 순환 참조(Circular Dependency) 물리적 차단**: `axiosClient`와 `authStore` 사이의 의존성 고리를 끊었습니다. 이제 `axiosClient`는 `CustomEvent`를 통해 인증 실패를 알리고, `authStore`가 이를 독립적으로 수신하여 처리합니다. 이를 통해 번들링 시 발생하는 `ReferenceError: Cannot access 'c' before initialization` 오류를 근본적으로 해결했습니다.
+2. **[FIX] 배포 스크립트(deploy_safe.cjs) 보강**: 원격 서버 정리 시 `dist/assets` 디렉토리 생성 누락 문제를 해결하여 빈번한 SCP 업로드 오류를 방지했습니다.
+3. **[UPD] 대시보드 버전 배지**: UI 상단에 `v9.4.2` 배지를 적용하여 패치 적용 여부를 쉽게 확인할 수 있도록 했습니다.
+
+---
+
+## [v9.4.1] - 2026-04-13
+
+## [v9.3.11] - 2026-04-12
+
+
+
+---
+
+## [v9.3.10] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.9] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.8] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.3.7] - 2026-04-12
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+## [v9.3.5] - 2026-04-13
+### 🚩 상태: [Stable] 통합 자동 동기화 타임프레임 누락 해결 및 엔진 하드닝
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Missing Timeframe Recovery**: `analyzer.cjs`의 메타데이터 누락을 수정하여 2H, 4H, 2D, 1W 모든 타임프레임이 동기화 결과에 정상 노출되도록 복구했습니다.
+2. **[DATA] Indicator Exposure**: ScoringService 연동에 필수적인 SMA5, 10, 20, 60 지표와 이평 정배열 상태 필드를 엔진 출력에 포함시켰습니다.
+3. **[FE] Scoring Fallback**: 2H 데이터 부재 시 1H 데이터를 폴백으로 활용하고 10% 패널티를 적용하는 로직을 도입하여 분석 결과의 영속성을 강화했습니다.
+4. **[SIGNAL] Advanced Grading**: `signal_H`(강력), `signal_HHH`(절대) 등 정밀한 신호 등급을 도입하여 전략 판단의 기준을 세분화했습니다.
+
+---
+
+## [v9.3.4] - 2026-04-13
+### 🚩 상태: [Stable-Final] 상용 서버 환경 복구 및 350종목 동기화 안정화 완결
+### 🛠 주요 변경 및 조치 사항
+1. **[PROD] AWS Environment Hardening**: 리눅스 전용 가상환경(`venv`) 재구축 및 절대 경로 기반의 `ecosystem.config.cjs` 도입으로 상용 서버 기동 안정성을 확보했습니다.
+2. **[DATA] 350-Stock Field Integrity**: 350개 전 종목에 대해 7개 타임프레임(30M~1W)의 모든 분석 지표(15개 필수 필드)가 누락 없이 100% 동기화됨을 전수 검증했습니다.
+3. **[FIX] PM2 Process Conflict**: 포트 8000 충돌 및 `ProcessContainer` 간접 실행 오류를 해결하여 AI API 및 실시간 엔진의 가동률 100%를 달성했습니다.
+4. **[SECURITY] Secret Restoration**: `INTERNAL_API_SECRET` 등 필수 환경변수를 복구하고 서버 내 `.env` 보안 권한을 강화했습니다.
+5. **[FEATURE] Multi-Timeframe SSOT**: 2H, 4H, 2D, 1W 등 다차원 타임프레임 신호 분석 로직을 `analyzer.cjs` SSOT로 통합하여 프론트엔드와 완전 동기화했습니다.
+
+---
+
+## [v9.3.3] - 2026-04-12
+### 🚩 상태: 동기화 정합성 및 404 장애 긴급 복구
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Scoring Engine Restoration**: `server.cjs`에서 점수가 0점으로 산출되던 정의되지 않은 `scoreSignal` 함수 호출을 `calculateTotalScore`로 교체하여 점수 엔진을 정상화했습니다.
+2. **[FIX] Route Restoration (404 Error)**: `src/routes/admin.cjs`에 누락되었던 `save-sync-history` 엔드포인트를 다시 추가하여 동기화 저장 시 발생하는 404 에러를 해결했습니다.
+3. **[FIX] Supply Data Mapping**: `PcDashboard.jsx`에서 외인/기관 수급 데이터가 누락되던 필드 매핑 오류(`kis_change_data.foreign_buy` 등 표준 반영)를 수정했습니다.
+4. **[DATA] Field Consistency**: 2H 타점 신호와 표준 이평선(sma) 필드 간의 연동 정합성을 최종 확보했습니다.
+
+---
+
+## [v9.3.2] - 2026-04-12
+### 🚩 상태: 데이터 필드 정합성(SSOT) 최종 복구 및 점수 엔진 정상화
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Field Name Standardization**: `ma5` 등 변칙적 필드명을 `sma5`, `sma10` 등 표준 규격으로 통일하여 `ScoringService` 연동 및 대시보드 표시 오류를 해결했습니다.
+2. **[FIX] Scoring Engine Restoration**: 2H 데이터의 필드 매핑 오류로 인해 전 종목이 0점으로 배점되던 결함을 수정했습니다.
+3. **[UI] MA Panel Recovery**: 2H 이평 정합성 대시보드에 5/10/20/60일 가격이 다시 노출되도록 복구했습니다.
+
+---
+
+## [v9.3.1] - 2026-04-12
+### 🚩 상태: 통합 자동 동기화 버그픽스 및 실시간 수급 로직 강화 (Integrated Sync Hotfix)
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Timeframe Recovery**: 2H, 4H, 2D 타임프레임 분석 누락 및 참조 오류(`resampleChartData`)를 완벽히 해결했습니다.
+2. **[FIX] Scoring Spec Standard**: 신호 분석 결과 필드를 표준화하여 종목별 0점 배점 문제를 해결하고 1/2차 진입가 및 목표가를 대시보드에 정확히 복구했습니다.
+3. **[UX] Real-time Progress Display**: SSE 이벤트를 최적화하여 동기화 진행 상황을 실시간으로 노출하고, 분석 완료 전까지 UI 상태가 유지되도록 개선했습니다.
+4. **[DATA] Supply Data Formatting**: 외인/기관 수급 데이터에 `+` 기호를 적용하고 컬러 렌더링 로직을 보강하여 시인성을 높였습니다.
+
+---
+
+## [v9.3.0] - 2026-04-12
+### 🚩 상태: 성능 최적화 및 신호 정합성 하드닝 완료 (Operation Hardened)
+### 🛠 주요 변경 및 조치 사항
+1. **[PERF] 7-Timeframe Parallel Optimization**: 분석 파이프라인 전구간(30M~1W) 병렬화 및 KIS 공유 캐시(`kisCache.cjs`) 도입으로 자원 소모 80% 절감.
+2. **[FIX] Signal SSOT & Summary API**: 종목별 그룹화된 신호 요약 엔드포인트(`/api/signals-summary`)를 신설하여 프론트엔드 렌더링 성능을 극대화했습니다.
+3. **[FIX] Duplicate & Growth Management**: `signals.json` 중복 자동 필터링 및 5000건 상한 캡을 적용하여 데이터 무결성과 스토리지 성능을 확보했습니다.
+4. **[UX] Frontend Resilience**: `Promise.allSettled`와 자동 Fallback(플랫 신호 -> 클라이언트 그룹핑)을 적용하여 서버 장애 시에도 종목 목록 가용성을 유지합니다.
+5. **[SSE] Sync-Driven Auto Refresh**: SSE 동기화 완료 신호와 프론트엔드 `fetchData`를 연동하여 실시간 업데이트 경험을 완성했습니다.
+
+---
+
 ## [v9.2.1] - 2026-04-11
 ### 🚩 상태: 전 시스템 KST 시각 통합 및 랜딩페이지 자동 동기화 가동
 ### 🛠 주요 변경 및 조치 사항

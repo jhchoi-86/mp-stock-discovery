@@ -10,7 +10,7 @@ const SSEContext = createContext();
 const API_URL = window.location.hostname === 'localhost' ? `http://${window.location.hostname}:3001` : "";
 
 export const SSEProvider = ({ children, onUpdateRequested }) => {
-    const [progress, setProgress] = useState({ current: 0, total: 348, timeframe: '' });
+    const [progress, setProgress] = useState({ current: 0, total: 350, timeframe: '' });
     const [isConnected, setIsConnected] = useState(false);
     const [error, setError] = useState(null);
     const [lastSignal, setLastSignal] = useState(null);
@@ -23,6 +23,10 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
     // Throttle UI updates for prices to 500ms to keep UI snappy but not overloaded
     const pendingPrices = useRef({});
     const updateTimer = useRef(null);
+    const onUpdateRef = useRef(onUpdateRequested);
+    useEffect(() => { 
+        onUpdateRef.current = onUpdateRequested; 
+    }, [onUpdateRequested]);
 
     useEffect(() => {
         let eventSource = null;
@@ -41,18 +45,23 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
             };
 
             eventSource.onmessage = (event) => {
+                // [FIX-03] 전역 커스텀 이벤트로 전파
+                window.dispatchEvent(new CustomEvent('mp_sse_message', { detail: event }));
+
                 try {
                     const data = JSON.parse(event.data);
                     
                     if (data.type === 'update') {
-                        if (onUpdateRequested) onUpdateRequested();
+                        if (onUpdateRef.current) onUpdateRef.current();
                     } 
                     else if (data.type === 'sync_progress') {
                         const payload = data.payload || data;
                         progressRef.current = { 
                             current: payload.current, 
                             total: payload.total, 
-                            timeframe: payload.timeframe || '' 
+                            timeframe: payload.timeframe || '',
+                            group: payload.group || '',
+                            pct: payload.pct || Math.round((payload.current / payload.total) * 100)
                         };
 
                         if (!frameId.current) {
@@ -63,7 +72,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                         }
 
                         if (payload.current === payload.total) {
-                            if (onUpdateRequested) onUpdateRequested();
+                            if (onUpdateRef.current) onUpdateRef.current();
                         }
                     } 
                     else if (data.type === 'sniper_alert') {
@@ -97,8 +106,6 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                     console.error("[SSE] Data Error:", e);
                 }
             };
-            
-            // ... (onerror and return remain same)
 
             eventSource.onerror = (e) => {
                 setIsConnected(false);
@@ -117,7 +124,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
             if (eventSource) eventSource.close();
             if (frameId.current) cancelAnimationFrame(frameId.current);
         };
-    }, [onUpdateRequested]);
+    }, []); // Task 9: onUpdateRequested 제거
 
     return (
         <SSEContext.Provider value={{ progress, lastSignal, isConnected, error, realtimePrices, notifications }}>
@@ -127,7 +134,7 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
 };
 
 export const useSSE = () => useContext(SSEContext) || { 
-    progress: { current: 0, total: 348, timeframe: '' }, 
+    progress: { current: 0, total: 350, timeframe: '' }, 
     lastSignal: null, 
     isConnected: false, 
     error: null, 

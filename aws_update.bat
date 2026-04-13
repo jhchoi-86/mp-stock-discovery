@@ -14,7 +14,13 @@ set "PROJECT_DIR=~/mp-stock-discovery"
 :: Record Deployment Start Time (Using PowerShell to fix Locale bugs)
 for /f "tokens=*" %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmm"') do set TIMESTAMP=%%i
 
-echo [1/8] Building React on Local Machine (Bypassing AWS RAM Limits)...
+echo [1/8] Updating Revision Number and Release History...
+:: Auto-increment patch version (v9.4.x -> v9.4.x+1)
+call npm version patch --no-git-tag-version
+:: Sync version to RELEASE.md
+node scripts/version_sync.cjs
+
+echo [2/8] Building React on Local Machine (Bypassing AWS RAM Limits)...
 call npm run build
 if %ERRORLEVEL% neq 0 (
     echo [ERROR] React build failed. Stopping deployment.
@@ -26,8 +32,8 @@ echo [2/8] Ensuring Server Permissions and Backing up dist...
 ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && sudo chown -R %SSH_USER%:%SSH_USER% . && sudo chmod -R 755 . && (cp -R dist dist_backup_%TIMESTAMP% 2>/dev/null || echo No existing dist)"
 
 echo.
-echo [3/8] Syncing latest Git codebase on AWS Server...
-ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && git reset --hard HEAD && git clean -fd -e data/ && git pull"
+echo [3/8] Syncing latest Git codebase on AWS Server (Safely checking for .git)...
+ssh -i "%SSH_KEY%" -o StrictHostKeyChecking=no %SSH_USER%@%SSH_HOST% "cd %PROJECT_DIR% && if [ -d .git ]; then git reset --hard HEAD && git clean -fd -e data/ && git pull; else echo '[SKIP] Not a git repository, skipping git sync.'; fi"
 
 echo.
 echo [4/8] Uploading compiled dist folder and backend scripts to AWS Server...

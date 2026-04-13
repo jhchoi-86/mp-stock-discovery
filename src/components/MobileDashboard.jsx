@@ -9,7 +9,7 @@ import SubscriptionModal from './SubscriptionModal.jsx';
 import ReportArchive from './ReportArchive.jsx';
 import reportService from '../api/reportService';
 import useSWR from 'swr';
-import { useSSE } from '../context/SSEContext';
+import { useSSE } from '../hooks/useSSE';
 import { Activity, Archive, Share2, Filter, Layout, LogOut, UserCog, Search, X, Settings } from 'lucide-react';
 import { Virtuoso } from 'react-virtuoso';
 import AdminDashboard from './AdminDashboard.jsx';
@@ -84,6 +84,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
                 <h1 style={{ fontSize: '1.1rem', fontWeight: '800', margin: 0, background: 'linear-gradient(to right, var(--primary), var(--secondary))', WebkitBackgroundClip: 'text', color: 'transparent' }}>
                     MP STOCK
                 </h1>
+                <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.4)', fontWeight: 'bold' }}>v{__APP_VERSION__}</span>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                 <button onClick={() => setIsProfileOpen(true)} style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>

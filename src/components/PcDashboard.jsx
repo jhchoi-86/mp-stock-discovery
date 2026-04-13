@@ -12,7 +12,8 @@ import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
 import adminService from '../api/adminService';
 import useSWR from 'swr';
-import { useSSE } from '../context/SSEContext';
+import { useTop5Stocks } from '../hooks/useStockSnapshot';
+import { useSSE } from '../hooks/useSSE';
 import { 
   UserCog, 
   Archive, 
@@ -46,10 +47,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
   const fileInputRef = useRef(null);
   const marketStatus = getMarketStatus();
 
-  const { data: reportData, isLoading: isReportLoading } = useSWR('reports/latest', reportService.getLatestReport, {
-    revalidateOnFocus: true,
-    refreshInterval: 3000
-  });
+  const { data: top5Data, isLoading: isReportLoading } = useTop5Stocks();
+  const reportData = top5Data?.data ?? [];
 
   const {
       stocks: originalStocks, lastUpdate,
@@ -82,7 +81,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
 
   return (
     <div className="container">
-        <div className="version-badge">v9.2.1 [Stable]</div>
+        <div className="version-badge">v{__APP_VERSION__}</div>
     <header className="fade-in">
         <div style={{ display: 'flex', alignItems: 'center', gap: '3rem', flex: 1 }}>
             <div className="logo-section" style={{ minWidth: '300px' }}>
@@ -334,9 +333,24 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               onClick={handleIntegratedSync}
               disabled={isSyncing}
               className="card" 
-              style={{ padding: '0.75rem 1.5rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', cursor: isSyncing ? 'not-allowed' : 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+              style={{ 
+                padding: '0.75rem 1.5rem', 
+                background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', 
+                border: isSyncing ? '1px solid var(--primary)' : 'none',
+                color: '#fff', 
+                cursor: isSyncing ? 'not-allowed' : 'pointer', 
+                fontWeight: 600, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem' 
+              }}
             >
-              <Activity size={18} className={isSyncing ? "spin" : ""} /> {isSyncing ? "실시간 고속 분석중..." : "통합 자동 동기화: 30M, 1H, 2H, 4H, 1D, 2D, 1W"}
+              <Activity size={18} className={isSyncing ? "spin" : ""} /> 
+              {isSyncing ? (
+                <>
+                  <span className="animate-pulse">⚡</span> 고속 자동동기화 중...
+                </>
+              ) : "통합 자동 동기화: 30M, 1H, 2H, 4H, 1D, 2D, 1W"}
             </button>
             <button 
               onClick={async () => {
@@ -352,10 +366,11 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   const t1D = s.timeframeStatus?.['1D'] || {};
                   const curPrice = realtimePrices?.[s.code]?.price || s.current_price || 0;
                   
-                  const ePrice1 = Math.round(t2H?.entry_price || t2H?.result_2 || 0);
+                  // [v9.4.10] Correct Mapping: result_1=Target, result_2=Entry1, result_3=Entry2
+                  const ePrice1 = Math.round(t2H?.result_2 || t2H?.entry_price || 0);
                   const ePrice2 = Math.round(t2H?.result_3 || 0);
                   const sPrice = Math.round(t2H?.stop_loss || (ePrice2 > 0 ? ePrice2 * 0.98 : 0));
-                  const tPrice = Math.round(t1D?.bb_upper || s.latestSignal?.target_price || 0);
+                  const tPrice = Math.round(t2H?.result_1 || t2H?.target_price || t1D?.bb_upper || 0);
                   
                   return {
                     ...s,
@@ -366,11 +381,11 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     targetPrice1: tPrice,
                     yield: ePrice1 > 0 ? ((curPrice - ePrice1) / ePrice1 * 100) : 0,
                     category: s.sector || s.trend_type || '기타',
-                    // [v9.1.8] Enrich for SSOT Landing Page Consistency
+                    // [v9.4.10] Supply Data Type Normalization (String -> Int)
                     aiComment: s.ai_comment || s.latestSignal?.ai_comment || s.aiComment || '',
-                    foreignBuy: s.foreign_buy || s.kis_change_data?.frgn_ntby_qty || 0,
-                    instBuy: s.inst_buy || s.kis_change_data?.orgn_ntby_qty || 0,
-                    tradeAmount: s.trade_amount || s.kis_change_data?.acml_vol || 0,
+                    foreignBuy: parseInt((s.foreign_buy || s.kis_change_data?.foreign_buy || '0').toString().replace(/,/g, '')) || 0,
+                    instBuy: parseInt((s.inst_buy || s.kis_change_data?.inst_buy || '0').toString().replace(/,/g, '')) || 0,
+                    tradeAmount: s.trade_amount || s.kis_change_data?.trade_amount || 0,
                     styleTag: s.style_tag || s.latestSignal?.style_tag || '',
                     adx: s.adx || s.latestSignal?.adx || 0
                   };
@@ -684,12 +699,16 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
-                          const target2H = t2H?.entry_price || t2H?.result_2 || 0;
-                          const target2H_3 = t2H?.result_3 || 0;
-                          const target1D = t1D?.bb_upper || 0;
                           const signalTime = s?.timestamp ? new Date(s.timestamp).toLocaleTimeString('ko-KR', { hour12: false, hour: '2-digit', minute: '2-digit' }) : '';
-                          
-                          if (target2H || target2H_3 || target1D) {
+
+                          if (t2H || t1D) {
+                            const sig_res = t2H || s; 
+                            const targetGoal = sig_res?.result_1 || sig_res?.target_price || 0;
+                            const targetEntry1 = sig_res?.result_2 || sig_res?.entry_price || 0;
+                            const targetEntry2 = sig_res?.result_3 || 0;
+                            const stopLossVal = sig_res?.stop_loss || (targetEntry2 > 0 ? targetEntry2 * 0.97 : (targetEntry1 > 0 ? targetEntry1 * 0.95 : 0));
+                            const maArrangement = sig_res?.maArray?.arrangement || "-";
+
                             return (
                               <>
                                 <span style={{ color: '#fff', fontWeight: 'normal', fontSize: '0.8rem', paddingBottom: '2px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
@@ -699,60 +718,23 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                 </span>
                                 <div style={{ color: '#FFD700', fontWeight: 'normal', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
                                   <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 매수진입가 (2H):</span>
-                                  <span>{target2H > 0 ? Math.round(target2H).toLocaleString() : '-'}원</span>
-                                  <HelpCircle size={12} style={{ opacity: 0.6, cursor: 'help' }} title="현재가 및 시장 변동성을 반영하여 보정된 실전 매수 타점입니다." />
-                                  {curPrice > 0 && target2H > 0 && curPrice !== 0 ? (() => {
-                                    const pct = ((target2H - curPrice) / curPrice * 100);
-                                    if (Number.isFinite(pct)) {
-                                      return (
-                                        <span style={{ marginLeft: '4px', fontSize: '0.75rem', color: target2H >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                          ({target2H > curPrice ? '+' : ''}{(Math.round(target2H - curPrice)).toLocaleString()}원, {pct.toFixed(2)}%)
-                                        </span>
-                                      );
-                                    }
-                                    return null;
-                                  })() : null}
+                                  <span>{targetEntry1 > 0 ? Math.round(targetEntry1).toLocaleString() : '-'}원</span>
+                                  <HelpCircle size={12} style={{ opacity: 0.6, cursor: 'help' }} title="분석 엔진에서 산출된 최적의 1차 진입 타점입니다." />
                                 </div>
                                 <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
                                   <span style={{ minWidth: '130px', textAlign: 'left' }}>2차 매수진입가 (2H):</span>
-                                  <span>{target2H_3 > 0 ? Math.round(target2H_3).toLocaleString() : '-'}원</span>
-                                  {curPrice > 0 && target2H_3 > 0 && curPrice !== 0 ? (() => {
-                                    const pct = ((target2H_3 - curPrice) / curPrice * 100);
-                                    if (Number.isFinite(pct)) {
-                                      return (
-                                        <span style={{ marginLeft: '4px', fontSize: '0.75rem', color: target2H_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                          ({target2H_3 > curPrice ? '+' : ''}{(Math.round(target2H_3 - curPrice)).toLocaleString()}원, {pct.toFixed(2)}%)
-                                        </span>
-                                      );
-                                    }
-                                    return null;
-                                  })() : null}
+                                  <span>{targetEntry2 > 0 ? Math.round(targetEntry2).toLocaleString() : '-'}원</span>
+                                </div>
+                                <div style={{ color: 'var(--accent)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
+                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>목표가 (Target):</span>
+                                  <span>{targetGoal > 0 ? Math.round(targetGoal).toLocaleString() : '-'}원</span>
                                 </div>
                                 <div style={{ color: '#ff6b6b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
                                   <span style={{ minWidth: '130px', textAlign: 'left' }}>손절가 (SL):</span>
-                                  <span>{(() => {
-                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
-                                    return sl > 0 ? Math.round(sl).toLocaleString() : '-';
-                                  })()}원</span>
-                                  {(() => {
-                                    const sl = t2H?.stop_loss || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0);
-                                    if (curPrice > 0 && sl > 0 && curPrice !== 0) {
-                                      const slPct = ((sl - curPrice) / curPrice * 100);
-                                      if (Number.isFinite(slPct)) {
-                                        return (
-                                          <span style={{ marginLeft: '4px', fontSize: '0.75rem' }}>
-                                            ({sl > curPrice ? '+' : ''}{(Math.round(sl - curPrice)).toLocaleString()}원, {slPct.toFixed(2)}%)
-                                          </span>
-                                        );
-                                      }
-                                    }
-                                    return null;
-                                  })()}
+                                  <span>{stopLossVal > 0 ? Math.round(stopLossVal).toLocaleString() : '-'}원</span>
                                 </div>
-                                <div style={{ color: 'var(--accent)', fontWeight: 'bold', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 목표가 (1D):</span>
-                                  <span>{target1D > 0 ? Math.round(target1D).toLocaleString() : '-'}원</span>
-                                  {target1D > 0 && dailyPrevClose > 0 ? renderChange(target1D, dailyPrevClose) : null}
+                                <div style={{ color: '#ffb86c', fontSize: '0.65rem', marginTop: '4px', borderTop: '1px dashed rgba(255,184,108,0.2)', paddingTop: '4px' }}>
+                                  이평선 배열(2H): <strong style={{ color: maArrangement === '정배열' ? '#ff4d4d' : (maArrangement === '역배열' ? '#4d94ff' : '#ccc') }}>{maArrangement}</strong>
                                 </div>
                               </>
                             );

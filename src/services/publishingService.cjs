@@ -25,8 +25,17 @@ class PublishingService {
     async publishToAll(inputStocks) {
         console.log('[PublishingService] Starting multi-channel sync...');
         
-        // [REDTEAM] Enforce strict Top 5 limit
-        const top5 = (inputStocks || []).slice(0, 5);
+        // [v9.4.18] Deduplicate stocks by code and enforce strict Top 5 limit
+        const uniqueStocks = [];
+        const seenCodes = new Set();
+        (inputStocks || []).forEach(s => {
+            const code = s.code || s.ticker;
+            if (code && !seenCodes.has(code)) {
+                seenCodes.add(code);
+                uniqueStocks.push(s);
+            }
+        });
+        const top5 = uniqueStocks.slice(0, 5);
 
         try {
             const kstNow = getKstNow();
@@ -76,70 +85,86 @@ class PublishingService {
             // 2. DB Update (DailyTop5) - Transactional & Atomic (Red Team Hardened)
             console.log('[PublishingService] Performing transactional DB sync...');
             
+            // [v9.4.7] Safe Mode: Check connection before proceeding
+            let dbSyncEnabled = true;
             try {
-                await prisma.$transaction(async (tx) => {
-                    // 2.1 Strict KST Purge: Remove all existing records for today to prevent accumulation
-                    await clearDailyTop5(todayStr, tx);
-                    console.log(`[PublishingService] Purged DailyTop5 for ${todayStr}`);
+                await Promise.race([
+                    prisma.$connect(),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('Connect Timeout')), 2000))
+                ]);
+            } catch (connErr) {
+                console.warn(`[PublishingService] DB unreachable (${connErr.message}). Entering Safe Mode (Skipping DB Persistence).`);
+                dbSyncEnabled = false;
+            }
 
-                    // 2.2 Re-insert the definitive Top 5
-                    for (const s of processedStocks) {
-                        await saveDailyTop5(s.code, {
-                            ...s,
-                            changeRate: s.yield,
-                            trendType: s.category
-                        }, todayStr, tx); // Pass transaction client
+            if (dbSyncEnabled) {
+                try {
+                    await prisma.$transaction(async (tx) => {
+                        // 2.1 Strict KST Purge: Remove all existing records for today to prevent accumulation
+                        await clearDailyTop5(todayStr, tx);
+                        console.log(`[PublishingService] Purged DailyTop5 for ${todayStr}`);
 
-                        // Mandatory Snapshot for SSOT
-                        console.log(`[PublishingService] Creating Snapshot for ${s.code}...`);
-                        const snapshotPayload = {
-                            code: s.code,
-                            name: s.name,
-                            category: s.category || '기타',
-                            score: Math.round(s.score || 0),
-                            currentPrice: s.currentPrice || 0,
-                            entryPrice1: s.entryPrice1 || 0,
-                            entryPrice2: s.entryPrice2 || 0,
-                            stopLoss: s.stopLoss || 0,
-                            targetPrice1: s.targetPrice1 || 0,
-                            yield: s.yield || 0,
-                            tradeAmount: (() => {
-                                const val = String(s.tradeAmount || 0).replace(/[^0-9]/g, '');
-                                // [TASK-P03] BigInt 대용 정밀도 손실 방지 (10조 단위 대응)
-                                try {
-                                    return val ? BigInt(val) : 0n;
-                                } catch (e) {
-                                    console.warn(`[PublishingService] BigInt conversion failed for ${val}, falling back to Number`);
-                                    return val ? Number(val) : 0;
-                                }
-                            })(),
-                            foreignBuy: String(s.foreignBuy || 0),
-                            instBuy: String(s.instBuy || 0),
-                            aiComment: s.aiComment || '',
-                            styleTag: s.styleTag || '',
-                            adx: Math.round(s.adx || 0),
-                            volRate: parseFloat(String(s.volRate || s.vol_rate || 0).replace(/[^0-9.-]/g, '')) || 0,
-                            createdAt: new Date()
-                        };
-                        
-                        try {
-                            await tx.dailyStockSnapshot.create({
-                                data: snapshotPayload
-                            });
-                        } catch (snapErr) {
-                            console.error(` [PublishingService] Snapshot FAILED for ${snapshotPayload.code}:`, snapErr.message);
+                        // 2.2 Re-insert the definitive Top 5
+                        for (const s of processedStocks) {
+                            await saveDailyTop5(s.code, {
+                                ...s,
+                                changeRate: s.yield,
+                                trendType: s.category
+                            }, todayStr, tx); // Pass transaction client
+
+                            // Mandatory Snapshot for SSOT
+                            console.log(`[PublishingService] Creating Snapshot for ${s.code}...`);
+                            const snapshotPayload = {
+                                code: s.code,
+                                name: s.name,
+                                category: s.category || '기타',
+                                score: Math.round(s.score || 0),
+                                currentPrice: s.currentPrice || 0,
+                                entryPrice1: s.entryPrice1 || 0,
+                                entryPrice2: s.entryPrice2 || 0,
+                                stopLoss: s.stopLoss || 0,
+                                targetPrice1: s.targetPrice1 || 0,
+                                yield: s.yield || 0,
+                                tradeAmount: (() => {
+                                    const val = String(s.tradeAmount || 0).replace(/[^0-9]/g, '');
+                                    // [TASK-P03] BigInt 대용 정밀도 손실 방지 (10조 단위 대응)
+                                    try {
+                                        return val ? BigInt(val) : 0n;
+                                    } catch (e) {
+                                        console.warn(`[PublishingService] BigInt conversion failed for ${val}, falling back to Number`);
+                                        return val ? Number(val) : 0;
+                                    }
+                                })(),
+                                foreignBuy: String(s.foreignBuy || 0),
+                                instBuy: String(s.instBuy || 0),
+                                aiComment: s.aiComment || '',
+                                styleTag: s.styleTag || '',
+                                adx: Math.round(s.adx || 0),
+                                volRate: parseFloat(String(s.volRate || s.vol_rate || 0).replace(/[^0-9.-]/g, '')) || 0,
+                                createdAt: new Date()
+                            };
+                            
+                            try {
+                                await tx.dailyStockSnapshot.create({
+                                    data: snapshotPayload
+                                });
+                            } catch (snapErr) {
+                                console.error(` [PublishingService] Snapshot FAILED for ${snapshotPayload.code}:`, snapErr.message);
+                            }
                         }
+                    });
+                    console.log('[PublishingService] DB Transaction committed successfully.');
+                } catch (dbErr) {
+                    // [TASK-P08] Fail-fast: Stop propagation if DB fails to maintain SSOT integrity
+                    console.error('[PublishingService] DB Sync FAILED. Aborting File/Redis updates.');
+                    const adminId = (process.env.TELEGRAM_CHAT_ID || '').split(',')[0];
+                    if (adminId) {
+                        await telegramService.sendMessage(adminId, `🚨 [PublishingService] DB Sync FAILED: ${dbErr.message}\nJSON/Redis sync aborted to prevent SSOT divergence.`);
                     }
-                });
-                console.log('[PublishingService] DB Transaction committed successfully.');
-            } catch (dbErr) {
-                // [TASK-P08] Fail-fast: Stop propagation if DB fails to maintain SSOT integrity
-                console.error('[PublishingService] DB Sync FAILED. Aborting File/Redis updates.');
-                const adminId = (process.env.TELEGRAM_CHAT_ID || '').split(',')[0];
-                if (adminId) {
-                    await telegramService.sendMessage(adminId, `🚨 [PublishingService] DB Sync FAILED: ${dbErr.message}\nJSON/Redis sync aborted to prevent SSOT divergence.`);
+                    throw dbErr; // Stop execution
                 }
-                throw dbErr; // Stop execution
+            } else {
+                console.log('[PublishingService] Safe Mode ACTIVE: Skipping DB updates to maintain availability.');
             }
 
             // 3. File Updates with Mutex & Atomic Rename (Red Team Recommendation)

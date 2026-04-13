@@ -16,7 +16,7 @@ export const useSSE = () => {
     return {
       isConnected: false,
       lastSignal: null,
-      progress: { current: 0, total: 348, timeframe: '' },
+      progress: { current: 0, total: 350, timeframe: '', group: '', pct: 0 },
       error: 'SSEProvider missing',
       realtimePrices: {},
       notifications: []

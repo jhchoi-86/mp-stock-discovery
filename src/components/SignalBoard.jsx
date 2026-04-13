@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import useSWR from 'swr';
 import axiosClient from '../api/axiosClient';
 import reportService from '../api/reportService';
+import { useTop5Stocks } from '../hooks/useStockSnapshot';
 import { Activity, Clock, CheckCircle2, Zap, Calendar } from 'lucide-react';
 
 const fetcher = url => axiosClient.get(url).then(res => res.data);
@@ -23,20 +24,17 @@ const SignalBoard = () => {
         return () => clearInterval(timer);
     }, []);
 
-    const { data: ssotResponse, isLoading: isTop5Loading } = useSWR(
-        'ssot/top/5', 
-        () => reportService.getTop5Strategy('ssot/top/5'), 
-        { refreshInterval: 300000 }
-    );
+    const { data: top5Response, isLoading: isTop5Loading } = useTop5Stocks();
+    const top5Data = top5Response?.data || [];
     
     const { data: signalData } = useSWR('/api/public/time-slot-signals', fetcher, {
         refreshInterval: 60000 
     });
     
     // SSOT 응답 구조 { source, data: [] } 에 맞춰 데이터 추출 및 정규화
-    const top5 = (ssotResponse?.data || []).map(s => ({
-        code: s.stock_code || s.code,
-        name: s.stock_name || s.name
+    const top5 = top5Data.map(s => ({
+        code: s.ticker,
+        name: s.name
     }));
 
     // KST 시간 포맷팅 (YYYY-MM-DD HH:mm:ss)

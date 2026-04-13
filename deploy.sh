@@ -7,8 +7,8 @@ echo "========================================="
 echo "1. 최신 소스코드 다운로드 (git pull)..."
 git pull origin main
 
-echo "2. 프론트엔드 React / Vite 정적 파일 빌드 (npm run build)..."
-npm run build
+echo "2. 프론트엔드 빌드 및 버전 펌핑 (npm run release)..."
+npm run release
 
 echo "2.5. Python 가상환경 및 AI 마이크로서비스 세팅..."
 cd ai-service

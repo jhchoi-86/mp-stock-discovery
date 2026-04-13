@@ -35,4 +35,4 @@ const nowKST = () => toKST().getTime();
  */
 const getKstNow = () => toKST();
 
-module.exports = { toKST, getKSTDateString, nowKST, getKstNow };
+module.exports = { toKST, getKSTDateString, getKstDateString: getKSTDateString, nowKST, getKstNow };

@@ -6,7 +6,7 @@ import useSWR from 'swr';
 import reportService from '../api/reportService';
 import Top5StrategyBanner from './Top5StrategyBanner';
 import LandingHeader from './LandingHeader';
-import { useSSE } from '../context/SSEContext';
+import { useSSE } from '../hooks/useSSE';
 
 const SocialMarquee = ({ notifications = [] }) => {
   return (

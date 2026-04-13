@@ -1,15 +1,18 @@
 {
   "name": "-",
   "private": true,
-  "version": "9.2.1",
+  "version": "9.4.19",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "release": "npm version patch --no-git-tag-version && npm run build && node update_hash.cjs && pm2 reload mp-stock-backend --update-env",
+    "release": "npm version patch --no-git-tag-version && cmd /c \"node_modules/.bin/vite.cmd build\" && cmd /c \"C:/Users/danbe/AppData/Roaming/npm/pm2.cmd reload ecosystem.config.cjs --env production\"",
     "safe-deploy": "node scripts/deploy_safe.cjs",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
-    "seal": "node seal.cjs"
+    "seal": "node seal.cjs",
+    "check:consistency": "node scripts/consistencyChecker.cjs",
+    "sync:save": "node scripts/triggerSaveSync.cjs",
+    "sync:verify": "npm run sync:save && npm run check:consistency"
   },
   "devDependencies": {
     "@prisma/client": "^5.0.0",

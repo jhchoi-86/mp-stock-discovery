@@ -3,7 +3,7 @@ import { Calendar, Search, Filter, ArrowUpRight, ArrowDownRight, MoreHorizontal,
 import adminService from '../api/adminService';
 import { Virtuoso } from 'react-virtuoso';
 
-const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
+const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false, overrideData = null, isLoading: externalLoading = false }) => {
   const [snapshots, setSnapshots] = useState([]);
   const [dates, setDates] = useState([]);
   const [historyTags, setHistoryTags] = useState([]);
@@ -20,8 +20,13 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
   }, []);
 
   useEffect(() => {
-    fetchSnapshots();
-  }, [selectedDate, selectedTag, sortBy, order]);
+    if (overrideData) {
+      setSnapshots(overrideData);
+      setIsLoading(false);
+    } else {
+      fetchSnapshots();
+    }
+  }, [selectedDate, selectedTag, sortBy, order, overrideData]);
 
   const fetchDates = async () => {
     try {
@@ -62,10 +67,13 @@ const DailySnapshotAnalytics = ({ isPublic = false, isMobile = false }) => {
         data = await adminService.getPublicSnapshots(params);
       }
       
+      // [v9.4.17] Robust Array Check to prevent crash on error objects
+      const items = Array.isArray(data) ? data : (data?.stocks || data?.data || []);
+      
       // 중복 제거 (code 기준) - O(N) 최적화
       const uniqueMap = new Map();
-      (data || []).forEach(item => {
-        if (!uniqueMap.has(item.code)) {
+      items.forEach(item => {
+        if (item && item.code && !uniqueMap.has(item.code)) {
           uniqueMap.set(item.code, item);
         }
       });

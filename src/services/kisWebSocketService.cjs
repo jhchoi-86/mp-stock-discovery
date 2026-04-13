@@ -88,7 +88,9 @@ async function startWebSocketService(onPriceUpdate) {
         if (subscribedCodes.size > 0) {
             console.log(`[KIS-WSS] Re-subscribing ${subscribedCodes.size} codes...`);
             for (const code of Array.from(subscribedCodes)) {
-                ws.send(createSubMsg(code));
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(createSubMsg(code));
+                }
                 await new Promise(r => setTimeout(r, 200)); // [v6.2.3] 200ms delay to prevent kick
             }
         }
@@ -98,7 +100,7 @@ async function startWebSocketService(onPriceUpdate) {
         const msg = data.toString();
 
         if (msg.includes('PINGPONG')) {
-            ws.send('PONG');
+            if (ws.readyState === WebSocket.OPEN) ws.send('PONG');
             return;
         }
 

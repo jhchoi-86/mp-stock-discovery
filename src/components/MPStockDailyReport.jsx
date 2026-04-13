@@ -1,9 +1,10 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useSSE } from '../context/SSEContext';
+import { useSSE } from '../hooks/useSSE';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
 import { CheckCircle, LayoutGrid, Flame, History } from 'lucide-react';
 import adminService from '../api/adminService';
+import { useTop5Stocks } from '../hooks/useStockSnapshot';
 // [v8.0.0] DailyTop5 DB Sync & Multi-Timeframe Integration
 // [v8.8.12] Price Update Highlight Animation
 
@@ -44,7 +45,8 @@ const PriceDisplay = ({ price, changeRate, label }) => {
 const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
   const { realtimePrices } = useSSE();
   const today = useMemo(() => new Date().toLocaleDateString('en-CA'), []); 
-  const { data: dbTop5 } = useSWR(`/api/ssot/top/5?date=${today}`, (url) => reportService.getTop5Strategy(url.replace('/api/', '')));
+  const { data: top5Response } = useTop5Stocks(selectedDate || today);
+  const dbTop5 = top5Response;
   const { data: historyTags } = useSWR('/api/public/sync-history-tags', adminService.getSyncHistoryTags);
   
   const [selectedDate, setSelectedDate] = useState('');
@@ -52,7 +54,11 @@ const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
   const [historicalData, setHistoricalData] = useState(null);
   const [isHistoricalLoading, setIsHistoricalLoading] = useState(false);
 
-  const stocks = useMemo(() => data?.stocks || [], [data]);
+  // [v9.4.17] Robust mapping for both legacy (.stocks) and SSOT (.data) formats
+  const stocks = useMemo(() => {
+    if (!data) return [];
+    return Array.isArray(data) ? data : (data.stocks || data.data || []);
+  }, [data]);
   
   // 1. Grouping Logic (v7.6.0)
   const groupedStocks = useMemo(() => {
@@ -142,23 +148,23 @@ const MPStockDailyReport = ({ data, isLoading, isFallback }) => {
     // [v9.1.6] 히스토리 태그가 선택된 경우, 실시간 DB 데이터 병합을 생략하여 시점 데이터를 보존함
     if (!selectedTag && dbTop5 && dbTop5.data) {
       dbTop5.data.forEach(db => {
-        stocksMap.set(db.stock_code || db.code, {
-          code: db.stock_code || db.code,
-          name: db.stock_name || db.name,
+        stocksMap.set(db.ticker, {
+          code: db.ticker,
+          name: db.name,
           score: db.score,
-          current_price: db.current_price,
-          entry_price: db.entry_price_1,
-          entry1: db.entry_price_1,
-          entry2: db.entry_price_2,
-          entry_price_2: db.entry_price_2,
-          target: db.target_price_1,
-          target_price: db.target_price_1,
-          sl: db.stop_loss,
-          stop_loss: db.stop_loss,
-          foreign_buy: db.foreign_buy !== undefined ? (db.foreign_buy > 0 ? '+' : '') + db.foreign_buy.toLocaleString() + '주' : '0주',
-          inst_buy: db.inst_buy !== undefined ? (db.inst_buy > 0 ? '+' : '') + db.inst_buy.toLocaleString() + '주' : '0주',
-          trade_amount: db.trade_amount ? (Number(db.trade_amount) / 100000000).toFixed(0) + '억' : '0억',
-          trend_type: db.trend_type,
+          current_price: db.currentPrice,
+          entry_price: db.entryPrice1,
+          entry1: db.entryPrice1,
+          entry2: db.entryPrice2,
+          entry_price_2: db.entryPrice2,
+          target: db.targetPrice1,
+          target_price: db.targetPrice1,
+          sl: db.stopLoss,
+          stop_loss: db.stopLoss,
+          foreign_buy: db.foreignBuy !== undefined ? (db.foreignBuy > 0 ? '+' : '') + db.foreignBuy.toLocaleString() + '주' : '0주',
+          inst_buy: db.instBuy !== undefined ? (db.instBuy > 0 ? '+' : '') + db.instBuy.toLocaleString() + '주' : '0주',
+          trade_amount: db.tradeAmount ? (Number(db.tradeAmount) / 100000000).toFixed(0) + '억' : '0억',
+          trend_type: db.category,
           recommended_at: dbDate ? dbDate.split('-').slice(1).join('. ') + '.' : (selectedDate || today),
           stars: db.score >= 95 ? 5 : (db.score >= 90 ? 4 : 3)
         });

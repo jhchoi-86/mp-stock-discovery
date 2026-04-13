@@ -34,3 +34,17 @@ data/
 !package.json
 !package-lock.json
 !ecosystem.config.cjs
+
+# Protection Patterns
+*.bak
+*.sql
+*.tar.gz
+*.zip
+/0
+/quarantine/
+/tmp/
+/archive/
+/backups/
+/dist/
+node_modules/
+.env*

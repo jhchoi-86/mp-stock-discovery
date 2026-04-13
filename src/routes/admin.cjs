@@ -308,4 +308,196 @@ router.post('/system/incidents', async (req, res) => {
   }
 });
 
+// I. 동기화 및 퍼블리싱 스냅샷 저장 (POST /api/admin/save-sync-history)
+router.post('/save-sync-history', async (req, res) => {
+    console.log('[Admin] Saving current Top 5 snapshot...');
+    try {
+        // [v9.3.3] Frontend에서 전달한 stocks 데이터를 우선 사용 (WYSIWYS)
+        const { stocks } = req.body;
+        let top5 = [];
+
+        if (stocks && Array.isArray(stocks)) {
+            top5 = stocks.slice(0, 5);
+        } else {
+            // Fallback: DB의 최신 스냅샷에서 상위 5개 추출 (중목 제거)
+            const latestSnaps = await prisma.dailyStockSnapshot.findMany({
+                orderBy: { hybridScore: 'desc' },
+                take: 20 // Fetch more to allow for deduplication
+            });
+            
+            const uniqueSnaps = [];
+            const seenFallback = new Set();
+            for (const s of latestSnaps) {
+                if (!seenFallback.has(s.ticker)) {
+                    seenFallback.add(s.ticker);
+                    uniqueSnaps.push(s);
+                }
+                if (uniqueSnaps.length >= 5) break;
+            }
+            
+            top5 = uniqueSnaps.map(s => ({
+                code: s.ticker,
+                name: s.name,
+                category: s.category || '추천종목',
+                score: s.hybridScore || 0,
+                currentPrice: s.currentPrice || 0,
+                entryPrice1: s.entry1Price || 0,
+                entryPrice2: s.entry2Price || 0,
+                stopLoss: s.stopLossPrice || 0,
+                targetPrice1: s.targetPrice || 0,
+                yield: s.yield || 0
+            }));
+        }
+
+        if (top5.length === 0) {
+            return res.status(400).json({ error: '저장할 종목 데이터가 없습니다.' });
+        }
+
+        // 2. 태그 이름 생성 (KST 기준)
+        const now = new Date();
+        const kstOffset = 9 * 60 * 60 * 1000;
+        const kstNow = new Date(now.getTime() + kstOffset);
+        
+        const pad = (n) => n.toString().padStart(2, '0');
+        const tagName = `${kstNow.getUTCFullYear()}-${pad(kstNow.getUTCMonth() + 1)}-${pad(kstNow.getUTCDate())} ${pad(kstNow.getUTCHours())}:${pad(kstNow.getUTCMinutes())}`;
+        const today = `${kstNow.getUTCFullYear()}-${pad(kstNow.getUTCMonth() + 1)}-${pad(kstNow.getUTCDate())}`;
+
+
+        // 3. SyncSaveLog 저장 (Landing Page SSOT)
+        // Safe serialization: catch 0 prices from frontend and try to fetch from latest snapshot
+        const safeTop5 = [];
+        for (const s of top5) {
+            let curPrice = Number(s.currentPrice) || 0;
+            let tPrice = Number(s.targetPrice1) || 0;
+            
+            // [v9.3.6] Improved Price Recovery: Prioritize Live Cache, then Fresh Snapshot (<24h)
+            if (curPrice === 0 || tPrice === 0) {
+                const { getFullPriceCache } = require('../utils/fullUniversePoller.cjs');
+                const liveCache = getFullPriceCache();
+                const live = liveCache[s.code || s.ticker] || {};
+                
+                if (curPrice === 0 && live.price) {
+                    curPrice = live.price;
+                }
+
+                if (curPrice === 0 || tPrice === 0) {
+                    const lastSnap = await prisma.dailyStockSnapshot.findFirst({
+                        where: { ticker: s.code || s.ticker },
+                        orderBy: { createdAt: 'desc' }
+                    });
+                    
+                    if (lastSnap) {
+                        const isFresh = (Date.now() - new Date(lastSnap.createdAt).getTime() < 24 * 60 * 60 * 1000);
+                        if (curPrice === 0 && isFresh) curPrice = Number(lastSnap.currentPrice) || 0;
+                        if (tPrice === 0 && (isFresh || tPrice === 0)) tPrice = Number(lastSnap.targetPrice) || 0;
+                    }
+                }
+            }
+
+            safeTop5.push({
+                code: s.code || s.ticker || '',
+                name: s.name || '',
+                category: s.category || s.trendType || '기타',
+                score: Number(s.score) || 0,
+                currentPrice: curPrice,
+                entryPrice1: Number(s.entryPrice1) || 0,
+                entryPrice2: Number(s.entryPrice2) || 0,
+                stopLoss: Number(s.stopLoss) || 0,
+                targetPrice1: tPrice,
+                yield: Number(s.yield) || 0,
+                tradeAmount: Number(s.tradeAmount) || 0,
+                foreignBuy: parseInt((s.foreignBuy || 0).toString().replace(/,/g, '')) || 0,
+                instBuy: parseInt((s.instBuy || 0).toString().replace(/,/g, '')) || 0,
+                styleTag: s.styleTag || '',
+                aiComment: s.aiComment || ''
+            });
+        }
+
+
+        // [v9.4.7] Safe Mode: Check connection before proceeding
+        let dbSyncEnabled = true;
+        try {
+            await Promise.race([
+                prisma.$connect(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('Connect Timeout')), 2000))
+            ]);
+        } catch (connErr) {
+            console.warn(`[Admin-SaveHistory] DB unreachable (${connErr.message}). Entering Safe Mode.`);
+            dbSyncEnabled = false;
+        }
+
+        if (dbSyncEnabled) {
+            const saved = await prisma.syncSaveLog.create({
+                data: {
+                    tagName,
+                    snapshot: safeTop5
+                }
+            });
+
+            // 4. [SSOT] DailyTop5 테이블 업데이트 (기존 서비스 호환성)
+            for (const s of safeTop5) {
+                await prisma.dailyTop5.upsert({
+                    where: {
+                        date_code: {
+                            date: today,
+                            code: s.code
+                        }
+                    },
+                    update: {
+                        name: s.name,
+                        score: s.score,
+                        currentPrice: s.currentPrice,
+                        entryPrice1: s.entryPrice1,
+                        entryPrice2: s.entryPrice2,
+                        stopLoss: s.stopLoss,
+                        targetPrice1: s.targetPrice1,
+                        tradeAmount: BigInt(Math.round(s.tradeAmount || 0)),
+                        foreignBuy: Math.round(s.foreignBuy || 0),
+                        instBuy: Math.round(s.instBuy || 0),
+                        yield: s.yield || 0,
+                        category: s.category,
+                        styleTag: s.styleTag || null,
+                        aiComment: s.aiComment || null
+                    },
+                    create: {
+                        date: today,
+                        code: s.code,
+                        name: s.name,
+                        score: s.score,
+                        currentPrice: s.currentPrice,
+                        entryPrice1: s.entryPrice1,
+                        entryPrice2: s.entryPrice2,
+                        stopLoss: s.stopLoss,
+                        targetPrice1: s.targetPrice1,
+                        tradeAmount: BigInt(Math.round(s.tradeAmount || 0)),
+                        foreignBuy: Math.round(s.foreignBuy || 0),
+                        instBuy: Math.round(s.instBuy || 0),
+                        yield: s.yield || 0,
+                        category: s.category,
+                        styleTag: s.styleTag || null,
+                        aiComment: s.aiComment || null
+                    }
+                });
+            }
+            console.log(`[Admin] DB Snapshot saved: ${tagName}`);
+        }
+
+        // 5. Trigger Multi-Channel Publishing (Files/Redis) - Hardened in PublishingService
+        if (global.publishingService) {
+            console.log('[Admin] Triggering multi-channel publishing...');
+            await global.publishingService.publishToAll(safeTop5);
+        }
+
+        res.json({ 
+            success: true, 
+            tagName, 
+            dbStatus: dbSyncEnabled ? 'synced' : 'skipped (Safe Mode)',
+            message: dbSyncEnabled ? '데이터베이스 및 파일 동기화 완료' : '데이터베이스가 오프라인입니다. 로컬 파일만 동기화되었습니다.'
+        });
+    } catch (err) {
+        console.error('[Admin-SaveHistory] Failed:', err);
+        res.status(500).json({ error: '서버 오류로 인해 저장에 실패했습니다.' });
+    }
+});
+
 module.exports = router;

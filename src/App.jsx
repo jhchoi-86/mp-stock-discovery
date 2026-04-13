@@ -12,16 +12,31 @@ import useSecurityShield from './hooks/useSecurityShield.js';
 import LandingPage from './components/LandingPage.jsx';
 import { SSEProvider } from './context/SSEContext.jsx';
 import { Routes, Route, useNavigate } from 'react-router-dom';
-import PerformancePage from './pages/PerformancePage.jsx';
-import AnalysisPage from './pages/AnalysisPage.jsx';
-import SignalsPage from './pages/SignalsPage.jsx';
-import BacktestPage from './components/BacktestPage.jsx';
+import { useDataConsistency } from './hooks/useDataConsistency.js'; 
+
+// [v9.4.15] React.lazy를 사용하여 순환 참조(Circular Dependency) 차단 및 초기 번들 최적화
+const PerformancePage = React.lazy(() => import('./pages/PerformancePage.jsx'));
+const AnalysisPage = React.lazy(() => import('./pages/AnalysisPage.jsx'));
+const SignalsPage = React.lazy(() => import('./pages/SignalsPage.jsx'));
+const BacktestPage = React.lazy(() => import('./components/BacktestPage.jsx'));
+
+// 프리미엄 스켈레톤 로더
+const PageLoader = () => (
+  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="skeleton" style={{ width: '100%', height: '60px', borderRadius: '12px' }}></div>
+    <div className="skeleton" style={{ width: '30%', height: '400px', borderRadius: '12px' }}></div>
+    <div className="skeleton" style={{ width: '65%', height: '400px', borderRadius: '12px' }}></div>
+  </div>
+);
 
 const App = () => {
   const { user, isAuthenticated, isInitialized, initAuth, clearAuth } = useAuthStore();
    const isMobile = useIsMobile(768);
    const manager = useStockManager(isAuthenticated);
    const navigate = useNavigate();
+
+   // ★ [TASK-E3] 전역 데이터 정합성 유지 (동기화 저장 발생 시 자동 갱신)
+   useDataConsistency(manager.fetchData);
 
   const isManagementUser = user && user.role === 'ADMIN';
 
@@ -58,6 +73,7 @@ const App = () => {
     <div className="dashboard-root">
       <Toaster position="bottom-right" />
       <SSEProvider onUpdateRequested={manager.fetchData}>
+        <React.Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Common Routes available to everyone */}
             <Route path="/performance" element={<PerformancePage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
@@ -81,6 +97,7 @@ const App = () => {
             {/* Login Route (Fallback for direct access) */}
             <Route path="/login" element={<Login onBack={() => navigate('/')} />} />
           </Routes>
+        </React.Suspense>
       </SSEProvider>
 
     </div>

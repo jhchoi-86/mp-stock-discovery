@@ -51,25 +51,70 @@ export const useStockManager = (isAuthenticated) => {
 
   const fetchData = async () => {
     try {
-      const [stocksRes, summaryRes] = await Promise.all([
-        axiosClient.get('/api/stocks'),
-        axiosClient.get('/api/signals-summary')  // [Phase 3] Server-side grouped data
+      // [FIX-05] Promise.allSettled — 부분 실패 허용
+      const [stocksResult, summaryResult] = await Promise.allSettled([
+          axiosClient.get('/api/stocks'),
+          axiosClient.get('/api/signals-summary')
       ]);
-      
-      let stocksData = stocksRes.data;
-      let summaryData = summaryRes.data;
-      
-      if (!Array.isArray(stocksData)) stocksData = [];
-      if (!Array.isArray(summaryData)) summaryData = [];
-      
-      // Build O(1) lookup map from array [ { code, latestSignal, timeframeStatus } ]
+
+      let stocksData = [];
+      let summaryData = [];
+
+      if (stocksResult.status === 'fulfilled') {
+          stocksData = Array.isArray(stocksResult.value.data) ? stocksResult.value.data : [];
+      } else {
+          console.error('[fetchData] /api/stocks 실패:', stocksResult.reason?.message);
+      }
+
+      if (summaryResult.status === 'fulfilled') {
+          summaryData = Array.isArray(summaryResult.value.data) ? summaryResult.value.data : [];
+      } else {
+          console.error('[fetchData] /api/signals-summary 실패:', summaryResult.reason?.message);
+          
+          // [v9.5.0] [FIX-05] signals-summary 실패 시 /api/signals fallback 시도
+          try {
+              const fallbackRes = await axiosClient.get('/api/signals');
+              const flatSignals = Array.isArray(fallbackRes.data) ? fallbackRes.data : [];
+              
+              // 플랫 배열 → summary 형식으로 변환 (클라이언트 사이드 그룹핑)
+              const groupMap = new Map();
+              for (const sig of flatSignals) {
+                  if (!groupMap.has(sig.code)) {
+                      groupMap.set(sig.code, { code: sig.code, latestSignal: null, timeframeStatus: {} });
+                  }
+                  const g = groupMap.get(sig.code);
+                  const existing = g.timeframeStatus[sig.timeframe];
+                  if (!existing || sig.timestamp > existing.timestamp) {
+                      g.timeframeStatus[sig.timeframe] = sig;
+                  }
+                  if (!g.latestSignal || sig.timestamp > g.latestSignal.timestamp) {
+                      g.latestSignal = sig;
+                  }
+              }
+              summaryData = Array.from(groupMap.values());
+              console.warn('[fetchData] /api/signals fallback 성공:', summaryData.length, '종목');
+          } catch (fallbackErr) {
+              console.error('[fetchData] Fallback도 실패:', fallbackErr.message);
+              
+              // [FIX-04] fallback까지 실패한 경우에만 토스트 표시
+              if (summaryResult.reason?.response?.status === 404) {
+                  toast.error('서버 데이터를 불러올 수 없습니다. 관리자에게 문의하세요.', { duration: 5000 });
+              } else {
+                  toast.error('신호 데이터를 불러올 수 없습니다.', { duration: 4000 });
+              }
+          }
+      }
+
       const summaryMap = new Map(summaryData.map(item => [item.code, item]));
       
       setStocks(stocksData);
       setSignalsSummary(summaryMap);
       setLastUpdate(new Date());
+      
     } catch (error) {
-      console.error("Error fetching data:", error);
+      // Promise.allSettled 자체의 예기치 못한 에러 처리
+      console.error("Critical error in fetchData:", error);
+      toast.error(`데이터 갱신 중 치명적 오류: ${error.message}`);
     }
   };
 
@@ -97,7 +142,29 @@ export const useStockManager = (isAuthenticated) => {
       if (isAuthenticated) fetchData();
     }, 5 * 60 * 1000);
 
-    return () => clearInterval(intervalId);
+    // [FIX-03] sync_complete / signal_update 이벤트 수신 시 자동 갱신
+    const handleSseMessage = (event) => {
+        try {
+            const data = JSON.parse(event.detail.data);
+            if (data.type === 'sync_complete' || data.type === 'save_sync_complete' || data.type === 'signal_update' || data.type === 'tf_complete') {
+                console.log(`[useStockManager] ${data.type} detected, refreshing data...`);
+                fetchData();
+                if (data.type === 'sync_complete' || data.type === 'save_sync_complete') {
+                    setIsSyncing(false);
+                }
+            }
+            if (data.type === 'sync_progress' || data.type === 'progress') {
+                setIsSyncing(true);
+            }
+        } catch (e) {}
+    };
+
+    window.addEventListener('mp_sse_message', handleSseMessage);
+
+    return () => {
+        clearInterval(intervalId);
+        window.removeEventListener('mp_sse_message', handleSseMessage);
+    };
   }, [isAuthenticated]);
 
   const getSignalsForStock = (code) => {
@@ -305,32 +372,38 @@ export const useStockManager = (isAuthenticated) => {
     const timeframes = ['30M', '1H', '2H', '4H', '1D', '2D', '1W'];
     if (!window.confirm(`${timeframes.join(', ')} 시간대 데이터를 일괄 동기화하시겠습니까?\n(분석량이 많아 약 3~5분 정도 소요될 수 있습니다.)`)) return;
     
+    // [TASK-D2] 즉시 상태 초기화
     setIsSyncing(true);
+    setSyncProgress({ current: 0, total: 350, timeframe: '준비 중...' });
     setSelectedStocks(new Set());
     setShowAll(false); 
     
     try {
-      // [v7.7.20] Bulk Sync: Send ALL timeframes in one single request to avoid UI stall
-      setSyncProgress({ current: 0, total: 100, timeframe: '준비 중...' });
-      
       // [TASK-SM04] Fire-and-Forget 패턴: 트리거만 하고 결과는 SSE/폴링으로 수신
-      // timeout을 30초로 줄이고, 백엔드가 비동기로 동기화를 처리하도록 함
-      await axiosClient.post('/api/auto-sync', { timeframes }, { timeout: 30000 });
+      // [OPT-01] 분석 시간 고려하여 타임아웃 120초로 연장
+      await axiosClient.post('/api/auto-sync', { timeframes }, { timeout: 120000 });
+      toast.success("동기화가 시작되었습니다. 완료되면 대시보드가 자동으로 업데이트됩니다.");
 
-      toast.success("동기화가 시작되었습니다. 완료되면 대시보드가 자동으로 업데이트됩니다."); // [TASK-SM05]
-      // 완료는 SSEContext의 signal_update 이벤트가 fetchData를 호출함
+      // 폴백 갱신 (SSE가 먼저 도착하면 중복 갱신 발생하나 무해)
+      setTimeout(() => { if (isSyncing) fetchData(); }, 10000);
     } catch (error) {
       console.error("Bulk sync error:", error);
-      setIsSyncing(false);
-      setSyncProgress({ current: 0, total: 100, timeframe: '' });
+      
+      const isConflict = error.response?.status === 409;
+      const isTimeout = error.code === 'ECONNABORTED' || error.message?.includes('timeout');
 
-      if (error.response?.status === 409) {
-        toast.error("이미 분석이 진행 중입니다. 잠시 후 자동으로 결과가 업데이트됩니다."); // [TASK-SM05]
-      } else if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
-        toast.success("분석이 백엔드에서 계속 진행 중입니다. 잠시 후 결과가 나타납니다."); // [TASK-SM05]
+      // [OPT-01] 409(이미 진행 중)이거나 타임아웃인 경우 UI 상태 유지 (SSE 수신 대기)
+      if (!isConflict && !isTimeout) {
         setIsSyncing(false);
+        setSyncProgress({ current: 0, total: 100, timeframe: '' });
+      }
+
+      if (isConflict) {
+        toast.error("이미 분석이 진행 중입니다. 잠시 후 자동으로 결과가 업데이트됩니다.");
+      } else if (isTimeout) {
+        toast.success("분석이 백엔드에서 계속 진행 중입니다. 잠시 후 결과가 나타납니다.");
       } else if (error.response?.status !== 403 && error.response?.status !== 429) {
-        toast.error(error.response?.data?.error || "동기화 중 오류가 발생했습니다."); // [TASK-SM05]
+        toast.error(error.response?.data?.error || "동기화 중 오류가 발생했습니다.");
       }
     }
   };

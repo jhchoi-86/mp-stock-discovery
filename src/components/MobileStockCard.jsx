@@ -144,29 +144,30 @@ const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1
           {/* Target Prices (v6.5.2 Unified 2H Strategy) */}
           {(t2H_status?.result_2 > 0 || t2H_status?.result_3 > 0 || t1D_status?.bb_upper > 0) && (
             <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>
-               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                 {t2H_status?.result_2 > 0 && (
-                   <span style={{ color: '#FFD700', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                     1차 진입(2H): {Math.round(t2H_status.result_2).toLocaleString()}
-                     {curPrice > 0 && t2H_status.result_2 > 0 && curPrice !== 0 ? (() => {
-                        const pct = ((t2H_status.result_2 - curPrice) / curPrice * 100);
-                        if (Number.isFinite(pct)) {
-                          return (
-                            <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H_status.result_2 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                              ({pct.toFixed(1)}%)
-                            </span>
-                          );
-                        }
-                        return null;
-                     })() : null}
-                   </span>
-                 )}
-                 {t1D_status?.bb_upper > 0 && (
-                   <span style={{ color: 'var(--accent)', fontWeight: 'normal', whiteSpace: 'nowrap', marginTop: '4px' }}>
-                     목표(1D): {Math.round(t1D_status.bb_upper).toLocaleString()}
-                   </span>
-                 )}
-               </div>
+                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                  {t2H_status?.result_2 > 0 && (
+                    <span style={{ color: '#FFD700', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
+                      1차 진입(2H): {Math.round(t2H_status.result_2).toLocaleString()}
+                      {curPrice > 0 && t2H_status.result_2 > 0 && curPrice !== 0 ? (() => {
+                         const pct = ((t2H_status.result_2 - curPrice) / curPrice * 100);
+                         if (Number.isFinite(pct)) {
+                           return (
+                             <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H_status.result_2 >= curPrice ? '#ff6b6b' : '#339af0' }}>
+                               ({pct.toFixed(1)}%)
+                             </span>
+                           );
+                         }
+                         return null;
+                      })() : null}
+                    </span>
+                  )}
+                  {/* [v9.4.10] Use result_1 as primary target */}
+                  {(t2H_status?.result_1 || t1D_status?.bb_upper) > 0 && (
+                    <span style={{ color: 'var(--accent)', fontWeight: 'normal', whiteSpace: 'nowrap', marginTop: '4px' }}>
+                      목표(Target): {Math.round(t2H_status?.result_1 || t1D_status?.bb_upper || 0).toLocaleString()}
+                    </span>
+                  )}
+                </div>
                <div style={{ display: 'flex', flexDirection: 'column', flex: 1, borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
                  {t2H_status?.result_3 > 0 && (
                    <>
