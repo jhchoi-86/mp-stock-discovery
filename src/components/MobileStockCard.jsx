@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import SignalIndicator from '../SignalIndicator';
+import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
 
 const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1D, isSyncing }) => {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -39,8 +40,6 @@ const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1
   };
 
   const s = stock.latestSignal;
-  // Note: t1H, t2H, t4H, t1D props are usually passed from MobileDashboard
-  // but we also have stock.timeframeStatus for safety
   const tfStatus = stock.timeframeStatus || {};
   const t2H_status = t2H || tfStatus['2H'];
   const t1D_status = t1D || tfStatus['1D'];
@@ -123,16 +122,16 @@ const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1
           {/* Timeframe Indicators */}
           <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', flexWrap: 'wrap' }}>
             {["30M", "1H", "2H", "4H", "1D", "2D", "1W"].map(tf => {
-              const isBuy = stock.buy_signal_timeframes?.includes(tf);
-              const isStrong = stock.strong_signal_timeframes?.includes(tf);
-              const hasSignal = isBuy || isStrong;
-              const activeBg = isStrong ? '#FF1744' : (isBuy ? '#00E676' : 'rgba(255,255,255,0.1)');
+              const b = stock.buy_signal_timeframes?.includes(tf);
+              const s = stock.strong_signal_timeframes?.includes(tf);
+              const hasSignal = b || s;
+              const activeBg = s ? '#FF1744' : (b ? '#00E676' : 'rgba(255,255,255,0.1)');
               
               return (
                 <div key={tf} style={{
                   padding: '2px 6px', borderRadius: '4px', fontSize: '0.65rem',
                   background: activeBg,
-                  color: hasSignal ? (isStrong ? '#fff' : '#000') : 'rgba(255,255,255,0.5)',
+                  color: hasSignal ? (s ? '#fff' : '#000') : 'rgba(255,255,255,0.5)',
                   minWidth: '28px', textAlign: 'center'
                 }}>
                   {tf}
@@ -141,75 +140,17 @@ const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1
             })}
           </div>
 
-          {/* Target Prices (v6.5.2 Unified 2H Strategy) */}
-          {(t2H_status?.result_2 > 0 || t2H_status?.result_3 > 0 || t1D_status?.bb_upper > 0) && (
-            <div style={{ display: 'flex', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.2)', padding: '6px 8px', borderRadius: '6px' }}>
-                <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
-                  {t2H_status?.result_2 > 0 && (
-                    <span style={{ color: '#FFD700', fontWeight: 'normal', whiteSpace: 'nowrap' }}>
-                      1차 진입(2H): {Math.round(t2H_status.result_2).toLocaleString()}
-                      {curPrice > 0 && t2H_status.result_2 > 0 && curPrice !== 0 ? (() => {
-                         const pct = ((t2H_status.result_2 - curPrice) / curPrice * 100);
-                         if (Number.isFinite(pct)) {
-                           return (
-                             <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H_status.result_2 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                               ({pct.toFixed(1)}%)
-                             </span>
-                           );
-                         }
-                         return null;
-                      })() : null}
-                    </span>
-                  )}
-                  {/* [v9.4.10] Use result_1 as primary target */}
-                  {(t2H_status?.result_1 || t1D_status?.bb_upper) > 0 && (
-                    <span style={{ color: 'var(--accent)', fontWeight: 'normal', whiteSpace: 'nowrap', marginTop: '4px' }}>
-                      목표(Target): {Math.round(t2H_status?.result_1 || t1D_status?.bb_upper || 0).toLocaleString()}
-                    </span>
-                  )}
-                </div>
-               <div style={{ display: 'flex', flexDirection: 'column', flex: 1, borderLeft: '1px solid rgba(255,255,255,0.1)', paddingLeft: '8px' }}>
-                 {t2H_status?.result_3 > 0 && (
-                   <>
-                     <span style={{ color: 'var(--success)', whiteSpace: 'nowrap' }}>
-                       2차 진입(2H): {Math.round(t2H_status.result_3).toLocaleString()}
-                       {curPrice > 0 && t2H_status.result_3 > 0 && curPrice !== 0 ? (() => {
-                          const pct = ((t2H_status.result_3 - curPrice) / curPrice * 100);
-                          if (Number.isFinite(pct)) {
-                            return (
-                              <span style={{ marginLeft: '4px', fontSize: '0.7rem', color: t2H_status.result_3 >= curPrice ? '#ff6b6b' : '#339af0' }}>
-                                ({pct.toFixed(1)}%)
-                              </span>
-                            );
-                          }
-                          return null;
-                       })() : null}
-                     </span>
-                      <span style={{ color: '#ff6b6b', whiteSpace: 'nowrap', marginTop: '4px', fontWeight: 'bold' }}>
-                        손절가 (SL): {(() => {
-                          const sl = t2H_status?.stop_loss || (t2H_status?.result_3 > 0 ? t2H_status.result_3 * 0.98 : 0);
-                          return sl > 0 ? Math.round(sl).toLocaleString() : '-';
-                        })()}원
-                        {(() => {
-                          const sl = t2H_status?.stop_loss || (t2H_status?.result_3 > 0 ? t2H_status.result_3 * 0.98 : 0);
-                          if (curPrice > 0 && sl > 0 && curPrice !== 0) {
-                            const slPct = ((sl - curPrice) / curPrice * 100);
-                            if (Number.isFinite(slPct)) {
-                              return (
-                                <span style={{ marginLeft: '4px', fontSize: '0.7rem', fontWeight: 'normal' }}>
-                                  ({sl > curPrice ? '+' : ''}{(Math.round(sl - curPrice)).toLocaleString()}원, {slPct.toFixed(1)}%)
-                                </span>
-                              );
-                            }
-                          }
-                          return null;
-                        })()}
-                      </span>
-                   </>
-                 )}
-               </div>
-            </div>
-          )}
+          {/* [STEP-08] 수동 편집 가능 영역 통합 */}
+          <PriceEditSection
+            stockCode={stock.code}
+            initialPrices={{
+              entry1:    stock.inst_buy_manual  ?? t2H_status?.result_2    ?? 0,
+              entry2:    stock.inst_buy2_manual ?? t2H_status?.result_3    ?? 0,
+              target:    stock.target_manual    ?? t2H_status?.result_1    ?? t1D_status?.bb_upper ?? 0,
+              stop_loss: stock.stop_loss_manual ?? t2H_status?.stop_loss ?? (t2H_status?.result_3 > 0 ? t2H_status.result_3 * 0.98 : 0),
+              is_manual: stock.is_manual_price  ?? false
+            }}
+          />
         </div>
       </div>
 
