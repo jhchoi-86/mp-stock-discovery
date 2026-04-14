@@ -38,6 +38,7 @@ const systemStatsService = require('./src/services/systemStatsService.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
 const { isKSTTradingHours, isTradingDay } = require('./platform/markets/kr_equity/marketHours.cjs');
 const PublishingService = require('./src/services/publishingService.cjs');
+const BulkSyncService = require('./src/services/BulkSyncService.cjs'); // [STEP-04] Added for manual price protection
 global.publishingService = new PublishingService();
 
 let aiScoringQueue = null;
@@ -2237,22 +2238,13 @@ app.post('/api/auto-sync', async (req, res) => {
             }
 
             try {
-                await prisma.$transaction(async (tx) => {
-                    for (const batch of snapshotBatches) {
-                        const tickers = batch.map(s => s.ticker);
-                        await tx.dailyStockSnapshot.deleteMany({
-                            where: { 
-                                ticker: { in: tickers }, 
-                                syncDate: { gte: todayStart } 
-                            }
-                        });
-                        await tx.dailyStockSnapshot.createMany({ 
-                            data: batch,
-                            skipDuplicates: false
-                        });
-                    }
-                }, { timeout: 30000 });
-                console.log(`[Auto-Sync] DB upsert complete: ${snapshotData.length} records in ${snapshotBatches.length} batches`);
+                // [v9.5.0] STEP-04: 연쇄 삭제 방지 및 수동값 보호를 위해 BulkSyncService 통합
+                const syncResult = await BulkSyncService.bulkUpsertSnapshots(snapshotData);
+                if (syncResult.success) {
+                    console.log(`[Auto-Sync] DB upsert complete via BulkSyncService: ${syncResult.success} records`);
+                } else {
+                    console.error('[Auto-Sync] DB Persistence Partically Failed:', syncResult.error);
+                }
             } catch (dbErr) {
                 console.error('[Auto-Sync] DB unreachable. Entering Safe Mode (Skipping DB Persistence). Error:', dbErr.message);
             }
