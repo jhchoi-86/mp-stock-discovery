@@ -2095,7 +2095,7 @@ app.post('/api/auto-sync', async (req, res) => {
                 targetPrice: sig2H?.result_3 || 0,
                 stopLossPrice: sig2H?.stop_loss || 0,
                 yield: kis.rate || 0,
-                tradeAmount: kis.trade_amount ? BigInt(kis.trade_amount) : 0n,
+                tradeAmount: Number(kis.trade_amount || 0),
                 foreignNet: formatSupply(kis.foreign_buy),
                 institutionNet: formatSupply(kis.inst_buy),
                 maArrangement: latest.maArrangement || null,
@@ -2150,7 +2150,7 @@ app.post('/api/auto-sync', async (req, res) => {
             const VIP_LOGS_DIR = path.join(__dirname, 'data/vip_logs');
             if (!fs.existsSync(VIP_LOGS_DIR)) fs.mkdirSync(VIP_LOGS_DIR, { recursive: true });
             const payload = {
-                stocks: snapshotData.slice(0, 10).map(s => ({ ...s, stars: getStars(s.score) })),
+                stocks: snapshotData.slice(0, 10).map(s => ({ ...s, stars: getStars(s.hybridScore) })),
                 updatedAt: new Date().toISOString()
             };
             fs.writeFileSync(path.join(VIP_LOGS_DIR, 'latest.json'), JSON.stringify(payload, null, 2));
