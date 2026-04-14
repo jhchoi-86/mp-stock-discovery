@@ -560,7 +560,8 @@ function startLiveSignalPoller() {
                 const latestPath = path.join(__dirname, 'data/vip_logs/latest.json');
                 if (fs.existsSync(latestPath)) {
                     const report = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
-                    top5 = (report.stocks || []).slice(0, 5).map(s => s.code);
+                    top5 = (report.stocks || []).slice(0, 5).map(s => s.ticker || s.code);
+                    top5 = top5.filter(Boolean); // [v9.4.21] Filter out any undefined/null values
                 }
             } catch (e) { 
                 console.error('[SignalPoller] TOP 5 로드 실패:', e.message);
@@ -665,6 +666,7 @@ function updateTimeSlotSignals(codes) {
             } catch (e) {}
 
             codes.forEach(code => {
+                if (!code) return; // Skip invalid codes
                 if (!db[today][code]) db[today][code] = {};
                 if (!db[today][code][slotKey]) db[today][code][slotKey] = { tf2m: false, tf5m: false };
                 
@@ -1612,6 +1614,115 @@ app.post('/api/reset', requireProAuth, async (req, res) => {
     }
 });
 
+// [STEP-03] 수동 가격 편집용 Rate Limiter (인메모리 구현)
+const priceEditLimiter = (() => {
+  const store = new Map();
+  const WINDOW_MS = 60 * 1000;
+  const MAX_REQUESTS = 5;
+  return (req, res, next) => {
+    const key = `${req.params.code}:${req.user?.id || req.ip}`;
+    const now = Date.now();
+    const timestamps = (store.get(key) || []).filter(t => now - t < WINDOW_MS);
+    if (timestamps.length >= MAX_REQUESTS) {
+      return res.status(429).json({
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: '1분에 최대 5회까지 수정 가능합니다.'
+      });
+    }
+    timestamps.push(now);
+    store.set(key, timestamps);
+    next();
+  };
+})();
+
+/**
+ * [STEP-03] PATCH /api/stocks/:code/prices
+ * 특정 종목의 매수/목표/손절가격을 수동으로 업데이트
+ */
+app.patch('/api/stocks/:code/prices', authenticateToken, isAdmin, priceEditLimiter, async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    // R-06: 정수 변환 (소수점 차단)
+    const entry1    = Math.floor(Number(req.body.entry1));
+    const entry2    = Math.floor(Number(req.body.entry2));
+    const target    = Math.floor(Number(req.body.target));
+    const stop_loss = Math.floor(Number(req.body.stop_loss));
+    const dateStr   = req.body.date; // "YYYY-MM-DD"
+
+    if ([entry1, entry2, target, stop_loss].some(v => isNaN(v) || v <= 0)) {
+      return res.status(400).json({
+        error: 'INVALID_VALUE',
+        message: '모든 가격은 0보다 큰 정수여야 합니다.'
+      });
+    }
+
+    // 가격 순서 검증 (서버사이드)
+    if (stop_loss >= entry2)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `손절가(${stop_loss.toLocaleString()})는 2차 진입가보다 낮아야 합니다.` });
+    if (entry2 >= entry1)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `2차 진입가(${entry2.toLocaleString()})는 1차 진입가보다 낮아야 합니다.` });
+    if (entry1 >= target)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `1차 진입가(${entry1.toLocaleString()})는 목표가보다 낮아야 합니다.` });
+
+    // "YYYY-MM-DD"를 00:00:00 KST로 변환
+    const syncDate = new Date(dateStr);
+    syncDate.setHours(0, 0, 0, 0);
+
+    // ticker_syncDate 유니크 인덱스를 사용한 업데이터
+    // DailyStockSnapshot 모델명 확인 (prisma/schema.prisma)
+    const snapshot = await prisma.dailyStockSnapshot.findUnique({
+      where: { ticker_syncDate: { ticker: code, syncDate } }
+    });
+
+    if (!snapshot) {
+      return res.status(404).json({
+        error: 'NOT_FOUND',
+        message: `${code} / ${dateStr} 데이터가 존재하지 않습니다.`
+      });
+    }
+
+    const updated = await prisma.dailyStockSnapshot.update({
+      where: { id: snapshot.id },
+      data: {
+        inst_buy_manual:   entry1,
+        inst_buy2_manual:  entry2,
+        target_manual:     target,
+        stop_loss_manual:  stop_loss,
+        is_manual_price:   true,
+        manual_updated_at: new Date()
+      }
+    });
+
+    // Redis 캐시 무효화 (상세 페이지, 탑5 등)
+    const cacheKeys = [
+      `daily_top5:${dateStr}`,
+      `landing_strategy:${dateStr}`,
+      `stock_detail:${code}:${dateStr}`,
+      `signal_summary:${dateStr}`
+    ];
+    await Promise.allSettled(cacheKeys.map(k => redis.del(k)));
+
+    console.log(`[PriceEdit] ${code} 수동 편집 by ${req.user?.id || 'Unknown'}`);
+    return res.json({
+      success: true,
+      code,
+      updated: {
+        entry1, entry2, target, stop_loss,
+        is_manual: true,
+        updated_at: updated.manual_updated_at
+      }
+    });
+
+  } catch (err) {
+    console.error('[PriceEdit] Error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
 // [OPT-01] KIS 공유 캐시 사전 수집 모듈 연동 완료
 
 // Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
@@ -2088,7 +2199,6 @@ app.post('/api/auto-sync', async (req, res) => {
             return {
                 ticker: stock.code, name: stock.name,
                 category: getCategory(score), hybridScore: score,
-                adx: Math.round(latest.adx || 0),
                 currentPrice: latest.current_price || latest.entry_price || 0,
                 entry1Price: sig2H?.result_1 || 0,
                 entry2Price: sig2H?.result_2 || 0,
@@ -2103,7 +2213,8 @@ app.post('/api/auto-sync', async (req, res) => {
                 ma10: latest.sma10 || 0,
                 ma20: latest.sma20 || 0,
                 ma60: latest.sma60 || 0,
-                styleTag: score >= 80 ? "강력매수" : (score >= 60 ? "모니터링" : "보관")
+                isTop5: true, // [ADD] Auto-sync should also populate SignalBoard
+                syncDate: new Date(new Date().setHours(0,0,0,0)) // [ADD]
             };
         }).filter(s => s != null);
 
