@@ -7,6 +7,7 @@ import ReportArchive from './ReportArchive.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
+import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
@@ -716,23 +717,17 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   {renderKISChange(curPrice, dailyPrevClose, kisData)}
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
-                                <div style={{ color: '#FFD700', fontWeight: 'normal', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 매수진입가 (2H):</span>
-                                  <span>{targetEntry1 > 0 ? Math.round(targetEntry1).toLocaleString() : '-'}원</span>
-                                  <HelpCircle size={12} style={{ opacity: 0.6, cursor: 'help' }} title="분석 엔진에서 산출된 최적의 1차 진입 타점입니다." />
-                                </div>
-                                <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>2차 매수진입가 (2H):</span>
-                                  <span>{targetEntry2 > 0 ? Math.round(targetEntry2).toLocaleString() : '-'}원</span>
-                                </div>
-                                <div style={{ color: 'var(--accent)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>목표가 (Target):</span>
-                                  <span>{targetGoal > 0 ? Math.round(targetGoal).toLocaleString() : '-'}원</span>
-                                </div>
-                                <div style={{ color: '#ff6b6b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>손절가 (SL):</span>
-                                  <span>{stopLossVal > 0 ? Math.round(stopLossVal).toLocaleString() : '-'}원</span>
-                                </div>
+                                <PriceEditSection
+                                  stockCode={stock.code}
+                                  hideTitle={true}
+                                  initialPrices={{
+                                    entry1:    stock.inst_buy_manual  ?? targetEntry1,
+                                    entry2:    stock.inst_buy2_manual ?? targetEntry2,
+                                    target:    stock.target_manual    ?? targetGoal,
+                                    stop_loss: stock.stop_loss_manual ?? stopLossVal,
+                                    is_manual: stock.is_manual_price  ?? false
+                                  }}
+                                />
                                 <div style={{ color: '#ffb86c', fontSize: '0.65rem', marginTop: '4px', borderTop: '1px dashed rgba(255,184,108,0.2)', paddingTop: '4px' }}>
                                   이평선 배열(2H): <strong style={{ color: maArrangement === '정배열' ? '#ff4d4d' : (maArrangement === '역배열' ? '#4d94ff' : '#ccc') }}>{maArrangement}</strong>
                                 </div>
