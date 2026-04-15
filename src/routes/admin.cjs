@@ -434,8 +434,12 @@ router.post('/save-sync-history', async (req, res) => {
                 }
             });
 
-            // 4. [SSOT] DailyTop5 테이블 업데이트 (기존 서비스 호환성)
+            // 4. [SSOT] DailyTop5 및 DailyStockSnapshot 테이블 업데이트
+            const todayDate = new Date();
+            todayDate.setHours(0, 0, 0, 0);
+
             for (const s of safeTop5) {
+                // 4-A. DailyTop5 테이블 (기존 서비스 호환성)
                 await prisma.dailyTop5.upsert({
                     where: {
                         date_code: {
@@ -478,6 +482,31 @@ router.post('/save-sync-history', async (req, res) => {
                         aiComment: s.aiComment || null
                     }
                 });
+
+                // 4-B. [CRITICAL] DailyStockSnapshot 테이블 업데이트 (통합 SSOT)
+                // 이를 통해 가격 수정 후에도 점수가 누락되지 않도록 보장합니다.
+                const originalData = top5.find(t => (t.code || t.ticker) === s.code) || {};
+                const snapshotPayload = buildSnapshotPayload(s.code, { ...originalData, ...s }, null, todayDate);
+                
+                await prisma.dailyStockSnapshot.upsert({
+                    where: { ticker_syncDate: { ticker: s.code, syncDate: todayDate } },
+                    update: {
+                        hybridScore: snapshotPayload.hybridScore,
+                        starRating:  snapshotPayload.starRating,
+                        currentPrice: snapshotPayload.currentPrice,
+                        entry1Price:  snapshotPayload.entry1Price,
+                        entry2Price:  snapshotPayload.entry2Price,
+                        targetPrice:  snapshotPayload.targetPrice,
+                        stopLossPrice: snapshotPayload.stopLossPrice,
+                        category:     snapshotPayload.category,
+                        yield:        snapshotPayload.yield,
+                        tradeAmount:  snapshotPayload.tradeAmount,
+                        foreignNet:   snapshotPayload.foreignNet,
+                        institutionNet: snapshotPayload.institutionNet,
+                        updatedAt:    new Date()
+                    },
+                    create: snapshotPayload
+                });
             }
             console.log(`[Admin] DB Snapshot saved: ${tagName}`);
         }
@@ -501,3 +530,60 @@ router.post('/save-sync-history', async (req, res) => {
 });
 
 module.exports = router;
+
+// ─── [Unified Mapping Helpers] ──────────────────────────────────────────────
+
+/**
+ * signals.json 또는 프론트엔드 데이터를 DailyStockSnapshot 페이로드로 변환
+ */
+function buildSnapshotPayload(ticker, data, rank, syncDate) {
+  const score = Math.round(Number(data.hybridScore ?? data.total_score ?? data.score ?? 0));
+  
+  return {
+    ticker,
+    syncDate,
+    name:           data.name || 'Unknown',
+    currentPrice:   Math.round(Number(data.currentPrice ?? data.current_price ?? 0)),
+    entry1Price:    Math.round(Number(data.entryPrice1 ?? data.entry1  ?? data.result_2 ?? 0)),
+    entry2Price:    Math.round(Number(data.entryPrice2 ?? data.entry2  ?? data.result_3 ?? 0)),
+    targetPrice:    Math.round(Number(data.targetPrice || (data.targetPrice1 ?? data.target  ?? data.result_1 ?? 0))),
+    stopLossPrice:  Math.round(Number(data.stopLossPrice || (data.stopLoss ?? data.stop_loss ?? 0))),
+    hybridScore:    score,
+    starRating:     computeStarRating(score),
+    maArrangement:  data.maArrangement || data.maArray?.arrangement || null,
+    ma5:            Math.round(Number(data.sma5 || data.maArray?.ma5   || data.ma5 || 0)),
+    ma10:           Math.round(Number(data.sma10 || data.maArray?.ma10  || data.ma10 || 0)),
+    ma20:           Math.round(Number(data.sma20 || data.maArray?.ma20  || data.ma20 || 0)),
+    ma60:           Math.round(Number(data.sma60 || data.maArray?.ma60  || data.ma60 || 0)),
+    ma120:          Math.round(Number(data.maArray?.ma120 || data.ma120 || 0)),
+    yield:          Number(data.changeRate || data.yield || 0),
+    tradeAmount:    (() => {
+        const val = String(data.tradeAmount || data.trade_amount || 0).replace(/[^0-9]/g, '');
+        return val ? BigInt(val) : 0n;
+    })(),
+    foreignNet:     formatSupply(data.foreignNet     ?? data.foreign_net ?? data.foreignBuy),
+    institutionNet: formatSupply(data.institutionNet ?? data.inst_net ?? data.instBuy),
+    category:       data.category || data.trendType || null,
+    signalVersion:  data.version || 'v10.0.0-SSOT',
+    isTop5:         rank !== null || true, // save-sync-history calls are usually for top5
+    rank:           rank,
+  };
+}
+
+function formatSupply(value) {
+  if (value === null || value === undefined || value === '-') return null;
+  const num = Number(String(value).replace(/,/g, ''));
+  if (isNaN(num)) return String(value);
+  const sign = num >= 0 ? '+' : '';
+  return `${sign}${num.toLocaleString('ko-KR')}`;
+}
+
+function computeStarRating(score) {
+  if (score >= 80) return 5;
+  if (score >= 60) return 4;
+  if (score >= 45) return 3;
+  if (score >= 30) return 2;
+  if (score >= 15) return 1;
+  return 0;
+}
+

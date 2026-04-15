@@ -3,6 +3,71 @@ const axios = require('axios');
 require('dotenv').config();
 
 const redis = require('../../platform/infra/redis/client.cjs');
+const telegramService = require('./telegramService.cjs');
+const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || '').split(',').map(id => id.trim()).filter(id => id);
+
+let memoryPrevPrices = {};
+let activeTargetsCache = [];
+let lastTargetsFetch = 0;
+
+/** [STEP-17] 실시간 눌림목 타점 감시 및 텔레그램 알림 */
+async function checkAndAlertNulimmock(code, currentPrice) {
+    if (Date.now() - lastTargetsFetch > 10000) {
+        try {
+            const raw = await redis.get('mp:active_targets');
+            if (raw) activeTargetsCache = JSON.parse(raw);
+            lastTargetsFetch = Date.now();
+        } catch(e) { console.warn('[Watcher] fail to fetch active_targets'); }
+    }
+
+    const target = activeTargetsCache.find(t => t.ticker === code || t.code === code);
+    if (!target) return; // Not an active target
+
+    const prevPrice = memoryPrevPrices[code] || currentPrice;
+    memoryPrevPrices[code] = currentPrice;
+
+    // Prevent trigger on very first tick if it starts below entry
+    if (prevPrice === currentPrice) return;
+
+    const entry1 = Number(target.entryPrice1 || target.entry1 || data?.entry1Price || 0);
+    const entry2 = Number(target.entryPrice2 || target.entry2 || data?.entry2Price || 0);
+    const name = target.name || code;
+
+    // Check Gap Down
+    const isGapDown = ((prevPrice - currentPrice) / prevPrice > 0.05); // >5% sudden drop between ticks/open
+
+    // Crossover Logic (Previous > Entry AND Current <= Entry)
+    let hitEntry = 0;
+    if (entry1 > 0 && prevPrice > entry1 && currentPrice <= entry1) hitEntry = 1;
+    else if (entry2 > 0 && prevPrice > entry2 && currentPrice <= entry2) hitEntry = 2;
+
+    if (hitEntry > 0) {
+        // Red-team deduplication: 1 per day per entry level
+        const todayStr = new Date().toLocaleDateString('ko-KR', { timeZone: 'Asia/Seoul' }).split('.').join('').replace(/\s/g, '-');
+        const dedupKey = `mp:alert_dedup:${code}:entry${hitEntry}:${todayStr}`;
+        
+        try {
+            const alreadySent = await redis.get(dedupKey);
+            if (!alreadySent) {
+                await redis.set(dedupKey, '1', 'EX', 86400); // 24 hrs
+                
+                const entryPrice = hitEntry === 1 ? entry1 : entry2;
+                const msg = `🚨 [눌림목 포착] ${name} (${code})\n` +
+                            `- 타점 도달: Entry ${hitEntry} (${entryPrice.toLocaleString()}원)\n` +
+                            `- 현재가: ${currentPrice.toLocaleString()}원\n` +
+                            (isGapDown ? `⚠️ GAP_DOWN 하락폭 주의\n` : '') +
+                            `- 차트: https://www.tradingview.com/chart/?symbol=KRX:${code}`;
+                
+                for (const chatId of TELEGRAM_CHAT_IDS) {
+                    await telegramService.sendMessage(chatId, msg);
+                }
+                console.log(`[TargetWatcher] Sent Entry ${hitEntry} telegram alert for ${name}`);
+            }
+        } catch (e) {
+            console.error('[TargetWatcher] Error:', e.message);
+        }
+    }
+}
 
 const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
 const APP_KEY = (process.env.KIS_APP_KEY || '').trim();
@@ -147,6 +212,9 @@ async function startWebSocketService(onPriceUpdate) {
             if (msg.startsWith('0') || msg.startsWith('1')) {
                  console.log(`[KIS-WSS] SSE-PUSH-READY: ${parsed.code} | ${parsed.price} | ${parsed.change_rate}%`);
                  
+                 // [STEP-17] 눌림목 타점 도달 여부 체크 (비동기 처리)
+                 checkAndAlertNulimmock(parsed.code, parsed.price);
+
                  // [v9.4.31] Save real-time price to Redis (TTL: 300s)
                  const priceData = JSON.stringify({
                      price:      Number(parsed.price),

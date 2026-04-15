@@ -590,9 +590,30 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     return (fallbackBase > 0 && fallbackBase !== 0) ? renderChange(currentPrice, fallbackBase) : null;
                   };
 
+                  // [STEP-18] Nulimmock Highlighting Logic
+                  const entry1 = Number(s?.result_2 || s?.entry_price || stock.entry1 || 0);
+                  const entry2 = Number(s?.result_3 || stock.entry2 || 0);
+                  let isNulimmock = false;
+                  let nulimmockColor = '';
+                  let badgeHit = null;
+                  
+                  if (entry2 > 0 && curPrice <= entry2) {
+                      isNulimmock = true;
+                      nulimmockColor = 'rgba(239, 68, 68, 0.2)'; // Deeper Red for Entry 2
+                      badgeHit = 2;
+                  } else if (entry1 > 0 && curPrice <= entry1) {
+                      isNulimmock = true;
+                      nulimmockColor = 'rgba(245, 158, 11, 0.2)'; // Orange for Entry 1
+                      badgeHit = 1;
+                  }
+                  
+                  // Default highlight for HH signal
+                  let bgStyle = stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent';
+                  if (isNulimmock) bgStyle = nulimmockColor;
+
                   return (
                   <React.Fragment key={stock.code}>
-                  <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent', borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
+                  <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: bgStyle, borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
                     <td style={{ textAlign: 'center', padding: '0.4rem 0.2rem' }}>
                       <input 
                         type="checkbox" 
@@ -603,7 +624,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap' }}>{stock.name}</div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {stock.name}
+                          {isNulimmock && (
+                             <span style={{ fontSize: '0.65rem', background: badgeHit === 2 ? '#ef4444' : '#f59e0b', color: '#fff', padding: '1px 4px', borderRadius: '4px' }}>
+                                Entry {badgeHit}
+                             </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                           ({stock.market} | {stock.code})
                         </div>

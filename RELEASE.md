@@ -1,9 +1,25 @@
 # MP-STOCK Release Notes
 
-## [v9.4.25] - 2026-04-13
+## [v9.4.33] - 2026-04-15
 ### 🚩 상태: 자동화 배포 완료 (Automated Release)
 ### 🛠 주요 변경 사항
 - [FIX] 시스템 안정성 강화 및 모니터링 로직 패치
+- [NEW] 배포 프로세스 리비전 자동 업데이트 적용
+
+---
+
+
+
+## [v9.4.32] - 2026-04-15
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+### 🛠 주요 변경 및 조치 사항
+1. **[NEW] Target Locking & Nulimmock Watcher**: 자동 동기화(Integrated Sync) 시점의 Top 5 종목을 `mp:active_targets` Redis 키로 원자적(Atomic)으로 고정하여 실시간 점수 변동에 따른 목록 요동 현상(Jumping)을 완전 제거했습니다.
+2. **[NEW] Real-time Telegram Alert Monitor**: `kisWebSocketService` 내에 타겟 감시자 로직을 주입하여, 고정된 타겟이 가격 타점(Entry 1, 2)에 도달할 경우 텔레그램 알림을 발송하며, 일일 1회 중복 방지 처리를 적용했습니다.
+3. **[UI/UX] Dashboard Strategy Mode Switch**: `useStockManager`의 정렬 로직을 제거하여 백엔드 기준 타겟 인덱스를 따르도록 강제하였으며, 진입점(Nulimmock) 도달 시 `PcDashboard` 행에 시각적 하이라이트(오렌지/레드)를 제공하도록 개선했습니다.
+
+---
+
+## [v9.4.31] - 2026-04-14
 
 ---
 

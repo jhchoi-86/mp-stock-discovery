@@ -51,7 +51,7 @@ export const useStockManager = (isAuthenticated) => {
     try {
       // [FIX-05] Promise.allSettled — 부분 실패 허용
       const [stocksResult, summaryResult] = await Promise.allSettled([
-          axiosClient.get('/api/stocks'),
+          axiosClient.get('/api/stocks/active-targets'),
           axiosClient.get('/api/signals-summary')
       ]);
 
@@ -59,9 +59,22 @@ export const useStockManager = (isAuthenticated) => {
       let summaryData = [];
 
       if (stocksResult.status === 'fulfilled') {
-          stocksData = Array.isArray(stocksResult.value.data) ? stocksResult.value.data : [];
+          const rawData = Array.isArray(stocksResult.value.data?.data) ? stocksResult.value.data.data : [];
+          stocksData = rawData.map(t => ({
+              code: t.ticker || t.code,
+              name: t.name,
+              current_price: t.currentPrice || t.current_price,
+              score: t.hybridScore || t.score,
+              entry1: t.entry1Price || t.entry1,
+              entry2: t.entry2Price || t.entry2,
+              target: t.targetPrice || t.target,
+              stopLoss: t.stopLossPrice || t.stopLoss,
+              market: 'UNKNOWN',
+              category: t.category,
+              sector: '기타'
+          }));
       } else {
-          console.error('[fetchData] /api/stocks 실패:', stocksResult.reason?.message);
+          console.error('[fetchData] /api/stocks/active-targets 실패:', stocksResult.reason?.message);
       }
 
       if (summaryResult.status === 'fulfilled') {
@@ -232,9 +245,30 @@ export const useStockManager = (isAuthenticated) => {
 
   // [TASK-SM02] filteredStocks를 useMemo로 감싸 candidates의 불필요한 재계산 방지
   const filteredStocks = useMemo(() => {
-    return (Array.isArray(stocks) ? stocks : []).filter(stock => {
-      const matchesSearch = stock.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                            stock.code.includes(searchQuery);
+    // [v9.5.0] "유니버스 전체보기" 여부와 관계없이 항상 전체 신호를 후보군(Pool)에 포함
+    // 그래야만 현재 Top5보다 점수가 높은 종목이 나왔을 때 자동으로 추천 목록에 진입 가능함
+    let baseStocks = Array.isArray(stocks) ? [...stocks] : [];
+    const existingCodes = new Set(baseStocks.map(s => s.code));
+    
+    // signalsSummary에 있는 모든 종목을 기본 후보군에 추가
+    for (const [code, summary] of signalsSummary.entries()) {
+      if (!existingCodes.has(code)) {
+        const s = summary.latestSignal;
+        baseStocks.push({
+          code,
+          name: s?.name || 'Unknown',
+          current_price: s?.current_price || 0,
+          score: s?.score || 0,
+          market: s?.market || 'Unknown',
+          category: s?.category || '기타',
+          sector: s?.sector || '기타'
+        });
+      }
+    }
+
+    return baseStocks.filter(stock => {
+      const matchesSearch = (stock.name || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            (stock.code || "").includes(searchQuery);
       const matchesMarket = marketFilter === "ALL" || stock.market === marketFilter;
 
       let matchesCategory = true;
@@ -255,7 +289,7 @@ export const useStockManager = (isAuthenticated) => {
 
       return matchesSearch && matchesMarket && matchesCategory && matchesTf;
     });
-  }, [stocks, searchQuery, marketFilter, categoryFilter, tfFilter, selectedStocks, signalsSummary]);
+  }, [stocks, signalsSummary, showAll, searchQuery, marketFilter, categoryFilter, tfFilter, selectedStocks]);
 
 
 
@@ -270,7 +304,6 @@ export const useStockManager = (isAuthenticated) => {
       const backendScore = (typeof rawScore === 'object' && rawScore !== null) ? rawScore.total : (rawScore || 0);
       const total_score = backendScore; // Unified scoring from API
 
-
       const signalTimeframes = buildSignalTimeframes(tfSigs);
       const t2H = tfSigs['2H'] ? {
         sma5: tfSigs['2H'].sma5 || null,
@@ -279,24 +312,27 @@ export const useStockManager = (isAuthenticated) => {
         sma60: tfSigs['2H'].sma60 || null,
       } : null;
 
+      // [v9.4.34] 수동 편집 가격 반영 (stock 객체에 포함된 경우 우선)
       return {
         ...stock,
         ...signalTimeframes,
         t2H,
         timeframeStatus: tfSigs,
         latestSignal: latest,
-        kis_change_data: latest?.kis_change_data, // [v7.7.28 RESTORED] Supply data visibility
+        kis_change_data: latest?.kis_change_data,
         bestSignal: tfSigs['2H'] || latest,
         bestTfLabel: '2H',
         isTopSector,
         score: total_score,        
-        total_score: total_score
+        total_score: total_score,
+        hybridScore: total_score
       };
     });
 
-    return showAll 
-      ? [...raw].sort((a, b) => b.total_score - a.total_score)
-      : [...raw].sort((a, b) => b.total_score - a.total_score).slice(0, 5);
+    // [v9.5.0] 정렬 및 슬라이싱: 
+    // showAll이 꺼져 있으면 전체 종목 중 점수 상위 5개만 노출 (Dynamic Nomination)
+    const sorted = [...raw].sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
+    return showAll ? sorted : sorted.slice(0, 5);
   }, [filteredStocks, signalsSummary, showAll, topSectors]);
 
   // [TASK-SM09] activeCount를 useMemo로 감싸 350종목 순회 최적화

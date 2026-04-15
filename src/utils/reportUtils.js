@@ -84,7 +84,7 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
     const t4H = tfSigs['4H'];
     const t1D = tfSigs['1D'];
     
-    const curPrice = s.latestSignal?.current_price || s.latestSignal?.entry_price || 0;
+    const curPrice = s.latestSignal?.current_price || s.latestSignal?.entry_price || s.current_price || 0;
     let curChange = 0;
     if (s.latestSignal?.kis_change_data) {
       const kd = s.latestSignal.kis_change_data;
@@ -95,10 +95,11 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
     const stars = '★'.repeat(Math.max(0, Math.min(5, Math.round(score / 20)))) + '☆'.repeat(Math.max(0, Math.min(5, 5 - Math.round(score / 20))));
     
     let priceText = "-";
-    const target1H = t1H?.result_2 || 0;
-    const target2H = t2H?.result_2 || 0;
-    const target4H = t4H?.result_2 || 0;
-    const target1D = t1D?.bb_upper || 0;
+    // [v9.4.34] 수동 편집 가격 우선 적용 (PriceEditSection에서 저장된 필드)
+    const target1H = s.inst_buy_manual || t1H?.result_2 || 0;
+    const target2H = s.inst_buy_manual || t2H?.result_2 || 0;
+    const target4H = s.inst_buy_manual || t4H?.result_2 || 0;
+    const target1D = s.target_manual || t1D?.bb_upper || 0;
 
     if (target1H || target2H || target4H || target1D) {
       const formatGap = (target) => {
@@ -120,15 +121,15 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
       // [v7.7.2] Remove Target & SL Correction Logic (Use raw sync values)
       const displayTarget1D = target1D;
       
-      const stopLoss = t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0; 
+      const stopLoss = s.stop_loss_manual || (t2H?.result_3 > 0 ? t2H.result_3 * 0.98 : 0); 
       
       let pLines = [curPriceStr];
-      if (target2H > 0) pLines.push(`1차 매수진입가(2H): ${Math.round(target2H).toLocaleString()}원 ${formatGap(target2H)}`);
-      // Use result_3 for 2nd entry strictly from 2H
-      const entry2H_2 = t2H?.result_3 || 0;
-      if (entry2H_2 > 0) pLines.push(`2차 매수진입가(2H): ${Math.round(entry2H_2).toLocaleString()}원 ${formatGap(entry2H_2)}`);
+      if (target2H > 0) pLines.push(`1차 매수진입가(추천): ${Math.round(target2H).toLocaleString()}원 ${formatGap(target2H)}`);
+      // Use result_3 for 2nd entry strictly from 2H or manual
+      const entry2H_2 = s.inst_buy2_manual || t2H?.result_3 || 0;
+      if (entry2H_2 > 0) pLines.push(`2차 매수진입가(추천): ${Math.round(entry2H_2).toLocaleString()}원 ${formatGap(entry2H_2)}`);
       if (stopLoss > 0) pLines.push(`손절가 (SL): ${Math.round(stopLoss).toLocaleString()}원 ${formatGap(stopLoss)}`);
-      if (displayTarget1D > 0) pLines.push(`1차 목표가(1D): ${Math.round(displayTarget1D).toLocaleString()}원 ${formatProfit(displayTarget1D)}`);
+      if (displayTarget1D > 0) pLines.push(`1차 목표가(Target): ${Math.round(displayTarget1D).toLocaleString()}원 ${formatProfit(displayTarget1D)}`);
       if (displayTarget1D > 0) pLines.push(`2차 목표가(최종): ${Math.round(displayTarget1D * 1.05).toLocaleString()}원 ${formatProfit(displayTarget1D * 1.05)}`);
       
       priceText = pLines.filter(Boolean).join('\n');

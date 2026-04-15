@@ -38,7 +38,8 @@ async function enrichWithManualPrices(stocks, prisma, date) {
       const target = snapshot.is_manual_price ? snapshot.target_manual : (snapshot.targetPrice || snapshot.targetPrice1 || stock.target || stock.target_price_1);
       const sl = snapshot.is_manual_price ? snapshot.stop_loss_manual : (snapshot.stopLossPrice || snapshot.stopLoss || stock.sl || stock.stop_loss);
 
-      return {
+      // [v9.5.1] Recursively enrich nested objects for report generator (reportUtils.js) compatibility
+      const enriched = {
         ...stock,
         // Standardize output fields to satisfy various frontend requirements
         entry1: Number(entry1) || 0,
@@ -55,6 +56,43 @@ async function enrichWithManualPrices(stocks, prisma, date) {
         is_manual_price: snapshot.is_manual_price || false,
         enriched_at: new Date().toISOString()
       };
+
+      if (snapshot.is_manual_price) {
+        // A. Enrich latestSignal
+        if (enriched.latestSignal) {
+          enriched.latestSignal = {
+            ...enriched.latestSignal,
+            entry_price: Number(entry1),
+            result_1: Number(target),
+            result_2: Number(entry1),
+            result_3: Number(entry2),
+            stop_loss: Number(sl)
+          };
+        }
+
+        // B. Enrich timeframeStatus (1H, 2H, 4H, 1D)
+        if (enriched.timeframeStatus) {
+          const tfs = ['1H', '2H', '4H'];
+          tfs.forEach(tf => {
+            if (enriched.timeframeStatus[tf]) {
+              enriched.timeframeStatus[tf] = {
+                ...enriched.timeframeStatus[tf],
+                result_2: Number(entry1),
+                result_3: Number(entry2)
+              };
+            }
+          });
+          
+          if (enriched.timeframeStatus['1D']) {
+            enriched.timeframeStatus['1D'] = {
+              ...enriched.timeframeStatus['1D'],
+              bb_upper: Number(target)
+            };
+          }
+        }
+      }
+
+      return enriched;
     });
   } catch (err) {
     console.error('[ManualPriceEnricher] Error:', err.message);

@@ -410,6 +410,41 @@ app.get('/api/public/top5-strategy', async (req, res) => {
 });
 
 
+// [NEW] GET /api/stocks/active-targets - Returns locked targets from Redis or DB
+app.get('/api/stocks/active-targets', async (req, res) => {
+  try {
+    if (redis) {
+      const cached = await redis.get('mp:active_targets');
+      if (cached) {
+        return res.json({ success: true, source: 'redis', data: JSON.parse(cached) });
+      }
+    }
+
+    // Fallback to SyncSaveLog DB
+    const latest = await prisma.syncSaveLog.findFirst({
+      orderBy: { savedAt: 'desc' }
+    });
+    if (!latest || !latest.snapshot) {
+      return res.status(404).json({ success: false, error: 'No active targets found', data: [] });
+    }
+
+    // DB 스냅샷을 수동 가격으로 보완하여 최종 반환
+    const snapshotArray = Array.isArray(latest.snapshot) ? latest.snapshot : Object.values(latest.snapshot || {});
+    // manualPriceEnricher 추가 적용
+    const enriched = await enrichWithManualPrices(snapshotArray, prisma, latest.savedAt);
+    
+    // Update Redis
+    if (redis) {
+      await redis.set('mp:active_targets', JSON.stringify(enriched));
+    }
+
+    res.json({ success: true, source: 'db', data: enriched });
+  } catch (err) {
+    console.error('[ActiveTargets API]', err);
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
+
 // [NEW] GET /api/public/watchlist-strategy
 app.get('/api/public/watchlist-strategy', (req, res) => {
   const watchlistFile = path.join(__dirname, 'data', 'watchlist_strategy.json');
@@ -2285,248 +2320,9 @@ app.post('/api/auto-sync', async (req, res) => {
     }
 });
 
-/**
- * [TASK-E2] 동기화 저장 엔드포인트 (server.cjs)
- * 역할: 분석 완료된 데이터를 DB에 원자적으로 저장하고 전 클라이언트에 브로드캐스트
- */
-/**
- * [v9.4.16] Unified Sync Save Endpoint
- * Handles individual snapshot updates and historical tag creation.
- */
-app.post(['/api/save-sync', '/api/admin/save-sync-history'], authenticateToken, async (req, res) => {
-  const startTime = Date.now();
-  console.log('[SaveSync] ▶ 동기화 저장 시작...');
 
-  try {
-    // 1. signals.json에서 최신 분석 결과 로드
-    const rawSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf-8'));
-    
-    // 2. 전체 저장 결과 추적
-    const saveResults = {
-      success: [],
-      failed:  [],
-      skipped: [],
-    };
+// --- [End of Admin Routes] ---
 
-    // 3. Top5 선정 (하이브리드 점수 기준 상위 5개)
-    const signalArray = Array.isArray(rawSignals) ? rawSignals : Object.values(rawSignals);
-    
-    const rankedTickers = signalArray
-      .map(s => ({
-        ticker: s.code || s.ticker,
-        score: Number(s.hybridScore ?? s.score?.total ?? s.score ?? 0),
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    // [v9.3.4] 중복 제거된 티커 목록 추출 (여러 타임프레임 대응)
-    const uniqueRanked = [];
-    const seenTickers = new Set();
-    for (const item of rankedTickers) {
-        if (item.ticker && !seenTickers.has(item.ticker)) {
-            seenTickers.add(item.ticker);
-            uniqueRanked.push(item);
-        }
-    }
-
-    const top5Tickers = new Set(uniqueRanked.slice(0, 5).map(t => t.ticker));
-    console.log('[SaveSync] Top5 선정:', [...top5Tickers].join(', '));
-
-    // 4. 종목별 DB 원자 저장
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // signals.json이 배열인 경우와 객체인 경우 모두 대응
-    const signalEntries = Array.isArray(rawSignals) 
-        ? rawSignals.reduce((acc, s) => { acc[s.code] = s; return acc; }, {})
-        : rawSignals;
-
-    for (const [ticker, signalData] of Object.entries(signalEntries)) {
-      try {
-        // 4-1. 가격 사전 검증 및 52주 범위 자동 조정
-        const validatedData = await preValidateAndAdjust(ticker, signalData);
-        
-        // 4-2. 순위 계산
-        const rankIndex = uniqueRanked.findIndex(t => t.ticker === ticker);
-        const rank = top5Tickers.has(ticker) ? rankIndex + 1 : null;
-
-        // 4-3. upsert (동일 날짜 있으면 update, 없으면 create)
-        // schema.prisma의 ticker_syncDate 유니크 제약 조건 필수
-        const snapshot = await prisma.dailyStockSnapshot.upsert({
-          where: {
-            ticker_syncDate: { ticker, syncDate: today },
-          },
-          create: buildSnapshotPayload(ticker, validatedData, rank, today),
-          update: buildSnapshotPayload(ticker, validatedData, rank, today),
-        });
-
-        // 4-4. Redis 캐시 갱신 (개별 종목)
-        if (redis) {
-            await redis.set(
-              `mp:signal:${ticker}`,
-              JSON.stringify(snapshot),
-              'EX', 1800
-            );
-        }
-
-        // 4-5. Top5 캐시 무효화 (재생성 트리거)
-        if (top5Tickers.has(ticker) && redis) {
-          await redis.del('mp:top:5');
-          await redis.del('mp:top:10');
-        }
-
-        saveResults.success.push(ticker);
-        console.log(`[SaveSync] ✅ ${ticker} 저장 완료 (rank: ${rank ?? '-'})`);
-
-      } catch (err) {
-        saveResults.failed.push({ ticker, reason: err.message });
-        console.error(`[SaveSync] ❌ ${ticker} 저장 실패:`, err.message);
-      }
-    }
-
-    // 5. 저장 완료 후 SSE 브로드캐스트
-    broadcastUpdate({
-      type:    'save_sync_complete',
-      status:  'done',
-      top5:    [...top5Tickers],
-      results: saveResults,
-      savedAt: new Date().toISOString(),
-    });
-
-    const elapsed = Date.now() - startTime;
-    console.log(`[SaveSync] ▶ 완료. 성공: ${saveResults.success.length}, 실패: ${saveResults.failed.length} (${elapsed}ms)`);
-
-    // 6. [v9.4.16] Create Historical Snapshot (SyncSaveLog)
-    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const pad = (n) => n.toString().padStart(2, '0');
-    const tagName = `${kstNow.getUTCFullYear()}-${pad(kstNow.getUTCMonth() + 1)}-${pad(kstNow.getUTCDate())} ${pad(kstNow.getUTCHours())}:${pad(kstNow.getUTCMinutes())}`;
-
-    // Normalize Top5 for historical snapshot
-    const historicalTop5 = Array.from(top5Tickers).map(ticker => {
-        const s = signalEntries[ticker];
-        const rt = redis ? null : null; // Logic to grab from redis could go here
-        
-        // Use the buildSnapshotPayload logic or direct mapping
-        // Standardize fields for DailySnapshotAnalytics.jsx
-        return {
-            ticker,
-            name: s.name || ticker,
-            score: s.hybridScore ?? s.score ?? 0,
-            currentPrice: Math.round(s.current_price || s.entry_price || 0),
-            entryPrice1: Math.round(s.result_2 || s.entry_price || 0),
-            entryPrice2: Math.round(s.result_3 || 0),
-            targetPrice: Math.round(s.result_1 || s.bb_upper || 0),
-            stopLossPrice: Math.round(s.stop_loss || 0),
-            category: s.category || '기타',
-            yield: s.kis_change_data?.rate || 0
-        };
-    });
-
-    try {
-        await prisma.syncSaveLog.create({
-            data: {
-                tagName,
-                snapshot: JSON.parse(JSON.stringify(historicalTop5))
-            }
-        });
-        console.log(`[SaveSync] 📜 히스토리 로그 생성 완료: ${tagName}`);
-    } catch (logErr) {
-        console.error('[SaveSync] ❌ 히스토리 로그 저장 실패:', logErr.message);
-    }
-
-    return res.json({
-      ok:      true,
-      success: saveResults.success.length,
-      failed:  saveResults.failed,
-      top5:    [...top5Tickers],
-      tagName,
-      elapsed,
-    });
-
-  } catch (fatalErr) {
-    console.error('[SaveSync] 치명적 오류:', fatalErr);
-    return res.status(500).json({ ok: false, error: fatalErr.message });
-  }
-});
-
-// ─── [TASK-E2] SaveSync 헬퍼 함수 ──────────────────────────────────────────────
-
-/**
- * signals.json 데이터를 DailyStockSnapshot 페이로드로 변환
- */
-function buildSnapshotPayload(ticker, data, rank, syncDate) {
-  return {
-    ticker,
-    syncDate,
-    name:           data.name || 'Unknown',
-    currentPrice:   Math.round(Number(data.currentPrice ?? data.current_price ?? 0)),
-    entry1Price:    Math.round(Number(data.result_2   ?? data.entry1  ?? 0)),
-    entry2Price:    Math.round(Number(data.result_3   ?? data.entry2  ?? 0)),
-    targetPrice:    Math.round(Number(data.result_1   ?? data.target  ?? 0)),
-    stopLossPrice:  Math.round(Number(data.stop_loss  ?? data.stopLoss ?? 0)),
-    hybridScore:    Math.round(Number(data.hybridScore ?? data.score ?? 0)),
-    starRating:     computeStarRating(Number(data.hybridScore ?? data.score ?? 0)),
-    maArrangement:  data.maArrangement || data.maArray?.arrangement || null,
-    ma5:            Math.round(Number(data.sma5 || data.maArray?.ma5   || data.ma5 || 0)),
-    ma10:           Math.round(Number(data.sma10 || data.maArray?.ma10  || data.ma10 || 0)),
-    ma20:           Math.round(Number(data.sma20 || data.maArray?.ma20  || data.ma20 || 0)),
-    ma60:           Math.round(Number(data.sma60 || data.maArray?.ma60  || data.ma60 || 0)),
-    ma120:          Math.round(Number(data.maArray?.ma120 || data.ma120 || 0)),
-    yield:          Number(data.changeRate || data.yield || 0),
-    tradeAmount:    (() => {
-        const val = String(data.tradeAmount || data.trade_amount || 0).replace(/[^0-9]/g, '');
-        return val ? BigInt(val) : 0n;
-    })(),
-    foreignNet:     formatSupply(data.foreignNet     ?? data.foreign_net ?? data.foreignBuy),
-    institutionNet: formatSupply(data.institutionNet ?? data.inst_net ?? data.instBuy),
-    category:       data.category || data.trendType || null,
-    signalVersion:  data.version || 'v10.0.0-SSOT',
-    isTop5:         rank !== null,
-    rank:           rank,
-  };
-}
-
-function formatSupply(value) {
-  if (value === null || value === undefined || value === '-') return null;
-  const num = Number(String(value).replace(/,/g, ''));
-  if (isNaN(num)) return String(value);
-  const sign = num >= 0 ? '+' : '';
-  return `${sign}${num.toLocaleString('ko-KR')}`;
-}
-
-function computeStarRating(score) {
-  if (score >= 80) return 5;
-  if (score >= 60) return 4;
-  if (score >= 45) return 3;
-  if (score >= 30) return 2;
-  if (score >= 15) return 1;
-  return 0;
-}
-
-async function preValidateAndAdjust(ticker, data) {
-  const price   = Number(data.currentPrice ?? data.current_price ?? 0);
-  // signals.json에 52주 정보가 없을 경우 fallback
-  const high52  = Number(data.high52w ?? data.high_52w ?? price * 1.5);
-  const low52   = Number(data.low52w  ?? data.low_52w  ?? price * 0.5);
-
-  const adjusted = { ...data };
-
-  if (price > high52 && price > 0) {
-    console.warn(`[Validate] ${ticker}: price(${price}) > high52w(${high52}) → 자동 확장`);
-    adjusted.high52w = Math.ceil(price * 1.10);
-    // [v9.3.4] DB StockMeta도 업데이트 (비동기 처리)
-    prisma.stockMeta?.updateMany({
-      where: { ticker },
-      data:  { high_52w: adjusted.high52w, updatedAt: new Date() },
-    }).catch(() => {}); 
-  }
-
-  if (price > 0 && price < low52) {
-    console.warn(`[Validate] ${ticker}: price(${price}) < low52w(${low52}) → 자동 조정`);
-    adjusted.low52w = Math.floor(price * 0.90);
-  }
-
-  return adjusted;
-}
 
 // 🔴 [Red Team 방어 - R6] AWS PM2 롤백 스크립트를 위한 헬스체크 도입
 app.get('/api/health', (req, res) => {
