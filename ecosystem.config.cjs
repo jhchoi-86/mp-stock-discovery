@@ -66,21 +66,28 @@ module.exports = {
     },
     {
       name: 'mp-stock-realtime-engine',
-      script: `${BASE}/sniper_engine/venv/bin/python`,
+      script: `${BASE}/sniper_engine/realtime_engine.py`,
+      /** 
+       * [IMPORTANT] Use interpreter: 'none' and exec_mode: 'fork' on Linux server 
+       * to prevent PM2 from wrapping the Python process in its default JS container, 
+       * which would cause SyntaxErrors in the JS container logic.
+       */
       interpreter: 'none',
       args: `${BASE}/sniper_engine/realtime_engine.py`,
       cwd: `${BASE}`,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
+      max_restarts: 10,
+      min_uptime: '5s',
       watch: false,
       max_memory_restart: '1200M',
       wait_ready: true,
       listen_timeout: 30000,
-      kill_timeout: 30000,
+      kill_timeout: 5000,
       env_file: `${BASE}/.env`,
       env: { PYTHONPATH: '.', TZ: 'Asia/Seoul' },
-      env_production: { PYTHONPATH: '.', TZ: 'Asia/Seoul' }
+      env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
     }
   ]
 };

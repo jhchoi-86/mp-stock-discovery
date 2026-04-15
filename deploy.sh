@@ -1,41 +1,52 @@
 #!/bin/bash
-# 무중단 배포 (Zero-Downtime Deployment) 스크립트
+# [v9.5.0] MP Stock Discovery Hardened Deployment Script
+set -e # Exit on any error
+
 echo "========================================="
 echo "🚀 MP Stock Discovery 배포를 시작합니다."
 echo "========================================="
 
-echo "1. 최신 소스코드 다운로드 (git pull)..."
-git pull origin main
+echo "1. 최신 소스코드 동기화 (git reset)..."
+# 로컬 수정사항이나 untracked 파일로 인한 충돌 방지
+git fetch --all
+git reset --hard origin/main
+git clean -fd
 
-echo "2. 프론트엔드 빌드 및 버전 펌핑 (npm run release)..."
-npm run release
+echo "2. 버전 및 릴리즈 노트 업데이트 (scripts/version_sync.cjs)..."
+# package.json 버전 기반으로 RELEASE.md 자동 업데이트
+node scripts/version_sync.cjs
 
-echo "2.5. Python 가상환경 및 AI 마이크로서비스 세팅..."
+echo "3. 프론트엔드 빌드 (npm run build)..."
+# release 스크립트 대신 직접 빌드하여 PM2 리로드 시점 조절
+npm run build
+
+echo "4. Python 가상환경 및 마이크로서비스 세팅 (ai-service)..."
 cd ai-service
-python3 -m venv venv
+python3 -m venv venv || true
 source venv/bin/activate
 pip install -r requirements.txt
 cd ..
 
-echo "2.6. Prisma DB 스키마 갱신 (Anomaly/Score 반영)..."
-npx prisma db push --schema=platform/infra/db/schema.prisma --skip-generate
-echo "2.6.1. 메인 Prisma DB 스키마 갱신 및 클라이언트 복구..."
+echo "5. Prisma DB 스키마 갱신..."
+npx prisma db push --schema=platform/infra/db/schema.prisma --skip-generate || echo "Warning: Infra schema push failed, skipping..."
 npx prisma db push --schema=prisma/schema.prisma
 
-echo "2.7. Python 가상환경 및 Sniper Engine 셋업..."
+echo "6. Python 가상환경 및 Sniper Engine 셋업..."
 cd sniper_engine
-python3 -m venv venv
+python3 -m venv venv || true
 source venv/bin/activate
 pip install -r requirements.txt
 cd ..
 
-echo "3. PM2 클러스터 롤링 리스타트 (무중단 서버 재시작)..."
-# reload 명령어는 old 프로세스를 유지한 채 new 프로세스를 하나씩 띄우며(ready 대기), 연결을 자연스럽게 넘겨줍니다.
+echo "7. PM2 클러스터 롤링 리스타트 (ecosystem.config.cjs)..."
+# interpreter: none 설정이 포함된 최신 설정을 적용합니다.
 npx pm2 reload ecosystem.config.cjs --env production
 
-echo "4. 웹 서버 정적 파일 동기화 (Nginx Web Root)..."
+echo "8. 웹 서버 정적 파일 동기화 (Nginx Web Root)..."
+# Nginx가 바라보는 경로로 빌드 파일을 복사합니다.
 sudo cp -rf dist/* /var/www/mp-stock-discovery/dist/
+sudo chown -R ubuntu:ubuntu /var/www/mp-stock-discovery/dist
 
 echo "========================================="
-echo "✅ 모든 배포 단계가 성공적으로 완료되었습니다!"
+echo "✅ 배포 완료! 현재 버전: $(grep version package.json | cut -d '\"' -f 4)"
 echo "========================================="
