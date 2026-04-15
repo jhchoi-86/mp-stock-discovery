@@ -1673,22 +1673,33 @@ app.patch('/api/stocks/:code/prices', authenticateToken, isAdmin, priceEditLimit
     const syncDate = new Date(dateStr);
     syncDate.setHours(0, 0, 0, 0);
 
-    // ticker_syncDate 유니크 인덱스를 사용한 업데이터
-    // DailyStockSnapshot 모델명 확인 (prisma/schema.prisma)
-    const snapshot = await prisma.dailyStockSnapshot.findUnique({
-      where: { ticker_syncDate: { ticker: code, syncDate } }
-    });
-
-    if (!snapshot) {
-      return res.status(404).json({
-        error: 'NOT_FOUND',
-        message: `${code} / ${dateStr} 데이터가 존재하지 않습니다.`
-      });
+    // 1단계: 종목명 사전 조회 (Upsert create 시 필요)
+    let stockName = code;
+    try {
+      if (fs.existsSync(STOCK_MASTER_FILE)) {
+        const masterList = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+        const found = masterList.find(s => s.code === code);
+        if (found?.name) stockName = found.name;
+      }
+    } catch (e) {
+      console.warn(`[PriceEdit] 종목명 조회 실패 ${code}:`, e.message);
     }
 
-    const updated = await prisma.dailyStockSnapshot.update({
-      where: { id: snapshot.id },
-      data: {
+    // 2단계: upsert - 존재하면 update, 없으면 create
+    const updated = await prisma.dailyStockSnapshot.upsert({
+      where: { ticker_syncDate: { ticker: code, syncDate } },
+      update: {
+        inst_buy_manual:   entry1,
+        inst_buy2_manual:  entry2,
+        target_manual:     target,
+        stop_loss_manual:  stop_loss,
+        is_manual_price:   true,
+        manual_updated_at: new Date()
+      },
+      create: {
+        ticker:            code,
+        name:              stockName,
+        syncDate,
         inst_buy_manual:   entry1,
         inst_buy2_manual:  entry2,
         target_manual:     target,

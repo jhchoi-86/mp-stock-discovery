@@ -17,10 +17,10 @@ function savePastRecommendations(approvedStocks) {
     const dateStr = `${now.getUTCFullYear()}-${(now.getUTCMonth()+1).toString().padStart(2,'0')}-${now.getUTCDate().toString().padStart(2,'0')}`;
     
     const records = approvedStocks.map(s => ({
-        code: s.code,
+        code: s.code || s.ticker,
         name: s.name,
-        category: s.latestSignal.category,
-        rec_price: s.latestSignal.entry_price || s.latestSignal.result_2 || s.latestSignal.current_price,
+        category: s.latestSignal ? (s.latestSignal.category || '기타') : '기타',
+        rec_price: s.latestSignal ? (s.latestSignal.entry_price || s.latestSignal.result_2 || s.latestSignal.current_price) : 0,
         date: dateStr
     }));
 

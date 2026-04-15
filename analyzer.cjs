@@ -414,9 +414,9 @@ if (require.main === module) {
         console.log(`[Unified Engine] Starting sync (Limit: ${SYNC_BATCH_SIZE})...`);
         let stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
         if (process.env.STOCK_FILTER) {
-            const codes = process.env.STOCK_FILTER.split(',').map(s => s.trim());
-            stocks = stocks.filter(s => codes.includes(s.code));
-            console.log(`[Unified Engine] Filtering stocks: ${codes.join(', ')}`);
+            const filterCodes = process.env.STOCK_FILTER.split(',').map(s => s.trim());
+            stocks = stocks.filter(s => filterCodes.includes(s.ticker || s.code));
+            console.log(`[Unified Engine] Filtering stocks: ${filterCodes.join(', ')}`);
         }
         const kisToken = await getKisAccessToken();
         const allSignals = [];
