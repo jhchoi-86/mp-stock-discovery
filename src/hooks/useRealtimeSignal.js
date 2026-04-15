@@ -44,6 +44,11 @@ export const useRealtimeSignal = (active = false) => {
                 if (packet.type === 'sniper_alert') {
                     const signal = packet.payload || packet.data;
                     if (!signal) return;
+                    
+                    // [TASK-02] ticker/code 일관성 확보
+                    if (!signal.code && signal.ticker) signal.code = signal.ticker;
+                    if (!signal.ticker && signal.code) signal.ticker = signal.code;
+
                     // [TASK-RS04] 6시간 이상 경과 신호 제거 → 당일 신호만 유지
                     const SIX_HOURS = 6 * 60 * 60 * 1000;
                     setSignals(prev => {

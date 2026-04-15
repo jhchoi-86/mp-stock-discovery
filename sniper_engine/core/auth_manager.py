@@ -26,16 +26,16 @@ class KISAuthManager:
         self.approval_url = "https://openapi.koreainvestment.com:9443/oauth2/Approval"
         
     async def get_websocket_approval_key(self) -> str:
+        # Step 1: Redis 캐시 확인 (장애 시 폴백)
         try:
-            # 1. Redis 캐시 확인 (1ms 이내 반환)
             cached_key = await self.redis_pool.get("kis:approval_key")
             if cached_key:
+                logger.info("[KIS-PY] approval_key Redis 캐시 사용")
                 return cached_key
         except Exception as e:
-            logger.error(f"Redis Cache Error: {e}")
-            # 캐시 에러가 발생하더라도 서비스 장애를 유발하지 않고 API 호출로 우회(Fallback)
+            logger.warning(f"[KIS-PY] Redis 조회 실패, 직접 발급으로 폴백: {e}")
 
-        # 2. 캐시 없으면 REST API 호출
+        # Step 2: KIS API 신규 발급
         payload = {
             "grant_type": "client_credentials",
             "appkey": KIS_APP_KEY,
@@ -44,7 +44,6 @@ class KISAuthManager:
         
         async with aiohttp.ClientSession() as session:
             try:
-                # 🔴 [Red Team 방어]: API 호출 5초 Timeout 강제. (서버 응답 지연으로 루프 전체 멈춤 현상 원천 봉쇄)
                 async with session.post(self.approval_url, json=payload, timeout=5.0) as resp:
                     if resp.status != 200:
                         text = await resp.text()
@@ -57,12 +56,15 @@ class KISAuthManager:
                     if not approval_key:
                         raise ValueError("No approval_key in KIS JSON response")
                     
-                    # 3. Redis 저장 및 24시간 TTL 세팅 (보수적으로 86000초 = 23.8시간)
+                    # Step 3: TTL은 KIS 응답값(expires_in) 우선, 없으면 6시간(21600)
+                    ttl = data.get("expires_in", 21600)
+                    
+                    # Step 4: SET NX — Race Condition 방지 (SET with nx=True)
                     try:
-                        await self.redis_pool.setex("kis:approval_key", 86000, approval_key)
-                        logger.info("Approval Key cached to Redis safely.")
+                        await self.redis_pool.set("kis:approval_key", approval_key, ex=ttl, nx=True)
+                        logger.info(f"[KIS-PY] approval_key 신규 발급 → Redis 저장 (TTL: {ttl}s)")
                     except Exception as e:
-                        logger.warning(f"Failed to cache to Redis (ignoring): {e}")
+                        logger.warning(f"[KIS-PY] Redis 저장 실패 (무시): {e}")
 
                     return approval_key
 

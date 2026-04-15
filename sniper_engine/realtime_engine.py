@@ -33,6 +33,7 @@ WS_URL = "wss://ops.koreainvestment.com:21000"
 
 # Node.js 서버 설정
 NODE_SERVER_URL = os.getenv("NODE_SERVER_URL", "http://127.0.0.1:3001")
+INTERNAL_API_SECRET = os.getenv("INTERNAL_API_SECRET")
 
 class TickerState:
     """종목별 실시간 상태 관리 클래스"""
@@ -84,11 +85,15 @@ class TickerState:
         except (ValueError, IndexError):
             pass
 
+import redis.asyncio as redis 
+
 class KISAuthManager:
     def __init__(self):
         self.access_token = None
         self.approval_key = None
         self.token_expiry = 0
+        self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        self.redis = redis.from_url(self.redis_url, decode_responses=True)
 
     async def get_access_token(self):
         url = f"{BASE_URL}/oauth2/tokenP"
@@ -108,6 +113,19 @@ class KISAuthManager:
             return False
 
     async def get_approval_key(self):
+        REDIS_KEY = "kis:approval_key"
+        
+        # 1. Redis 캐시 확인 (장애 시 폴백)
+        try:
+            cached = await self.redis.get(REDIS_KEY)
+            if cached:
+                self.approval_key = cached
+                logger.info("[KIS-PY] approval_key Redis 캐시 사용")
+                return self.approval_key
+        except Exception as e:
+            logger.warning(f"[KIS-PY] Redis 조회 실패, 직접 발급으로 폴백: {e}")
+
+        # 2. 캐시 없으면 KIS API 신규 발급
         url = f"{BASE_URL}/oauth2/Approval"
         payload = {"grant_type": "client_credentials", "appkey": APP_KEY, "secretkey": APP_SECRET}
         try:
@@ -115,7 +133,18 @@ class KISAuthManager:
                 async with session.post(url, json=payload) as resp:
                     data = await resp.json()
                     self.approval_key = data.get("approval_key")
-                    logger.info("🔑 Approval Key 갱신 성공.")
+                    if not self.approval_key:
+                        logger.error("❌ Approval Key 발급 실패 (키 없음)")
+                        return None
+                    
+                    # 3. Redis 저장 (TTL 6시간 권장)
+                    ttl = data.get("expires_in", 21600)
+                    try:
+                        await self.redis.set(REDIS_KEY, self.approval_key, ex=ttl, nx=True)
+                        logger.info(f"[KIS-PY] approval_key 신규 발급 → Redis 저장 (TTL: {ttl}s)")
+                    except Exception as e:
+                        logger.warning(f"[KIS-PY] Redis 저장 실패 (무시): {e}")
+                        
                     return self.approval_key
         except Exception as e:
             logger.error(f"❌ Approval API 오류: {e}")
@@ -155,8 +184,9 @@ class RealtimeEngine:
         """[Task 3-2] Node.js 서버로 시그널 전송"""
         if not self.http_session: return
         url = f"{NODE_SERVER_URL}/api/realtime/signal"
+        headers = {"x-internal-api-key": INTERNAL_API_SECRET} if INTERNAL_API_SECRET else {}
         try:
-            async with self.http_session.post(url, json=payload) as resp:
+            async with self.http_session.post(url, json=payload, headers=headers) as resp:
                 if resp.status == 200:
                     logger.info(f"📤 [Signal Broadcast] {payload['stockCode']} 전송 성공")
                 else:
@@ -169,8 +199,9 @@ class RealtimeEngine:
         if not self.http_session: return
         url = f"{NODE_SERVER_URL}/api/realtime/wbs-status"
         payload = {"ticker": ticker, "wbs1m": round(wbs_1m, 1), "wbs3m": round(wbs_3m, 1)}
+        headers = {"x-internal-api-key": INTERNAL_API_SECRET} if INTERNAL_API_SECRET else {}
         try:
-            async with self.http_session.post(url, json=payload) as resp:
+            async with self.http_session.post(url, json=payload, headers=headers) as resp:
                 pass # 부하 방지를 위해 로그 생략
         except: pass
 

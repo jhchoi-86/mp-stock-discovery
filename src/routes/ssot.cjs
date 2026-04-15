@@ -10,6 +10,7 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 const redis = require('../../platform/infra/redis/client.cjs');
 const { getKstDateString } = require('../utils/kst.cjs');
+const { enrichWithManualPrices } = require('../utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
 
 /**
  * GET /api/ssot/top/:n - Top N 종목 조회 (SyncSaveLog SSOT 우선)
@@ -128,6 +129,8 @@ router.get('/top/:n', async (req, res) => {
 
         // 4. Write-through 캐시 (1분 TTL)
         if (normalizedRows.length > 0) {
+            // [v9.4.32] Enrich normalized rows with latest Manual/DB prices
+            normalizedRows = await enrichWithManualPrices(normalizedRows, prisma);
             await redis.setex(cacheKey, 60, JSON.stringify(normalizedRows));
         }
 

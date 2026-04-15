@@ -7,6 +7,7 @@ import ReportArchive from './ReportArchive.jsx';
 import AdminDashboard from './AdminDashboard.jsx';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
+import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
@@ -589,9 +590,30 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     return (fallbackBase > 0 && fallbackBase !== 0) ? renderChange(currentPrice, fallbackBase) : null;
                   };
 
+                  // [STEP-18] Nulimmock Highlighting Logic
+                  const entry1 = Number(s?.result_2 || s?.entry_price || stock.entry1 || 0);
+                  const entry2 = Number(s?.result_3 || stock.entry2 || 0);
+                  let isNulimmock = false;
+                  let nulimmockColor = '';
+                  let badgeHit = null;
+                  
+                  if (entry2 > 0 && curPrice <= entry2) {
+                      isNulimmock = true;
+                      nulimmockColor = 'rgba(239, 68, 68, 0.2)'; // Deeper Red for Entry 2
+                      badgeHit = 2;
+                  } else if (entry1 > 0 && curPrice <= entry1) {
+                      isNulimmock = true;
+                      nulimmockColor = 'rgba(245, 158, 11, 0.2)'; // Orange for Entry 1
+                      badgeHit = 1;
+                  }
+                  
+                  // Default highlight for HH signal
+                  let bgStyle = stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent';
+                  if (isNulimmock) bgStyle = nulimmockColor;
+
                   return (
                   <React.Fragment key={stock.code}>
-                  <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: stock.latestSignal && stock.latestSignal.signal_HH ? 'rgba(255, 23, 68, 0.1)' : 'transparent', borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
+                  <tr className="fade-in" style={{ animationDelay: `${idx < 15 ? 0.1 + idx * 0.05 : 0}s`, background: bgStyle, borderLeft: stock.latestSignal && stock.latestSignal.signal_HH ? '3px solid #FF1744' : '3px solid transparent' }}>
                     <td style={{ textAlign: 'center', padding: '0.4rem 0.2rem' }}>
                       <input 
                         type="checkbox" 
@@ -602,7 +624,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ padding: '0.4rem 0.2rem' }}>
                       <div className="stock-info" style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap' }}>{stock.name}</div>
+                        <div style={{ fontSize: '0.95rem', fontWeight: 'bold', color: '#fff', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          {stock.name}
+                          {isNulimmock && (
+                             <span style={{ fontSize: '0.65rem', background: badgeHit === 2 ? '#ef4444' : '#f59e0b', color: '#fff', padding: '1px 4px', borderRadius: '4px' }}>
+                                Entry {badgeHit}
+                             </span>
+                          )}
+                        </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
                           ({stock.market} | {stock.code})
                         </div>
@@ -716,23 +745,17 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                   {renderKISChange(curPrice, dailyPrevClose, kisData)}
                                   {signalTime && <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginLeft: '6px', fontWeight: 'normal' }}>({signalTime})</span>}
                                 </span>
-                                <div style={{ color: '#FFD700', fontWeight: 'normal', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>1차 매수진입가 (2H):</span>
-                                  <span>{targetEntry1 > 0 ? Math.round(targetEntry1).toLocaleString() : '-'}원</span>
-                                  <HelpCircle size={12} style={{ opacity: 0.6, cursor: 'help' }} title="분석 엔진에서 산출된 최적의 1차 진입 타점입니다." />
-                                </div>
-                                <div style={{ color: 'var(--success)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>2차 매수진입가 (2H):</span>
-                                  <span>{targetEntry2 > 0 ? Math.round(targetEntry2).toLocaleString() : '-'}원</span>
-                                </div>
-                                <div style={{ color: 'var(--accent)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>목표가 (Target):</span>
-                                  <span>{targetGoal > 0 ? Math.round(targetGoal).toLocaleString() : '-'}원</span>
-                                </div>
-                                <div style={{ color: '#ff6b6b', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '4px', width: '100%' }}>
-                                  <span style={{ minWidth: '130px', textAlign: 'left' }}>손절가 (SL):</span>
-                                  <span>{stopLossVal > 0 ? Math.round(stopLossVal).toLocaleString() : '-'}원</span>
-                                </div>
+                                <PriceEditSection
+                                  stockCode={stock.code}
+                                  hideTitle={true}
+                                  initialPrices={{
+                                    entry1:    stock.inst_buy_manual  ?? targetEntry1,
+                                    entry2:    stock.inst_buy2_manual ?? targetEntry2,
+                                    target:    stock.target_manual    ?? targetGoal,
+                                    stop_loss: stock.stop_loss_manual ?? stopLossVal,
+                                    is_manual: stock.is_manual_price  ?? false
+                                  }}
+                                />
                                 <div style={{ color: '#ffb86c', fontSize: '0.65rem', marginTop: '4px', borderTop: '1px dashed rgba(255,184,108,0.2)', paddingTop: '4px' }}>
                                   이평선 배열(2H): <strong style={{ color: maArrangement === '정배열' ? '#ff4d4d' : (maArrangement === '역배열' ? '#4d94ff' : '#ccc') }}>{maArrangement}</strong>
                                 </div>

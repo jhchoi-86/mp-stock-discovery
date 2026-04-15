@@ -21,6 +21,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { calculateTotalScore, getCategory, getStars } = require('./src/utils/scoreEngine.cjs');
 const { toKST, getKSTDateString, nowKST } = require('./src/utils/kst.cjs'); // [TASK-CC02] KST 공통 유틸 도입
+const { enrichWithManualPrices } = require('./src/utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
 
 // 플랜 3: 백엔드 무결성 자동 검증 시스템 가동
 const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
@@ -38,6 +39,7 @@ const systemStatsService = require('./src/services/systemStatsService.cjs');
 const { verifyAndApprove } = require('./platform/approval/tdr_bridge/tdrGate.cjs');
 const { isKSTTradingHours, isTradingDay } = require('./platform/markets/kr_equity/marketHours.cjs');
 const PublishingService = require('./src/services/publishingService.cjs');
+const BulkSyncService = require('./src/services/BulkSyncService.cjs'); // [STEP-04] Added for manual price protection
 global.publishingService = new PublishingService();
 
 let aiScoringQueue = null;
@@ -398,13 +400,50 @@ app.get('/api/public/top5-strategy', async (req, res) => {
       return res.status(404).json({ error: 'Strategy data not found', data: [] });
     }
     const stocks = Array.isArray(latest.snapshot) ? latest.snapshot : [];
-    res.json({ success: true, tagName: latest.tagName, savedAt: latest.savedAt, data: stocks });
+    // [v9.4.32] Enrich snapshot from SyncSaveLog with latest Manual/DB prices
+    const enriched = await enrichWithManualPrices(stocks, prisma, latest.savedAt);
+    res.json({ success: true, tagName: latest.tagName, savedAt: latest.savedAt, data: enriched });
   } catch (e) {
     console.error('[top5-strategy] DB read failed:', e.message);
     res.status(500).json({ error: 'Failed to fetch strategy data', data: [] });
   }
 });
 
+
+// [NEW] GET /api/stocks/active-targets - Returns locked targets from Redis or DB
+app.get('/api/stocks/active-targets', async (req, res) => {
+  try {
+    if (redis) {
+      const cached = await redis.get('mp:active_targets');
+      if (cached) {
+        return res.json({ success: true, source: 'redis', data: JSON.parse(cached) });
+      }
+    }
+
+    // Fallback to SyncSaveLog DB
+    const latest = await prisma.syncSaveLog.findFirst({
+      orderBy: { savedAt: 'desc' }
+    });
+    if (!latest || !latest.snapshot) {
+      return res.status(404).json({ success: false, error: 'No active targets found', data: [] });
+    }
+
+    // DB 스냅샷을 수동 가격으로 보완하여 최종 반환
+    const snapshotArray = Array.isArray(latest.snapshot) ? latest.snapshot : Object.values(latest.snapshot || {});
+    // manualPriceEnricher 추가 적용
+    const enriched = await enrichWithManualPrices(snapshotArray, prisma, latest.savedAt);
+    
+    // Update Redis
+    if (redis) {
+      await redis.set('mp:active_targets', JSON.stringify(enriched));
+    }
+
+    res.json({ success: true, source: 'db', data: enriched });
+  } catch (err) {
+    console.error('[ActiveTargets API]', err);
+    res.status(500).json({ success: false, error: err.message, data: [] });
+  }
+});
 
 // [NEW] GET /api/public/watchlist-strategy
 app.get('/api/public/watchlist-strategy', (req, res) => {
@@ -560,7 +599,8 @@ function startLiveSignalPoller() {
                 const latestPath = path.join(__dirname, 'data/vip_logs/latest.json');
                 if (fs.existsSync(latestPath)) {
                     const report = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
-                    top5 = (report.stocks || []).slice(0, 5).map(s => s.code);
+                    top5 = (report.stocks || []).slice(0, 5).map(s => s.ticker || s.code);
+                    top5 = top5.filter(Boolean); // [v9.4.21] Filter out any undefined/null values
                 }
             } catch (e) { 
                 console.error('[SignalPoller] TOP 5 로드 실패:', e.message);
@@ -665,6 +705,7 @@ function updateTimeSlotSignals(codes) {
             } catch (e) {}
 
             codes.forEach(code => {
+                if (!code) return; // Skip invalid codes
                 if (!db[today][code]) db[today][code] = {};
                 if (!db[today][code][slotKey]) db[today][code][slotKey] = { tf2m: false, tf5m: false };
                 
@@ -1612,6 +1653,126 @@ app.post('/api/reset', requireProAuth, async (req, res) => {
     }
 });
 
+// [STEP-03] 수동 가격 편집용 Rate Limiter (인메모리 구현)
+const priceEditLimiter = (() => {
+  const store = new Map();
+  const WINDOW_MS = 60 * 1000;
+  const MAX_REQUESTS = 5;
+  return (req, res, next) => {
+    const key = `${req.params.code}:${req.user?.id || req.ip}`;
+    const now = Date.now();
+    const timestamps = (store.get(key) || []).filter(t => now - t < WINDOW_MS);
+    if (timestamps.length >= MAX_REQUESTS) {
+      return res.status(429).json({
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: '1분에 최대 5회까지 수정 가능합니다.'
+      });
+    }
+    timestamps.push(now);
+    store.set(key, timestamps);
+    next();
+  };
+})();
+
+/**
+ * [STEP-03] PATCH /api/stocks/:code/prices
+ * 특정 종목의 매수/목표/손절가격을 수동으로 업데이트
+ */
+app.patch('/api/stocks/:code/prices', authenticateToken, isAdmin, priceEditLimiter, async (req, res) => {
+  try {
+    const { code } = req.params;
+
+    // R-06: 정수 변환 (소수점 차단)
+    const entry1    = Math.floor(Number(req.body.entry1));
+    const entry2    = Math.floor(Number(req.body.entry2));
+    const target    = Math.floor(Number(req.body.target));
+    const stop_loss = Math.floor(Number(req.body.stop_loss));
+    const dateStr   = req.body.date; // "YYYY-MM-DD"
+
+    if ([entry1, entry2, target, stop_loss].some(v => isNaN(v) || v <= 0)) {
+      return res.status(400).json({
+        error: 'INVALID_VALUE',
+        message: '모든 가격은 0보다 큰 정수여야 합니다.'
+      });
+    }
+
+    // 가격 순서 검증 (서버사이드)
+    if (stop_loss >= entry2)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `손절가(${stop_loss.toLocaleString()})는 2차 진입가보다 낮아야 합니다.` });
+    if (entry2 >= entry1)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `2차 진입가(${entry2.toLocaleString()})는 1차 진입가보다 낮아야 합니다.` });
+    if (entry1 >= target)
+      return res.status(400).json({ error: 'INVALID_PRICE_ORDER',
+        message: `1차 진입가(${entry1.toLocaleString()})는 목표가보다 낮아야 합니다.` });
+
+    // "YYYY-MM-DD"를 00:00:00 KST로 변환
+    const syncDate = new Date(dateStr);
+    syncDate.setHours(0, 0, 0, 0);
+
+    // 1단계: 종목명 사전 조회 (Upsert create 시 필요)
+    let stockName = code;
+    try {
+      if (fs.existsSync(STOCK_MASTER_FILE)) {
+        const masterList = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+        const found = masterList.find(s => s.code === code);
+        if (found?.name) stockName = found.name;
+      }
+    } catch (e) {
+      console.warn(`[PriceEdit] 종목명 조회 실패 ${code}:`, e.message);
+    }
+
+    // 2단계: upsert - 존재하면 update, 없으면 create
+    const updated = await prisma.dailyStockSnapshot.upsert({
+      where: { ticker_syncDate: { ticker: code, syncDate } },
+      update: {
+        inst_buy_manual:   entry1,
+        inst_buy2_manual:  entry2,
+        target_manual:     target,
+        stop_loss_manual:  stop_loss,
+        is_manual_price:   true,
+        manual_updated_at: new Date()
+      },
+      create: {
+        ticker:            code,
+        name:              stockName,
+        syncDate,
+        inst_buy_manual:   entry1,
+        inst_buy2_manual:  entry2,
+        target_manual:     target,
+        stop_loss_manual:  stop_loss,
+        is_manual_price:   true,
+        manual_updated_at: new Date()
+      }
+    });
+
+    // Redis 캐시 무효화 (상세 페이지, 탑5 등)
+    const cacheKeys = [
+      `daily_top5:${dateStr}`,
+      `landing_strategy:${dateStr}`,
+      `stock_detail:${code}:${dateStr}`,
+      `signal_summary:${dateStr}`
+    ];
+    await Promise.allSettled(cacheKeys.map(k => redis.del(k)));
+
+    console.log(`[PriceEdit] ${code} 수동 편집 by ${req.user?.id || 'Unknown'}`);
+    return res.json({
+      success: true,
+      code,
+      updated: {
+        entry1, entry2, target, stop_loss,
+        is_manual: true,
+        updated_at: updated.manual_updated_at
+      }
+    });
+
+  } catch (err) {
+    console.error('[PriceEdit] Error:', err);
+    return res.status(500).json({ error: 'INTERNAL_ERROR', message: err.message });
+  }
+});
+
 // [OPT-01] KIS 공유 캐시 사전 수집 모듈 연동 완료
 
 // Global Mutex to prevent multiple auto-syncs from overlapping and DDOSing the KIS API (EGW00201)
@@ -2088,7 +2249,6 @@ app.post('/api/auto-sync', async (req, res) => {
             return {
                 ticker: stock.code, name: stock.name,
                 category: getCategory(score), hybridScore: score,
-                adx: Math.round(latest.adx || 0),
                 currentPrice: latest.current_price || latest.entry_price || 0,
                 entry1Price: sig2H?.result_1 || 0,
                 entry2Price: sig2H?.result_2 || 0,
@@ -2103,7 +2263,8 @@ app.post('/api/auto-sync', async (req, res) => {
                 ma10: latest.sma10 || 0,
                 ma20: latest.sma20 || 0,
                 ma60: latest.sma60 || 0,
-                styleTag: score >= 80 ? "강력매수" : (score >= 60 ? "모니터링" : "보관")
+                isTop5: true, // [ADD] Auto-sync should also populate SignalBoard
+                syncDate: new Date(new Date().setHours(0,0,0,0)) // [ADD]
             };
         }).filter(s => s != null);
 
@@ -2126,22 +2287,13 @@ app.post('/api/auto-sync', async (req, res) => {
             }
 
             try {
-                await prisma.$transaction(async (tx) => {
-                    for (const batch of snapshotBatches) {
-                        const tickers = batch.map(s => s.ticker);
-                        await tx.dailyStockSnapshot.deleteMany({
-                            where: { 
-                                ticker: { in: tickers }, 
-                                syncDate: { gte: todayStart } 
-                            }
-                        });
-                        await tx.dailyStockSnapshot.createMany({ 
-                            data: batch,
-                            skipDuplicates: false
-                        });
-                    }
-                }, { timeout: 30000 });
-                console.log(`[Auto-Sync] DB upsert complete: ${snapshotData.length} records in ${snapshotBatches.length} batches`);
+                // [v9.5.0] STEP-04: 연쇄 삭제 방지 및 수동값 보호를 위해 BulkSyncService 통합
+                const syncResult = await BulkSyncService.bulkUpsertSnapshots(snapshotData);
+                if (syncResult.success) {
+                    console.log(`[Auto-Sync] DB upsert complete via BulkSyncService: ${syncResult.success} records`);
+                } else {
+                    console.error('[Auto-Sync] DB Persistence Partically Failed:', syncResult.error);
+                }
             } catch (dbErr) {
                 console.error('[Auto-Sync] DB unreachable. Entering Safe Mode (Skipping DB Persistence). Error:', dbErr.message);
             }
@@ -2168,248 +2320,9 @@ app.post('/api/auto-sync', async (req, res) => {
     }
 });
 
-/**
- * [TASK-E2] 동기화 저장 엔드포인트 (server.cjs)
- * 역할: 분석 완료된 데이터를 DB에 원자적으로 저장하고 전 클라이언트에 브로드캐스트
- */
-/**
- * [v9.4.16] Unified Sync Save Endpoint
- * Handles individual snapshot updates and historical tag creation.
- */
-app.post(['/api/save-sync', '/api/admin/save-sync-history'], authenticateToken, async (req, res) => {
-  const startTime = Date.now();
-  console.log('[SaveSync] ▶ 동기화 저장 시작...');
 
-  try {
-    // 1. signals.json에서 최신 분석 결과 로드
-    const rawSignals = JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf-8'));
-    
-    // 2. 전체 저장 결과 추적
-    const saveResults = {
-      success: [],
-      failed:  [],
-      skipped: [],
-    };
+// --- [End of Admin Routes] ---
 
-    // 3. Top5 선정 (하이브리드 점수 기준 상위 5개)
-    const signalArray = Array.isArray(rawSignals) ? rawSignals : Object.values(rawSignals);
-    
-    const rankedTickers = signalArray
-      .map(s => ({
-        ticker: s.code || s.ticker,
-        score: Number(s.hybridScore ?? s.score?.total ?? s.score ?? 0),
-      }))
-      .sort((a, b) => b.score - a.score);
-
-    // [v9.3.4] 중복 제거된 티커 목록 추출 (여러 타임프레임 대응)
-    const uniqueRanked = [];
-    const seenTickers = new Set();
-    for (const item of rankedTickers) {
-        if (item.ticker && !seenTickers.has(item.ticker)) {
-            seenTickers.add(item.ticker);
-            uniqueRanked.push(item);
-        }
-    }
-
-    const top5Tickers = new Set(uniqueRanked.slice(0, 5).map(t => t.ticker));
-    console.log('[SaveSync] Top5 선정:', [...top5Tickers].join(', '));
-
-    // 4. 종목별 DB 원자 저장
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    // signals.json이 배열인 경우와 객체인 경우 모두 대응
-    const signalEntries = Array.isArray(rawSignals) 
-        ? rawSignals.reduce((acc, s) => { acc[s.code] = s; return acc; }, {})
-        : rawSignals;
-
-    for (const [ticker, signalData] of Object.entries(signalEntries)) {
-      try {
-        // 4-1. 가격 사전 검증 및 52주 범위 자동 조정
-        const validatedData = await preValidateAndAdjust(ticker, signalData);
-        
-        // 4-2. 순위 계산
-        const rankIndex = uniqueRanked.findIndex(t => t.ticker === ticker);
-        const rank = top5Tickers.has(ticker) ? rankIndex + 1 : null;
-
-        // 4-3. upsert (동일 날짜 있으면 update, 없으면 create)
-        // schema.prisma의 ticker_syncDate 유니크 제약 조건 필수
-        const snapshot = await prisma.dailyStockSnapshot.upsert({
-          where: {
-            ticker_syncDate: { ticker, syncDate: today },
-          },
-          create: buildSnapshotPayload(ticker, validatedData, rank, today),
-          update: buildSnapshotPayload(ticker, validatedData, rank, today),
-        });
-
-        // 4-4. Redis 캐시 갱신 (개별 종목)
-        if (redis) {
-            await redis.set(
-              `mp:signal:${ticker}`,
-              JSON.stringify(snapshot),
-              'EX', 1800
-            );
-        }
-
-        // 4-5. Top5 캐시 무효화 (재생성 트리거)
-        if (top5Tickers.has(ticker) && redis) {
-          await redis.del('mp:top:5');
-          await redis.del('mp:top:10');
-        }
-
-        saveResults.success.push(ticker);
-        console.log(`[SaveSync] ✅ ${ticker} 저장 완료 (rank: ${rank ?? '-'})`);
-
-      } catch (err) {
-        saveResults.failed.push({ ticker, reason: err.message });
-        console.error(`[SaveSync] ❌ ${ticker} 저장 실패:`, err.message);
-      }
-    }
-
-    // 5. 저장 완료 후 SSE 브로드캐스트
-    broadcastUpdate({
-      type:    'save_sync_complete',
-      status:  'done',
-      top5:    [...top5Tickers],
-      results: saveResults,
-      savedAt: new Date().toISOString(),
-    });
-
-    const elapsed = Date.now() - startTime;
-    console.log(`[SaveSync] ▶ 완료. 성공: ${saveResults.success.length}, 실패: ${saveResults.failed.length} (${elapsed}ms)`);
-
-    // 6. [v9.4.16] Create Historical Snapshot (SyncSaveLog)
-    const kstNow = new Date(Date.now() + 9 * 60 * 60 * 1000);
-    const pad = (n) => n.toString().padStart(2, '0');
-    const tagName = `${kstNow.getUTCFullYear()}-${pad(kstNow.getUTCMonth() + 1)}-${pad(kstNow.getUTCDate())} ${pad(kstNow.getUTCHours())}:${pad(kstNow.getUTCMinutes())}`;
-
-    // Normalize Top5 for historical snapshot
-    const historicalTop5 = Array.from(top5Tickers).map(ticker => {
-        const s = signalEntries[ticker];
-        const rt = redis ? null : null; // Logic to grab from redis could go here
-        
-        // Use the buildSnapshotPayload logic or direct mapping
-        // Standardize fields for DailySnapshotAnalytics.jsx
-        return {
-            ticker,
-            name: s.name || ticker,
-            score: s.hybridScore ?? s.score ?? 0,
-            currentPrice: Math.round(s.current_price || s.entry_price || 0),
-            entryPrice1: Math.round(s.result_2 || s.entry_price || 0),
-            entryPrice2: Math.round(s.result_3 || 0),
-            targetPrice: Math.round(s.result_1 || s.bb_upper || 0),
-            stopLossPrice: Math.round(s.stop_loss || 0),
-            category: s.category || '기타',
-            yield: s.kis_change_data?.rate || 0
-        };
-    });
-
-    try {
-        await prisma.syncSaveLog.create({
-            data: {
-                tagName,
-                snapshot: JSON.parse(JSON.stringify(historicalTop5))
-            }
-        });
-        console.log(`[SaveSync] 📜 히스토리 로그 생성 완료: ${tagName}`);
-    } catch (logErr) {
-        console.error('[SaveSync] ❌ 히스토리 로그 저장 실패:', logErr.message);
-    }
-
-    return res.json({
-      ok:      true,
-      success: saveResults.success.length,
-      failed:  saveResults.failed,
-      top5:    [...top5Tickers],
-      tagName,
-      elapsed,
-    });
-
-  } catch (fatalErr) {
-    console.error('[SaveSync] 치명적 오류:', fatalErr);
-    return res.status(500).json({ ok: false, error: fatalErr.message });
-  }
-});
-
-// ─── [TASK-E2] SaveSync 헬퍼 함수 ──────────────────────────────────────────────
-
-/**
- * signals.json 데이터를 DailyStockSnapshot 페이로드로 변환
- */
-function buildSnapshotPayload(ticker, data, rank, syncDate) {
-  return {
-    ticker,
-    syncDate,
-    name:           data.name || 'Unknown',
-    currentPrice:   Math.round(Number(data.currentPrice ?? data.current_price ?? 0)),
-    entry1Price:    Math.round(Number(data.result_1   ?? data.entry1  ?? 0)),
-    entry2Price:    Math.round(Number(data.result_2   ?? data.entry2  ?? 0)),
-    targetPrice:    Math.round(Number(data.result_3   ?? data.target  ?? 0)),
-    stopLossPrice:  Math.round(Number(data.stop_loss  ?? data.stopLoss ?? 0)),
-    hybridScore:    Math.round(Number(data.hybridScore ?? data.score ?? 0)),
-    starRating:     computeStarRating(Number(data.hybridScore ?? data.score ?? 0)),
-    maArrangement:  data.maArrangement || data.maArray?.arrangement || null,
-    ma5:            Math.round(Number(data.sma5 || data.maArray?.ma5   || data.ma5 || 0)),
-    ma10:           Math.round(Number(data.sma10 || data.maArray?.ma10  || data.ma10 || 0)),
-    ma20:           Math.round(Number(data.sma20 || data.maArray?.ma20  || data.ma20 || 0)),
-    ma60:           Math.round(Number(data.sma60 || data.maArray?.ma60  || data.ma60 || 0)),
-    ma120:          Math.round(Number(data.maArray?.ma120 || data.ma120 || 0)),
-    yield:          Number(data.changeRate || data.yield || 0),
-    tradeAmount:    (() => {
-        const val = String(data.tradeAmount || data.trade_amount || 0).replace(/[^0-9]/g, '');
-        return val ? BigInt(val) : 0n;
-    })(),
-    foreignNet:     formatSupply(data.foreignNet     ?? data.foreign_net ?? data.foreignBuy),
-    institutionNet: formatSupply(data.institutionNet ?? data.inst_net ?? data.instBuy),
-    category:       data.category || data.trendType || null,
-    signalVersion:  data.version || 'v10.0.0-SSOT',
-    isTop5:         rank !== null,
-    rank:           rank,
-  };
-}
-
-function formatSupply(value) {
-  if (value === null || value === undefined || value === '-') return null;
-  const num = Number(String(value).replace(/,/g, ''));
-  if (isNaN(num)) return String(value);
-  const sign = num >= 0 ? '+' : '';
-  return `${sign}${num.toLocaleString('ko-KR')}`;
-}
-
-function computeStarRating(score) {
-  if (score >= 80) return 5;
-  if (score >= 60) return 4;
-  if (score >= 45) return 3;
-  if (score >= 30) return 2;
-  if (score >= 15) return 1;
-  return 0;
-}
-
-async function preValidateAndAdjust(ticker, data) {
-  const price   = Number(data.currentPrice ?? data.current_price ?? 0);
-  // signals.json에 52주 정보가 없을 경우 fallback
-  const high52  = Number(data.high52w ?? data.high_52w ?? price * 1.5);
-  const low52   = Number(data.low52w  ?? data.low_52w  ?? price * 0.5);
-
-  const adjusted = { ...data };
-
-  if (price > high52 && price > 0) {
-    console.warn(`[Validate] ${ticker}: price(${price}) > high52w(${high52}) → 자동 확장`);
-    adjusted.high52w = Math.ceil(price * 1.10);
-    // [v9.3.4] DB StockMeta도 업데이트 (비동기 처리)
-    prisma.stockMeta?.updateMany({
-      where: { ticker },
-      data:  { high_52w: adjusted.high52w, updatedAt: new Date() },
-    }).catch(() => {}); 
-  }
-
-  if (price > 0 && price < low52) {
-    console.warn(`[Validate] ${ticker}: price(${price}) < low52w(${low52}) → 자동 조정`);
-    adjusted.low52w = Math.floor(price * 0.90);
-  }
-
-  return adjusted;
-}
 
 // 🔴 [Red Team 방어 - R6] AWS PM2 롤백 스크립트를 위한 헬스체크 도입
 app.get('/api/health', (req, res) => {

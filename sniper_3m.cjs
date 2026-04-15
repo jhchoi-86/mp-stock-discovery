@@ -194,8 +194,20 @@ async function runSniper() {
                             const alertKey = `${stock.code}_${lastTs}`;
                             
                              if (!alertedCandles.has(alertKey)) {
-                                console.log(`[Sniper 3M] ALERT! ${stock.name} (${stock.code}) Absolute Signal at ${signal.current_price}`);
-                                const msg = `🎯 [스나이퍼-3M 절대신호]\n종목: ${stock.name}\n현재가: ${signal.current_price.toLocaleString()}원\n전략: 전일 추천주 실시간 돌파 포착`;
+                                // [v9.4.31] Prefer real-time price from Redis if available
+                                let displayPrice = signal.current_price;
+                                try {
+                                    const cached = await redis.get(`realtime:price:${stock.code}`);
+                                    if (cached) {
+                                        const rData = JSON.parse(cached);
+                                        if (Date.now() - rData.updatedAt < 300000) { // Valid for 5 min
+                                            displayPrice = rData.price;
+                                        }
+                                    }
+                                } catch (e) {}
+
+                                console.log(`[Sniper 3M] ALERT! ${stock.name} (${stock.code}) Absolute Signal at ${displayPrice}`);
+                                const msg = `🎯 [스나이퍼-3M 절대신호]\n종목: ${stock.name}\n현재가: ${displayPrice.toLocaleString()}원\n전략: 전일 추천주 실시간 돌파 포착`;
                                 
                                 // [TASK-N08] Retry logic for Telegram
                                 let sent = false;

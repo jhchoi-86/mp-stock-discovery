@@ -78,7 +78,7 @@ async function upsertSignalReport(ticker, indicators) {
                 return val ? BigInt(val) : 0n;
             })(),
             category: indicators.trendType || indicators.category || '관망',
-            hybridScore: Math.round(Number(indicators.score || indicators.hybridScore || 0)),
+            hybridScore: Math.round(Number(indicators.score || indicators.hybridScore || 0)) || 0,
             entry1Price: Math.round(Number(indicators.entryPrice1 || indicators.entry1Price || 0)),
             entry2Price: Math.round(Number(indicators.entryPrice2 || indicators.entry2Price || 0)),
             stopLossPrice: Math.round(Number(indicators.stopLoss || indicators.stopLossPrice || 0)),
@@ -161,7 +161,7 @@ async function saveDailyTop5(ticker, indicators, targetDate = null, prismaClient
             },
             update: {
                 name: indicators.name,
-                score: Math.round(indicators.score || 0),
+                score: Math.round(Number(indicators.score) || 0),
                 currentPrice: Math.round(indicators.currentPrice || 0),
                 yield: Number(indicators.changeRate || 0),
                 entryPrice1: Math.round(indicators.entryPrice1 || 0),
@@ -182,7 +182,7 @@ async function saveDailyTop5(ticker, indicators, targetDate = null, prismaClient
                 date: todayStr,
                 code: ticker,
                 name: indicators.name,
-                score: Math.round(indicators.score || 0),
+                score: Math.round(Number(indicators.score) || 0),
                 currentPrice: Math.round(indicators.currentPrice || 0),
                 yield: Number(indicators.changeRate || 0),
                 entryPrice1: Math.round(indicators.entryPrice1 || 0),

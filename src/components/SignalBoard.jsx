@@ -33,7 +33,7 @@ const SignalBoard = () => {
     
     // SSOT 응답 구조 { source, data: [] } 에 맞춰 데이터 추출 및 정규화
     const top5 = top5Data.map(s => ({
-        code: s.ticker,
+        code: s.ticker || s.code,
         name: s.name
     }));
 

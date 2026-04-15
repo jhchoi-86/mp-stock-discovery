@@ -233,6 +233,14 @@ model DailyStockSnapshot {
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime? @updatedAt          // 기존 데이터 호환을 위해 선택 사항으로 변경
 
+  // [v9.5.0] 신규 추가 — 수동 편집 컬럼
+  inst_buy_manual     Int?      @map("inst_buy_manual")
+  inst_buy2_manual    Int?      @map("inst_buy2_manual")
+  target_manual       Int?      @map("target_manual")
+  stop_loss_manual    Int?      @map("stop_loss_manual")
+  is_manual_price     Boolean   @default(false) @map("is_manual_price")
+  manual_updated_at   DateTime? @map("manual_updated_at")
+
   @@unique([ticker, syncDate], name: "ticker_syncDate")
   @@index([syncDate, isTop5])
   @@map("daily_stock_snapshots")

@@ -2,17 +2,17 @@
 const isWindows = process.platform === 'win32';
 const BASE      = isWindows
     ? 'C:/Users/danbe/Documents/Antigravity/주식종목발굴'
-    : '.';
+    : '/home/ubuntu/mp-stock-discovery';
 
 const pyInterpreter = isWindows
     ? `${BASE}/sniper_engine/venv/Scripts/python.exe`
-    : './sniper_engine/venv/bin/python';
+    : `${BASE}/sniper_engine/venv/bin/python`;
 
 const uvicornScript = isWindows
     ? `${BASE}/ai-service/venv/Scripts/uvicorn.exe`
-    : 'uvicorn';
+    : `${BASE}/ai-service/venv/bin/uvicorn`;
 
-const aiInterpreter = isWindows ? 'none' : './ai-service/venv/bin/python';
+const aiInterpreter = isWindows ? 'none' : `${BASE}/ai-service/venv/bin/python`;
 const aiArgs        = isWindows
     ? 'main:app --host 127.0.0.1 --port 8000 --workers 2'
     : '-m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2';
@@ -35,10 +35,9 @@ module.exports = {
     },
     {
       name: 'mp-stock-ai-api',
-      script: uvicornScript,
-      args: aiArgs,
+      script: `${BASE}/ai-service/venv/bin/python`,
+      args: '-m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2',
       cwd: `${BASE}/ai-service`,
-      interpreter: aiInterpreter,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,
@@ -47,6 +46,7 @@ module.exports = {
       wait_ready: true,
       listen_timeout: 30000,
       kill_timeout: 30000,
+      env_file: `${BASE}/.env`,
       env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
     },
     {
@@ -65,9 +65,9 @@ module.exports = {
     },
     {
       name: 'mp-stock-realtime-engine',
-      script: `${BASE}/sniper_engine/realtime_engine.py`,
+      script: `${BASE}/sniper_engine/venv/bin/python`,
+      args: `${BASE}/sniper_engine/realtime_engine.py`,
       cwd: `${BASE}`,
-      interpreter: pyInterpreter,
       instances: 1,
       exec_mode: 'fork',
       autorestart: true,

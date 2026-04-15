@@ -56,11 +56,12 @@ class PublishingService {
             }
 
             const processedStocks = top5.map(s => {
-                const currentStatus = statusMap[s.code] || s.status || '분석완료';
+                const stockCode = s.code || s.ticker;
+                const currentStatus = statusMap[stockCode] || s.status || '분석완료';
                 const status = (['보유 중', '목표 도달', '손절 완료', '체결'].includes(currentStatus)) ? currentStatus : '분석완료';
                 
                 return {
-                    code: s.code,
+                    code: stockCode,
                     name: s.name,
                     score: s.score || s.total_score || 0,
                     category: s.category || '추세 지속형',
@@ -115,15 +116,15 @@ class PublishingService {
                             // Mandatory Snapshot for SSOT
                             console.log(`[PublishingService] Creating Snapshot for ${s.code}...`);
                             const snapshotPayload = {
-                                code: s.code,
+                                ticker: s.code,
                                 name: s.name,
                                 category: s.category || '기타',
-                                score: Math.round(s.score || 0),
+                                hybridScore: Math.round(s.score || s.total_score || 0) || 0,
                                 currentPrice: s.currentPrice || 0,
-                                entryPrice1: s.entryPrice1 || 0,
-                                entryPrice2: s.entryPrice2 || 0,
-                                stopLoss: s.stopLoss || 0,
-                                targetPrice1: s.targetPrice1 || 0,
+                                entry1Price: s.entryPrice1 || 0,
+                                entry2Price: s.entryPrice2 || 0,
+                                stopLossPrice: s.stopLoss || 0,
+                                targetPrice: s.targetPrice1 || 0,
                                 yield: s.yield || 0,
                                 tradeAmount: (() => {
                                     const val = String(s.tradeAmount || 0).replace(/[^0-9]/g, '');
@@ -135,12 +136,11 @@ class PublishingService {
                                         return val ? Number(val) : 0;
                                     }
                                 })(),
-                                foreignBuy: String(s.foreignBuy || 0),
-                                instBuy: String(s.instBuy || 0),
+                                foreignNet: String(s.foreignBuy || 0),
+                                institutionNet: String(s.instBuy || 0), // Use institutionNet to match schema
                                 aiComment: s.aiComment || '',
-                                styleTag: s.styleTag || '',
-                                adx: Math.round(s.adx || 0),
-                                volRate: parseFloat(String(s.volRate || s.vol_rate || 0).replace(/[^0-9.-]/g, '')) || 0,
+                                isTop5: true, // [ADD] SignalBoard visibility
+                                syncDate: new Date(new Date().setHours(0,0,0,0)), // [ADD] Truncated date for query consistency
                                 createdAt: new Date()
                             };
                             
@@ -149,7 +149,7 @@ class PublishingService {
                                     data: snapshotPayload
                                 });
                             } catch (snapErr) {
-                                console.error(` [PublishingService] Snapshot FAILED for ${snapshotPayload.code}:`, snapErr.message);
+                                console.error(` [PublishingService] Snapshot FAILED for ${snapshotPayload.ticker}:`, snapErr.message);
                             }
                         }
                     });

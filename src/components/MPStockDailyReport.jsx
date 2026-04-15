@@ -49,6 +49,7 @@ const MPStockDailyReport = ({ data, isLoading }) => {
     const groups = {};
     stocks.forEach(s => {
       const date = s.recommended_at;
+      if (!date || date === 'undefined') return; // [v9.5.0] Filter out invalid dates
       if (!groups[date]) groups[date] = [];
       groups[date].push(s);
     });
@@ -56,18 +57,29 @@ const MPStockDailyReport = ({ data, isLoading }) => {
   }, [stocks]);
 
   const dates = useMemo(() => {
-    return Object.keys(groupedStocks).sort((a, b) => {
+    return Object.keys(groupedStocks)
+      .filter(d => d && d !== 'undefined') // [v9.5.0] Double check filter
+      .sort((a, b) => {
         const [am, ad] = a.split('. ').map(v => v.replace('.', ''));
         const [bm, bd] = b.split('. ').map(v => v.replace('.', ''));
-        if (am !== bm) return bm.localeCompare(am);
-        return bd.localeCompare(ad);
+        if (am && bm && am !== bm) return bm.localeCompare(am);
+        if (ad && bd) return bd.localeCompare(ad);
+        return 0;
     });
   }, [groupedStocks]);
+
   useEffect(() => {
-    if (!selectedDate && dates.length > 0 && !selectedTag) {
-      setSelectedDate(dates[0]);
+    // [v9.5.0] Prioritize latest saved sync history as default
+    if (historyTags && historyTags.length > 0 && !selectedTag && !selectedDate) {
+      setSelectedTag(historyTags[0].tagName);
+      return;
     }
-  }, [dates, selectedTag]);
+    
+    if (!selectedDate && dates.length > 0 && !selectedTag) {
+      const validDate = dates.find(d => d && d !== 'undefined');
+      if (validDate) setSelectedDate(validDate);
+    }
+  }, [dates, selectedTag, selectedDate, historyTags]);
 
   // Load Historical Details (v8.8.18)
   useEffect(() => {
@@ -132,8 +144,10 @@ const MPStockDailyReport = ({ data, isLoading }) => {
     // [v9.1.6] 히스토리 태그가 선택된 경우, 실시간 DB 데이터 병합을 생략하여 시점 데이터를 보존함
     if (!selectedTag && dbTop5 && dbTop5.data) {
       dbTop5.data.forEach(db => {
-        stocksMap.set(db.ticker, {
-          code: db.ticker,
+        const dbCode = db.ticker || db.code;
+        if (!dbCode) return;
+        stocksMap.set(dbCode, {
+          code: dbCode,
           name: db.name,
           score: db.score,
           current_price: db.currentPrice,
@@ -157,7 +171,8 @@ const MPStockDailyReport = ({ data, isLoading }) => {
 
     // 3. Merge with currentStocks (from JSON), ensuring no duplicates and preserving unique fields
     currentStocks.forEach(s => {
-      const code = s.code;
+      const code = s.ticker || s.code;
+      if (!code) return;
       const baseEntry1 = s.entryPrice1 || s.entry_price || s.entry1 || 0;
       const baseEntry2 = s.entryPrice2 || s.entry_price_2 || s.entry2 || 0;
       const baseSL = s.stopLoss || s.stop_loss || s.sl || 0;
@@ -317,7 +332,9 @@ const MPStockDailyReport = ({ data, isLoading }) => {
           >
               <optgroup label="📅 최근 일자별 보고서">
                 {dates.map(date => (
-                    <option key={date} value={date}>{date || '최근'} 추천 포트폴리오</option>
+                    <option key={date} value={date}>
+                        {(date && date !== 'undefined') ? `${date} 추천 포트폴리오` : '추천 포트폴리오'}
+                    </option>
                 ))}
               </optgroup>
               {historyTags && historyTags.length > 0 && (
@@ -365,7 +382,7 @@ const MPStockDailyReport = ({ data, isLoading }) => {
       </div>
 
       <div style={{display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '1.25rem', fontWeight: 800, color: '#fff', margin: '2.5rem 0 1rem 0'}}>
-        <Flame className="text-orange-500" size={20} fill="#f97316" /> 종목별 상세 리뷰 ({selectedTag || selectedDate || '최근'})
+        <Flame className="text-orange-500" size={20} fill="#f97316" /> 종목별 상세 리뷰 ({selectedTag || (selectedDate && selectedDate !== 'undefined' ? selectedDate : '최근')})
       </div>
       <div className="lp-report-card">
         <div className="lp-report-table-wrapper">
