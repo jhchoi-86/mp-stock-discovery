@@ -35,8 +35,9 @@ module.exports = {
     },
     {
       name: 'mp-stock-ai-api',
-      script: `${BASE}/ai-service/venv/bin/python`,
-      args: '-m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2',
+      script: isWindows ? uvicornScript : 'main:app', // Handle Windows differently if needed, but on Linux we'll use interpreter + args
+      interpreter: aiInterpreter === 'none' ? undefined : aiInterpreter,
+      args: isWindows ? aiArgs : '-m uvicorn main:app --host 127.0.0.1 --port 8000 --workers 2',
       cwd: `${BASE}/ai-service`,
       instances: 1,
       exec_mode: 'fork',
@@ -65,8 +66,8 @@ module.exports = {
     },
     {
       name: 'mp-stock-realtime-engine',
-      script: `${BASE}/sniper_engine/venv/bin/python`,
-      args: `${BASE}/sniper_engine/realtime_engine.py`,
+      script: `${BASE}/sniper_engine/realtime_engine.py`,
+      interpreter: pyInterpreter,
       cwd: `${BASE}`,
       instances: 1,
       exec_mode: 'fork',
