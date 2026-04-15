@@ -21,6 +21,7 @@ dns.setDefaultResultOrder('ipv4first');
 
 const { calculateTotalScore, getCategory, getStars } = require('./src/utils/scoreEngine.cjs');
 const { toKST, getKSTDateString, nowKST } = require('./src/utils/kst.cjs'); // [TASK-CC02] KST 공통 유틸 도입
+const { enrichWithManualPrices } = require('./src/utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
 
 // 플랜 3: 백엔드 무결성 자동 검증 시스템 가동
 const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
@@ -399,7 +400,9 @@ app.get('/api/public/top5-strategy', async (req, res) => {
       return res.status(404).json({ error: 'Strategy data not found', data: [] });
     }
     const stocks = Array.isArray(latest.snapshot) ? latest.snapshot : [];
-    res.json({ success: true, tagName: latest.tagName, savedAt: latest.savedAt, data: stocks });
+    // [v9.4.32] Enrich snapshot from SyncSaveLog with latest Manual/DB prices
+    const enriched = await enrichWithManualPrices(stocks, prisma, latest.savedAt);
+    res.json({ success: true, tagName: latest.tagName, savedAt: latest.savedAt, data: enriched });
   } catch (e) {
     console.error('[top5-strategy] DB read failed:', e.message);
     res.status(500).json({ error: 'Failed to fetch strategy data', data: [] });

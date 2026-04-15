@@ -6,6 +6,8 @@ const router = express.Router();
 const VIP_LOGS_DIR = path.join(__dirname, '../../data/vip_logs');
 
 const { getFullPriceCache } = require('../utils/fullUniversePoller.cjs');
+const { enrichWithManualPrices } = require('../utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
+const { PrismaClient } = require('@prisma/client'); // Required for standalone prisma usage
 
 // Ensure directory exists
 if (!fs.existsSync(VIP_LOGS_DIR)) {
@@ -49,7 +51,10 @@ const fetchReportData = async (prisma, filePath, fallbackDate = null) => {
                     recommended_at: (latestSync.tagName || '').split(' ')[0].split('-').slice(1).join('. ') + '.'
                 }));
                 header.report_date = (latestSync.tagName || '').split(' ')[0].split('-').slice(1).join('. ') + '..';
-                return { stocks, header, source: 'sync_save_log', tagName: latestSync.tagName };
+                
+                // [v9.4.32] Enrich snapshot with latest manual prices
+                const enrichedStocks = await enrichWithManualPrices(stocks, prisma, latestSync.savedAt);
+                return { stocks: enrichedStocks, header, source: 'sync_save_log', tagName: latestSync.tagName };
             }
         } catch (e) {
             console.error('[PublicReport] SyncSaveLog Error:', e.message);

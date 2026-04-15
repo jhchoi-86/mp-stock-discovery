@@ -8,6 +8,7 @@ const path = require('path');
 
 const { getKstDateString } = require('../utils/kst.cjs');
 const redis = require('../../platform/infra/redis/client.cjs'); // [v9.4.31] Integrated for real-time price injection
+const { enrichWithManualPrices } = require('../utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
 const VIP_LOGS_DIR = path.join(__dirname, '../../data/vip_logs');
 
 /**
@@ -51,9 +52,14 @@ router.get('/', async (req, res) => {
                     code: s.code,
                     name: s.name,
                     score: s.score || 0,
-                    date: date
+                    date: date,
+                    entry1: s.entry1,
+                    entry2: s.entry2,
+                    target: s.target,
+                    sl: s.sl
                 }));
-                const enriched = await enrichWithRealtime(mapped);
+                const manuallyEnriched = await enrichWithManualPrices(mapped, prisma, date);
+                const enriched = await enrichWithRealtime(manuallyEnriched);
                 return res.json(enriched);
             }
         }
