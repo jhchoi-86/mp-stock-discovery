@@ -1,5 +1,13 @@
 # MP-STOCK Release Notes
 
+## [v9.4.36] - 2026-04-16
+### 🚩 상태: 자동화 배포 완료 (Integrated Auto-Sync & Manual Price Edit)
+### 🛠 주요 변경 및 조치 사항
+1. **[NEW] Integrated Auto-Sync Pipeline**: 7-Timeframe BBW 신호 엔진 통합 및 관리자용 수동 동기화 스크립트(`trigger_manual_sync.py`)를 추가했습니다.
+2. **[NEW] Manual Price Editing**: 종목별 실시간 가격 수정 기능을 도입했습니다. (`PriceEditSection.jsx`, `usePriceEdit.js`)
+3. **[FIX] Price Enrichment Logic**: 수동으로 수정된 가격이 자동 동기화 시 데이터에 우선 반영되도록 `manualPriceEnricher.cjs`를 적용했습니다.
+4. **[DEPLOY] Deployment Automation Fix**: 리눅스 서버 배포 시 Nginx Web Root(`/var/www/dist`) 동기화 누락 문제를 해결하고 `deploy.sh`에 반영했습니다.
+
 ## [v9.4.33] - 2026-04-15
 ### 🚩 상태: 자동화 배포 완료 (Automated Release)
 ### 🛠 주요 변경 사항

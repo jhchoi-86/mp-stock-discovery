@@ -28,7 +28,9 @@ const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
 verifyIntegrity();
 
 const cron = require('node-cron');
-const { calculateSignals, resampleChartData } = require('./analyzer.cjs');
+const { calculateSignals, resampleChartData, runBatchAnalysis } = require('./analyzer.cjs');
+const { sendAlert: _sendSyncAlert } = require('./lib/alert_manager.cjs');
+const { TIMEFRAMES, ANALYZER_LOCK_TTL } = require('./lib/constants.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
 const { startNightlyMonitor } = require('./src/utils/nightlyMonitor.cjs');
 const { startFullUniversePoller, getCachedPrice, getFullPriceCache, updateCachedPrice } = require('./src/utils/fullUniversePoller.cjs');
@@ -2323,6 +2325,76 @@ app.post('/api/auto-sync', async (req, res) => {
 
 // --- [End of Admin Routes] ---
 
+
+// ──────────────────────────────────────────────────────────────────
+// [MP-TASK-2026-003] 수동 동기화 API
+// POST /api/sync/manual-signal
+// 인증: authenticateToken → isAdmin (ADMIN 역할만 허용)
+// ──────────────────────────────────────────────────────────────────
+app.post('/api/sync/manual-signal', authenticateToken, isAdmin, async (req, res) => {
+    const { force = false } = req.body || {};
+    const dayjs = require('dayjs');
+
+    const lockAcquired = await redis.set('manual_sync_lock', '1', 'EX', ANALYZER_LOCK_TTL, 'NX');
+    if (!lockAcquired) {
+        return res.status(409).json({ success: false, error: '동기화 실행 중', code: 'LOCK_BUSY' });
+    }
+
+    try {
+        if (!force) {
+            const stored = await redis.get('phase1_data_ready');
+            const today  = dayjs().format('YYYYMMDD');
+            if (stored !== today) {
+                return res.status(400).json({
+                    success: false,
+                    error:   `당일 사전저장 미완료 (저장일: ${stored || '없음'})`,
+                    code:    'SNAPSHOT_NOT_READY',
+                });
+            }
+        } else {
+            _sendSyncAlert('WARN', 'manual_sync_force', '강제 수동 실행 — 사전저장 미완료 상태').catch(() => {});
+        }
+
+        const analyzerLock = await redis.set('analyzer_lock', '1', 'EX', ANALYZER_LOCK_TTL, 'NX');
+        if (!analyzerLock) {
+            return res.status(409).json({ success: false, error: 'analyzer 실행 중', code: 'ANALYZER_BUSY' });
+        }
+
+        const startTs = Date.now();
+        try {
+            await runBatchAnalysis(null, TIMEFRAMES, { useDBCache: true });
+            broadcastToClients({ type: 'sync_complete', tfCount: TIMEFRAMES.length });
+        } finally {
+            await redis.del('analyzer_lock');
+        }
+
+        const elapsed       = ((Date.now() - startTs) / 1000).toFixed(1);
+        const snapshotTs    = await redis.get('phase1_snapshot_ts');
+        const tickerCount   = await redis.get('phase1_ticker_count');
+        const modifiedCount = await redis.get('phase2_modified_count') || '0';
+
+        _sendSyncAlert('INFO', 'manual_sync_complete',
+            `수동 동기화 완료 | 기준: ${snapshotTs || '-'} | ${tickerCount || '-'}종목 × 7TF | 소요 ${elapsed}초`
+        ).catch(() => {});
+
+        return res.status(200).json({
+            success: true,
+            data: {
+                elapsed:       parseFloat(elapsed),
+                tickerCount:   parseInt(tickerCount) || 0,
+                modifiedCount: parseInt(modifiedCount) || 0,
+                tfCount:       TIMEFRAMES.length,
+            },
+        });
+
+    } catch (err) {
+        console.error('[ManualSync] 수동 동기화 실패:', err.message);
+        _sendSyncAlert('CRITICAL', 'manual_sync_error', `수동 동기화 실패: ${err.message}`).catch(() => {});
+        return res.status(500).json({ success: false, error: '동기화 실패', code: 'INTERNAL_ERROR' });
+    } finally {
+        await redis.del('manual_sync_lock');
+    }
+});
 
 // 🔴 [Red Team 방어 - R6] AWS PM2 롤백 스크립트를 위한 헬스체크 도입
 app.get('/api/health', (req, res) => {

@@ -79,6 +79,20 @@ module.exports = {
       env_file: `${BASE}/.env`,
       env: { PYTHONPATH: '.', TZ: 'Asia/Seoul' },
       env_production: { PYTHONPATH: '.', TZ: 'Asia/Seoul' }
+    },
+    {
+      name: 'mp-sync-scheduler',
+      script: `${BASE}/sync_scheduler.cjs`,
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '600M',
+      wait_ready: true,
+      listen_timeout: 30000,
+      kill_timeout: 30000,
+      env_file: `${BASE}/.env`,
+      env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
     }
   ]
 };
