@@ -104,6 +104,63 @@ const SystemManagementTab = () => {
                 </div>
             </div>
 
+            {/* 🚀 New: 데이터 동기화 파이프라인 제어 섹션 */}
+            <div className="card" style={{ padding: '1.5rem', border: '1px solid rgba(59, 130, 246, 0.3)', background: 'rgba(59, 130, 246, 0.05)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+                    <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff' }}>
+                        <Activity size={24} color="#3b82f6" /> 데이터 동기화 파이프라인 (v2.1)
+                    </h3>
+                    <div style={{ display: 'flex', gap: '0.75rem' }}>
+                        <button 
+                            className="btn-primary" 
+                            style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}
+                            onClick={async () => {
+                                if (!window.confirm("수동 전체 분석을 시작하시겠습니까?\n이 작업은 서버 부하를 유발할 수 있으며 수 분이 소요됩니다.")) return;
+                                try {
+                                    // Internal secret은 서버 환경변수에서 처리되므로 클라이언트에서는 일반 API 호출
+                                    const res = await axiosClient.post('/api/sync/manual-signal', { force: true });
+                                    if (res.data.success) alert("수동 동기화 요청이 성공적으로 전송되었습니다.");
+                                } catch (err) {
+                                    alert(`동기화 요청 실패: ${err.response?.data?.error || err.message}`);
+                                }
+                            }}
+                        >
+                            수동 분석 시작 (Manual Sync)
+                        </button>
+                    </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+                    <div className="card" style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Phase 1 (사전저장)</div>
+                        <div style={{ fontWeight: 'bold', color: '#fff', marginTop: '0.5rem' }}>
+                            {resources?.sync?.phase1Ready ? '✅ 준비 완료' : '⌛ 대기 중'}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            기준: {resources?.sync?.lastSnapshot || '없음'}
+                        </div>
+                    </div>
+                    <div className="card" style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Phase 2 (수정주가)</div>
+                        <div style={{ fontWeight: 'bold', color: '#fff', marginTop: '0.5rem' }}>
+                            마지막 성공: {resources?.sync?.lastFullSync || '미기록'}
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            평균 소요: {resources?.sync?.avgSyncElapsed || '-'} 초
+                        </div>
+                    </div>
+                    <div className="card" style={{ background: 'rgba(0,0,0,0.2)', padding: '1rem' }}>
+                        <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Phase 3 (장중증분)</div>
+                        <div style={{ fontWeight: 'bold', color: '#10b981', marginTop: '0.5rem' }}>
+                            ● ACTIVE
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                            동기화 주기: 10분
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             {/* 3. 장애 이력 및 처리 현황 */}
             <div className="card" style={{ padding: '0' }}>
                 <div style={{ padding: '1.25rem', borderBottom: '1px solid var(--glass-border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

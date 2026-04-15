@@ -35,6 +35,9 @@ model Candle {
   isValid      Boolean  @default(true)
   fetchedAt    DateTime
   candleAt     DateTime
+
+  // [MP-TASK-2026-003] upsert를 위한 unique 제약
+  @@unique([instrumentId, timeframe, candleAt])
 }
 
 // ── analysis_results 스키마
@@ -170,4 +173,21 @@ model ScanRun {
   duration       Int      // ms
   startedAt      DateTime
   completedAt    DateTime @default(now())
+}
+
+model SystemStat {
+  @@schema("system_audit")
+  id               Int      @id @default(autoincrement())
+  date             String   @unique
+  visitorCount     Int      @default(0)
+  loginCount       Int      @default(0)
+  signupCount      Int      @default(0)
+  maxConcurrent    Int      @default(0)
+  freeUserCount    Int      @default(0)
+  paidUserCount    Int      @default(0)
+  cpuUsageAvg      Float?
+  memUsageAvg      Float?
+  diskUsageAvg     Float?
+  healthStatus     String   @default("HEALTHY")
+  updatedAt        DateTime @updatedAt
 }

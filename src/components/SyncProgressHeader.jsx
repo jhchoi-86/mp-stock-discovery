@@ -17,7 +17,7 @@ const SyncProgressHeader = ({ onUpdateRequested, fallbackCount = 0 }) => {
                 {isSyncing ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                         <span style={{ color: 'var(--primary)', fontSize: '0.85rem', fontWeight: 'bold', whiteSpace: 'nowrap' }}>
-                            {progress.group ? `${progress.group} 분석 중 (${progress.timeframe}) — ${progress.pct}%` : `${progress.timeframe ? `[${progress.timeframe}] ` : ''}${progress.current}/${progress.total} (${progress.pct}%)`}
+                            {progress.group ? `${progress.group} (${progress.timeframe}): ${progress.pct}%` : `${progress.timeframe ? `[${progress.timeframe}] ` : ''}${progress.current}/${progress.total} (${progress.pct}%)`}
                         </span>
                         {/* 미니 프로그레스 바 */}
                         <div style={{ 

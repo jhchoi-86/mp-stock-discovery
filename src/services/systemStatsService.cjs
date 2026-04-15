@@ -116,12 +116,32 @@ const systemStatsService = {
       diskUsage = 0;
     }
 
+    // 4. Sync Pipeline Status (v2.1)
+    let syncStatus = {};
+    try {
+      const [phase1Ready, lastSnapshot, lastFullSync, avgSyncElapsed] = await Promise.all([
+        redisClient.get('phase1_success'),
+        redisClient.get('phase1_snapshot_ts'),
+        redisClient.get('phase2_last_sync_ts'),
+        redisClient.get('phase2_avg_elapsed')
+      ]);
+      syncStatus = {
+        phase1Ready: phase1Ready === 'true',
+        lastSnapshot: lastSnapshot || '없음',
+        lastFullSync: lastFullSync || (phase1Ready === 'true' ? '진행 예정' : '미확인'),
+        avgSyncElapsed: parseInt(avgSyncElapsed) || 0
+      };
+    } catch (e) {
+      console.warn('[SystemStats] Sync Status Fetch Error:', e.message);
+    }
+
     return {
       cpuUsage: parseFloat(cpuUsage),
       memUsage: parseFloat(memUsage),
       diskUsage: parseFloat(diskUsage),
       uptime: os.uptime(),
-      health: (cpuUsage < 90 && memUsage < 95) ? 'HEALTHY' : 'WARN'
+      health: (cpuUsage < 90 && memUsage < 95) ? 'HEALTHY' : 'WARN',
+      sync: syncStatus
     };
   },
 
@@ -131,8 +151,8 @@ const systemStatsService = {
   async archiveDailyStats() {
     const today = this.getToday();
     try {
-      const freeUserCount = await prisma.user.count({ where: { role: { in: ['FREE_USER', 'FREE_TRIAL', 'FREE', 'PENDING'] } } });
-      const paidUserCount = await prisma.user.count({ where: { role: { in: ['PAID', 'PRO_USER'] } } });
+      const freeUserCount = await prisma.user.count({ where: { role: { in: ['FREE', 'FREE_TRIAL', 'PENDING'] } } });
+      const paidUserCount = await prisma.user.count({ where: { role: { in: ['PAID'] } } });
       
       const resources = await this.getSystemResources();
 

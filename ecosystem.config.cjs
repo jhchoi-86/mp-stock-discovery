@@ -87,6 +87,22 @@ module.exports = {
       kill_timeout: 5000,
       env_file: `${BASE}/.env`,
       env: { PYTHONPATH: '.', TZ: 'Asia/Seoul' },
+      env_production: { PYTHONPATH: '.', TZ: 'Asia/Seoul' }
+    },
+    // ── [MP-TASK-2026-003] P5: 자동 동기화 스케줄러
+    // P1~P4 절대 수정 금지. 이 항목만 추가.
+    {
+      name: 'sync-scheduler',
+      script: `${BASE}/sync_scheduler.cjs`,
+      cwd: `${BASE}`,
+      instances: 1,
+      exec_mode: 'fork',
+      autorestart: true,
+      watch: false,
+      max_memory_restart: '300M',
+      kill_timeout: 30000,
+      env_file: `${BASE}/.env`,
+      env: { NODE_ENV: 'production', TZ: 'Asia/Seoul' },
       env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
     }
   ]

@@ -478,4 +478,109 @@ if (require.main === module) {
     })();
 }
 
-module.exports = { calculateSignals, fetchHybridHistory, getKisAccessToken, resampleChartData };
+
+// ──────────────────────────────────────────────────────────────────
+// [MP-TASK-2026-003] runBatchAnalysis — 배치 분석 함수 (export)
+// ──────────────────────────────────────────────────────────────────
+
+async function runBatchAnalysis(symbols, timeframes, options = {}) {
+    const { useDBCache = false } = options;
+    const tfs = timeframes && timeframes.length > 0 ? timeframes : ['1D'];
+    const BATCH_SIZE = parseInt(process.env.SYNC_BATCH_SIZE) || 10;
+    const limit = pLimit(BATCH_SIZE);
+
+    let stocks;
+    if (!symbols) {
+        stocks = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+    } else {
+        const master = JSON.parse(fs.readFileSync(STOCK_MASTER_FILE, 'utf8'));
+        const symbolSet = new Set(symbols);
+        stocks = master.filter(s => symbolSet.has(s.code));
+        if (stocks.length === 0) {
+            stocks = symbols.map(s => ({ code: s, name: s, market: 'KOSPI' }));
+        }
+    }
+
+    const kisToken = useDBCache ? null : await getKisAccessToken().catch(() => null);
+    const allSignals = [];
+
+    for (const tf of tfs) {
+        const tasks = stocks.map(stock => limit(async () => {
+            let retries = 3;
+            while (retries > 0) {
+                try {
+                    let finalHistory;
+
+                    if (useDBCache) {
+                        finalHistory = await loadHistoryFromDB(stock.code, tf);
+                    } else {
+                        const days     = { '1D':365, '1W':730, '2D':365, '4H':90, '2H':60, '1H':60, '30M':30 }[tf] || 90;
+                        const interval = { '1D':'1d', '1W':'1wk', '2D':'1d', '4H':'1h', '2H':'1h', '1H':'1h', '30M':'30m' }[tf] || '1d';
+                        const history  = await fetchHybridHistory(stock, days, interval, kisToken);
+                        if (tf === '2H') finalHistory = resampleChartData(history, 2, '2H');
+                        else if (tf === '4H') finalHistory = resampleChartData(history, 4, '4H');
+                        else if (tf === '2D') finalHistory = resampleChartData(history, 2, '2D');
+                        else finalHistory = history;
+                    }
+
+                    if (!finalHistory || !finalHistory.close || finalHistory.close.length === 0) return null;
+
+                    const signal = calculateSignals(finalHistory, tf);
+                    if (signal) return { ...signal, code: stock.code, name: stock.name };
+                    return null;
+                } catch (err) {
+                    retries--;
+                    if (retries > 0) await new Promise(r => setTimeout(r, Math.pow(2, 3 - retries) * 200));
+                    else console.error(`[runBatchAnalysis] ${stock.code} ${tf} 실패: ${err.message}`);
+                }
+            }
+            return null;
+        }));
+
+        const results = await Promise.all(tasks);
+        allSignals.push(...results.filter(r => r !== null));
+    }
+
+    const currentSigs = fs.existsSync(SIGNALS_FILE)
+        ? JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'))
+        : [];
+    const merged = [
+        ...currentSigs.filter(s => !tfs.includes(s.timeframe)),
+        ...allSignals,
+    ].slice(-5000);
+    fs.writeFileSync(SIGNALS_FILE + '.tmp', JSON.stringify(merged, null, 2));
+    if (fs.existsSync(SIGNALS_FILE)) fs.unlinkSync(SIGNALS_FILE);
+    fs.renameSync(SIGNALS_FILE + '.tmp', SIGNALS_FILE);
+
+    if (allSignals.length > 0) {
+        const dbRes = await BulkSyncService.bulkUpsertSnapshots(allSignals);
+        console.log(`[runBatchAnalysis] DB Sync: ${dbRes.success ? 'OK' : 'FAIL'} (${allSignals.length}건)`);
+    }
+
+    console.log(`[runBatchAnalysis] 완료 — ${allSignals.length}건 (${tfs.join(',')}, useDBCache=${useDBCache})`);
+    return allSignals;
+}
+
+async function loadHistoryFromDB(symbol, tf) {
+    const inst = await prisma.instrument.findFirst({ where: { symbol, isActive: true } });
+    if (!inst) return null;
+
+    const candles = await prisma.candle.findMany({
+        where:   { instrumentId: inst.id, timeframe: tf, isValid: true },
+        orderBy: { candleAt: 'asc' },
+        take:    730,
+    });
+
+    if (candles.length === 0) return null;
+
+    return {
+        open:   candles.map(c => c.open),
+        high:   candles.map(c => c.high),
+        low:    candles.map(c => c.low),
+        close:  candles.map(c => c.close),
+        volume: candles.map(c => c.volume),
+        time:   candles.map(c => Math.floor(c.candleAt.getTime() / 1000)),
+    };
+}
+
+module.exports = { calculateSignals, fetchHybridHistory, getKisAccessToken, resampleChartData, runBatchAnalysis };

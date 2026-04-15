@@ -1,5 +1,21 @@
 # MP-STOCK Release Notes
 
+## [v9.4.41] - 2026-04-16
+### 🚩 상태: [Stable] 통합 자동 동기화(v2.1) 하드닝 및 관리자 UI 배포 완결
+### 🛠 주요 변경 및 조치 사항
+1. **[HARDEN] Integrated Sync Concurrency**: `sync_scheduler.cjs` 및 `analyzer.cjs`에 Redis 전역 락(`analyzer_lock`, `manual_sync_lock`)을 적용하여 프로세스 간 경합을 차단했습니다.
+2. **[UI/UX] Admin Pipeline Control**: `SystemManagementTab.jsx`에 실시간 진행률(SSE) 연동 및 1% 단위 프로그레스 바를 탑재한 현황판을 추가했습니다.
+3. **[NEW] Manual Sync Trigger**: 관리자 대시보드에서 분석 엔진을 즉시 실행하고 단계를 선택할 수 있는 수동 트리거 버튼을 구현했습니다.
+4. **[FIX] Production Stability Patch**: 상용 DB의 `Role` Enum 및 `SystemStat` 모델 누락 이슈를 패치하여 일일 통계 아카이빙 기능을 복구했습니다.
+
+## [v9.4.36] - 2026-04-16
+### 🚩 상태: 자동화 배포 완료 (Integrated Auto-Sync & Manual Price Edit)
+### 🛠 주요 변경 및 조치 사항
+1. **[NEW] Integrated Auto-Sync Pipeline**: 7-Timeframe BBW 신호 엔진 통합 및 관리자용 수동 동기화 스크립트(`trigger_manual_sync.py`)를 추가했습니다.
+2. **[NEW] Manual Price Editing**: 종목별 실시간 가격 수정 기능을 도입했습니다. (`PriceEditSection.jsx`, `usePriceEdit.js`)
+3. **[FIX] Price Enrichment Logic**: 수동으로 수정된 가격이 자동 동기화 시 데이터에 우선 반영되도록 `manualPriceEnricher.cjs`를 적용했습니다.
+4. **[DEPLOY] Deployment Automation Fix**: 리눅스 서버 배포 시 Nginx Web Root(`/var/www/dist`) 동기화 누락 문제를 해결하고 `deploy.sh`에 반영했습니다.
+
 ## [v9.4.33] - 2026-04-15
 ### 🚩 상태: 자동화 배포 완료 (Automated Release)
 ### 🛠 주요 변경 사항
