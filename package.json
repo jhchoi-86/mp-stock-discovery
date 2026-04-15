@@ -9,7 +9,7 @@
     "lint": "eslint src/ --max-warnings=0",
     "prebuild": "npm run check:circular && npm run lint",
     "build": "tsc && vite build",
-    "release": "npm version patch --no-git-tag-version && cmd /c \"node_modules/.bin/vite.cmd build\" && cmd /c \"C:/Users/danbe/AppData/Roaming/npm/pm2.cmd reload ecosystem.config.cjs --env production\"",
+    "release": "npm version patch --no-git-tag-version && npm run build && npx pm2 reload ecosystem.config.cjs --env production",
     "safe-deploy": "node scripts/deploy_safe.cjs",
     "preview": "vite preview --host 0.0.0.0 --port 5173",
     "seal": "node seal.cjs",
