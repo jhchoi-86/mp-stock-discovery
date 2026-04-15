@@ -7,7 +7,31 @@ const fs = require('fs');
 const path = require('path');
 
 const { getKstDateString } = require('../utils/kst.cjs');
+const redis = require('../../platform/infra/redis/client.cjs'); // [v9.4.31] Integrated for real-time price injection
 const VIP_LOGS_DIR = path.join(__dirname, '../../data/vip_logs');
+
+/**
+ * [v9.4.31] Redis 실시간 가격 주입 헬퍼
+ */
+async function enrichWithRealtime(stocks) {
+    return await Promise.all(stocks.map(async (stock) => {
+        let realtimeData = null;
+        try {
+            const cached = await redis.get(`realtime:price:${stock.code}`);
+            if (cached) realtimeData = JSON.parse(cached);
+        } catch (err) {
+            console.warn(`[DailyTop5] Redis 조회 실패 ${stock.code}:`, err.message);
+        }
+
+        return {
+            ...stock,
+            current_price:    realtimeData?.price      ?? stock.current_price ?? null,
+            change_rate:      realtimeData?.changeRate  ?? stock.change_rate  ?? null,
+            price_time:       realtimeData?.time        ?? stock.price_time   ?? null,
+            is_realtime:      realtimeData !== null
+        };
+    }));
+}
 
 // Get Daily Top 5 for a specific date
 router.get('/', async (req, res) => {
@@ -23,14 +47,14 @@ router.get('/', async (req, res) => {
             const strategy = JSON.parse(fs.readFileSync(strategyPath, 'utf8'));
             if (strategy.stocks && strategy.stocks.length > 0) {
                 console.log(`[DailyTop5 API] Using landing_strategy.json as Primary Source`);
-                const todayStr = getKstDateString();
                 const mapped = strategy.stocks.slice(0, 5).map(s => ({
                     code: s.code,
                     name: s.name,
                     score: s.score || 0,
                     date: date
                 }));
-                return res.json(mapped);
+                const enriched = await enrichWithRealtime(mapped);
+                return res.json(enriched);
             }
         }
 
@@ -42,7 +66,8 @@ router.get('/', async (req, res) => {
         });
 
         if (top5 && top5.length > 0) {
-            return res.json(top5);
+            const enriched = await enrichWithRealtime(top5);
+            return res.json(enriched);
         }
 
         console.log(`[DailyTop5 API] No DB entries for ${date}. Falling back to latest.json`);
@@ -62,7 +87,8 @@ router.get('/', async (req, res) => {
                     score: s.score || 0,
                     date: date
                 }));
-                return res.json(mapped);
+                const enriched = await enrichWithRealtime(mapped);
+                return res.json(enriched);
             }
         }
     } catch (fileErr) {
@@ -89,7 +115,8 @@ router.get('/', async (req, res) => {
                 score: s.score || 0,
                 date: date
             }));
-            return res.json(mapped);
+            const enriched = await enrichWithRealtime(mapped);
+            return res.json(enriched);
         }
     } catch (snapErr) {
         console.error('[DailyTop5 API] Snapshot Fallback Error:', snapErr.message);

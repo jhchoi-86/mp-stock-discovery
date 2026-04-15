@@ -2,6 +2,8 @@ const WebSocket = require('ws');
 const axios = require('axios');
 require('dotenv').config();
 
+const redis = require('../../platform/infra/redis/client.cjs');
+
 const KIS_WS_URL = 'ws://ops.koreainvestment.com:21000';
 const APP_KEY = (process.env.KIS_APP_KEY || '').trim();
 const APP_SECRET = (process.env.KIS_APP_SECRET || '').trim();
@@ -11,16 +13,51 @@ let approvalKey = null;
 let subscribedCodes = new Set();
 let onPriceUpdateCallback = null;
 
-/** 웹소켓 접속용 Approval Key 발급 */
+const REDIS_KEY = 'kis:approval_key';
+
+/** KIS API에서 Approval Key 직접 발급 (Helper) */
+async function fetchKISApproval() {
+    const res = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/Approval', {
+        grant_type: 'client_credentials',
+        appkey: APP_KEY,
+        secretkey: APP_SECRET
+    });
+    return res.data;
+}
+
+/** 웹소켓 접속용 Approval Key 발급 (Redis 공유 적용) */
 async function getApprovalKey() {
+    // Step 1: Redis 캐시 우선 확인 (장애 시 폴백 포함)
     try {
-        const res = await axios.post('https://openapi.koreainvestment.com:9443/oauth2/Approval', {
-            grant_type: 'client_credentials',
-            appkey: APP_KEY,
-            secretkey: APP_SECRET
-        });
-        approvalKey = res.data.approval_key;
-        console.log('[KIS-WSS] Approval Key 발급 성공');
+        const cached = await redis.get(REDIS_KEY);
+        if (cached) {
+            approvalKey = cached;
+            console.log('[KIS-WSS] approval_key Redis 캐시 사용');
+            return approvalKey;
+        }
+    } catch (err) {
+        // Redis 장애 시 직접 발급으로 폴백 — 서비스 중단 방지
+        console.warn('[KIS-WSS] Redis 조회 실패, 직접 발급으로 폴백:', err.message);
+    }
+
+    try {
+        // Step 2: KIS API 신규 발급
+        const response = await fetchKISApproval();
+        const key = response.approval_key;
+
+        // Step 3: TTL은 KIS 응답값 우선, 없으면 6시간(보수적)
+        const ttl = response.expires_in || 21600;
+
+        // Step 4: SET NX — Race Condition 방지 (먼저 저장한 쪽만 유효)
+        try {
+            // Node-Redis는 set(key, value, 'EX', ttl, 'NX') 형식을 지원함
+            await redis.set(REDIS_KEY, key, 'EX', ttl, 'NX');
+            console.log(`[KIS-WSS] approval_key 신규 발급 → Redis 저장 (TTL: ${ttl}s)`);
+        } catch (err) {
+            console.warn('[KIS-WSS] Redis 저장 실패 (무시):', err.message);
+        }
+
+        approvalKey = key;
         return approvalKey;
     } catch (e) {
         console.error('[KIS-WSS] Approval Key 발급 실패:', e.message);
@@ -109,6 +146,19 @@ async function startWebSocketService(onPriceUpdate) {
             // [v6.1.5] Log price updates for monitoring
             if (msg.startsWith('0') || msg.startsWith('1')) {
                  console.log(`[KIS-WSS] SSE-PUSH-READY: ${parsed.code} | ${parsed.price} | ${parsed.change_rate}%`);
+                 
+                 // [v9.4.31] Save real-time price to Redis (TTL: 300s)
+                 const priceData = JSON.stringify({
+                     price:      Number(parsed.price),
+                     changeRate: Number(parsed.change_rate),
+                     time:       new Date().toLocaleTimeString('ko-KR', {
+                                   hour: '2-digit', minute: '2-digit', hour12: false,
+                                   timeZone: 'Asia/Seoul'
+                                 }),
+                     updatedAt:  Date.now()
+                 });
+                 redis.set(`realtime:price:${parsed.code}`, priceData, 'EX', 300)
+                    .catch(err => console.warn(`[KIS-WSS] Redis 저장 실패 ${parsed.code}:`, err.message));
             }
             onPriceUpdateCallback(parsed.code, parsed.price, parsed.change_rate);
         } else {
@@ -116,7 +166,24 @@ async function startWebSocketService(onPriceUpdate) {
             try {
                 const json = JSON.parse(msg);
                 if (json.header && json.header.tr_id === 'H0STCNT0') {
-                    console.log(`[KIS-WSS] Subscription Resp: ${json.body?.rt_cd === '0' ? 'SUCCESS' : 'FAIL'} (${json.body?.msg1})`);
+                    const isSuccess = json.body?.rt_cd === '0';
+                    const msg1 = json.body?.msg1 || '';
+                    console.log(`[KIS-WSS] Subscription Resp: ${isSuccess ? 'SUCCESS' : 'FAIL'} (${msg1})`);
+                    
+                    // [TASK-01 REFINEMENT] Handle invalid approval by clearing Redis cache
+                    const lowerMsg = msg1.toLowerCase();
+                    if (!isSuccess && (lowerMsg.includes('invalid approval') || lowerMsg.includes('auth') || lowerMsg.includes('권한'))) {
+                        console.error(`[KIS-WSS] CRITICAL: Auth error detected (${msg1}). Purging Redis cache ${REDIS_KEY}...`);
+                        redis.del(REDIS_KEY).then(() => {
+                            approvalKey = null;
+                            if (ws) {
+                                console.log('[KIS-WSS] Terminating WS for fresh reconnection...');
+                                ws.terminate();
+                            }
+                        }).catch(err => {
+                            console.error('[KIS-WSS] Failed to purge Redis cache:', err.message);
+                        });
+                    }
                 }
             } catch(e) {}
         }
