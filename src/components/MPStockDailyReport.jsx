@@ -412,7 +412,7 @@ const MPStockDailyReport = ({ data, isLoading }) => {
 
                         // For legacy: use precomputed closing price; for active: use live if available
                         const displayPrice = isLegacy
-                            ? (stock.current_price || entry)
+                            ? (stock.current_price || 0)
                             : (rt ? rt.price : (stock.current_price || 0));
 
                         // [v7.6.7] Improved Legacy Detection for Labels

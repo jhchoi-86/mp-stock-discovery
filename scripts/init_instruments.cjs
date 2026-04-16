@@ -28,12 +28,14 @@ async function main() {
       update: {
         name:   stock.name,
         market: stock.market || 'KOSPI',
+        currency: 'KRW',
         isActive: true
       },
       create: {
         symbol: stock.code,
         name:   stock.name,
         market: stock.market || 'KOSPI',
+        currency: 'KRW',
         isActive: true
       }
     });

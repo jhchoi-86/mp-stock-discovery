@@ -1,5 +1,13 @@
 # MP-STOCK Release Notes
 
+## [v9.5.1] - 2026-04-16
+### 🚩 상태: [Hardened] 가격 정합성 결함 수정 및 동기화 무결성 강화 배포
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Landing Page Price Discrepancy**: `dailyTop5` API 매핑 오류를 수정하여 랜딩페이지에서 진입가가 현재가로 오표시되던 현상을 근본적으로 해결했습니다.
+2. **[FIX] Deceptive Price Fallback**: `MPStockDailyReport`에서 데이터 누락 시 진입가로 대신 보여주던 로직을 제거하여 데이터 투명성을 확보했습니다.
+3. **[HARDEN] Admin Sync Validation**: 관리자 대시보드에서 동기화 저장 시 실시간 SSE 가격 반영을 강제하고, 가격 누락 시 경고창을 통해 데이터 오염을 방지합니다.
+4. **[BE] SSOT Mapping Enrichment**: `DailyStockSnapshot` 및 `landing_strategy.json` 간의 필드 정합성을 보강했습니다.
+
 ## [v9.4.41] - 2026-04-16
 ### 🚩 상태: [Stable] 통합 자동 동기화(v2.1) 하드닝 및 관리자 UI 배포 완결
 ### 🛠 주요 변경 및 조치 사항

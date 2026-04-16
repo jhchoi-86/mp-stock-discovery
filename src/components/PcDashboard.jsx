@@ -361,17 +361,18 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   return;
                 }
                 
-                // [v9.1.7] 데이터 정합성 보강: 화면에 표시되는 보정된 가격 정보들을 객체에 직접 주입
                 const top5 = rawTop5.map(s => {
                   const t2H = s.latestSignal || s.t2H;
                   const t1D = s.timeframeStatus?.['1D'] || {};
-                  const curPrice = realtimePrices?.[s.code]?.price || s.current_price || 0;
+                  
+                  // [v9.5.0] Prioritize Realtime Prices from SSE Context for accurate archival
+                  const curPrice = Number(realtimePrices?.[s.code]?.price || s.currentPrice || s.current_price || 0);
                   
                   // [v9.4.10] Correct Mapping: result_1=Target, result_2=Entry1, result_3=Entry2
                   const ePrice1 = Math.round(t2H?.result_2 || t2H?.entry_price || 0);
-                  const ePrice2 = Math.round(t2H?.result_3 || 0);
-                  const sPrice = Math.round(t2H?.stop_loss || (ePrice2 > 0 ? ePrice2 * 0.98 : 0));
-                  const tPrice = Math.round(t2H?.result_1 || t2H?.target_price || t1D?.bb_upper || 0);
+                  const ePrice2 = Math.round(t2H?.result_3 || 0) || Math.round(ePrice1 * 0.98);
+                  const sPrice = Math.round(t2H?.stop_loss || 0) || Math.round(ePrice1 * 0.95);
+                  const tPrice = Math.round(t1D?.bb_upper || s.targetPrice || s.target || 0);
                   
                   return {
                     ...s,
@@ -381,16 +382,20 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     stopLoss: sPrice,
                     targetPrice1: tPrice,
                     yield: ePrice1 > 0 ? ((curPrice - ePrice1) / ePrice1 * 100) : 0,
-                    category: s.sector || s.trend_type || '기타',
-                    // [v9.4.10] Supply Data Type Normalization (String -> Int)
-                    aiComment: s.ai_comment || s.latestSignal?.ai_comment || s.aiComment || '',
-                    foreignBuy: parseInt((s.foreign_buy || s.kis_change_data?.foreign_buy || '0').toString().replace(/,/g, '')) || 0,
-                    instBuy: parseInt((s.inst_buy || s.kis_change_data?.inst_buy || '0').toString().replace(/,/g, '')) || 0,
-                    tradeAmount: s.trade_amount || s.kis_change_data?.trade_amount || 0,
-                    styleTag: s.style_tag || s.latestSignal?.style_tag || '',
-                    adx: s.adx || s.latestSignal?.adx || 0
+                    category: s.category || s.trendType || '주도주 눌림목',
+                    styleTag: s.styleTag || s.style_tag || '',
+                    aiComment: s.aiComment || s.ai_comment || ''
                   };
                 });
+                
+                // [v9.5.1] Zero-Price Safeguard: Warn if crucial data is missing
+                const zeroPriceStocks = top5.filter(s => s.currentPrice === 0);
+                if (zeroPriceStocks.length > 0) {
+                  const names = zeroPriceStocks.map(s => s.name).join(', ');
+                  if (!window.confirm(`현재가가 0인 종목(${names})이 있습니다. 장전인가요? 이대로 저장하시겠습니까?`)) {
+                    return;
+                  }
+                }
 
                 if (window.confirm(`현재 화면의 상위 5개 종목 상태를 히스토리로 정합 저장하시겠습니까?\n대상: ${top5.map(s => s.name).join(', ')}`)) {
                   try {

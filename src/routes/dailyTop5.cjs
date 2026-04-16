@@ -53,10 +53,11 @@ router.get('/', async (req, res) => {
                     name: s.name,
                     score: s.score || 0,
                     date: date,
-                    entry1: s.entry1,
-                    entry2: s.entry2,
-                    target: s.target,
-                    sl: s.sl
+                    current_price: s.currentPrice || s.current_price || 0,
+                    entry1: s.entry1 || s.entryPrice1 || 0,
+                    entry2: s.entry2 || s.entryPrice2 || 0,
+                    target: s.target || s.targetPrice1 || 0,
+                    sl: s.sl || s.stopLoss || 0
                 }));
                 const manuallyEnriched = await enrichWithManualPrices(mapped, prisma, date);
                 const enriched = await enrichWithRealtime(manuallyEnriched);

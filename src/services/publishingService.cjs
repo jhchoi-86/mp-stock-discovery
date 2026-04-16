@@ -145,8 +145,15 @@ class PublishingService {
                             };
                             
                             try {
-                                await tx.dailyStockSnapshot.create({
-                                    data: snapshotPayload
+                                await tx.dailyStockSnapshot.upsert({
+                                    where: {
+                                        ticker_syncDate: {
+                                            ticker: snapshotPayload.ticker,
+                                            syncDate: snapshotPayload.syncDate
+                                        }
+                                    },
+                                    update: snapshotPayload,
+                                    create: snapshotPayload
                                 });
                             } catch (snapErr) {
                                 console.error(` [PublishingService] Snapshot FAILED for ${snapshotPayload.ticker}:`, snapErr.message);

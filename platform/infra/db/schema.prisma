@@ -1,48 +1,248 @@
 generator client {
-  provider        = "prisma-client-js"
-  previewFeatures = ["multiSchema"]
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["market_data", "analysis_results", "signal_approvals", "system_audit"]
 }
 
-// ── market_data 스키마
+enum Role {
+  PENDING
+  FREE_TRIAL
+  FREE
+  PAID
+  ADMIN
+  FREE_USER
+  PRO_USER
+}
+
+enum Status {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique @db.VarChar(255)
+  phone        String?   @db.VarChar(50)
+  passwordHash String    @map("password_hash") @db.VarChar(255)
+  name         String    @db.VarChar(100)
+  telegramId   String?   @map("telegram_id") @db.VarChar(255)
+  role         Role      @default(FREE_USER)
+  status       Status    @default(ACTIVE)
+  referralCode String?   @unique @map("referral_code") @db.VarChar(10)
+  referralCount Int      @default(0) @map("referral_count")
+  lastLoginAt  DateTime? @map("last_login_at")
+  createdAt    DateTime  @default(now()) @map("created_at")
+
+  refreshTokens RefreshToken[]
+  usageLogs     UsageLog[]
+  auditActions  AuditLog[]     @relation("AdminAction")
+  auditTargets         AuditLog[]            @relation("TargetUser")
+  reports              Report[]              @relation("ReportAuthor")
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique @db.VarChar(512)
+  expiresAt DateTime @map("expires_at")
+  isRevoked Boolean  @default(false) @map("is_revoked")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+}
+
+model UsageLog {
+  id         String   @id @default(uuid())
+  userId     String   @map("user_id")
+  actionType String   @map("action_type") @db.VarChar(100)
+  usageCount Int      @default(0) @map("usage_count")
+  logDate    DateTime @map("log_date") @db.Date
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, actionType, logDate])
+  @@map("usage_logs")
+}
+
+model AuditLog {
+  id           String   @id @default(uuid())
+  adminId      String?  @map("admin_id")
+  targetUserId String?  @map("target_user_id")
+  action       String   @db.VarChar(255)
+  details      Json?
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  admin      User? @relation("AdminAction", fields: [adminId], references: [id], onDelete: SetNull)
+  targetUser User? @relation("TargetUser", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
 model Instrument {
-  @@schema("market_data")
   id        Int      @id @default(autoincrement())
-  symbol    String
-  name      String
-  market    String   // kr_kospi | kr_kosdaq | us_nasdaq | crypto
-  currency  String   // KRW | USD | USDT
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
+  symbol    String   @unique @db.VarChar(50)
+  name      String   @db.VarChar(100)
+  market    String   @default("KOSPI") @db.VarChar(50)
+  isActive  Boolean  @default(true) @map("is_active")
+  createdAt DateTime @default(now()) @map("created_at")
+  currency  String   @default("KRW") @db.VarChar(10)
+
+  candles   Candle[]
+
+  @@map("instruments")
 }
 
 model Candle {
-  @@schema("market_data")
-  id           Int      @id @default(autoincrement())
-  instrumentId Int
-  timeframe    String
+  id           BigInt   @id @default(autoincrement())
+  instrumentId Int      @map("instrument_id")
+  timeframe    String   @db.VarChar(10)
   open         Float
   high         Float
   low          Float
   close        Float
-  volume       Float
-  source       String   // yahoo | kis | binance | upbit
-  isValid      Boolean  @default(true)
-  fetchedAt    DateTime
-  candleAt     DateTime
+  volume       Float    @default(0)
+  source       String?  @db.VarChar(50)
+  isValid      Boolean  @default(true) @map("is_valid")
+  fetchedAt    DateTime @default(now()) @map("fetched_at")
+  candleAt     DateTime @map("candle_at")
 
-  // [MP-TASK-2026-003] upsert를 위한 unique 제약
-  @@unique([instrumentId, timeframe, candleAt])
+  instrument   Instrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@unique([instrumentId, timeframe, candleAt], name: "instrumentId_timeframe_candleAt")
+  @@index([instrumentId, timeframe])
+  @@index([candleAt])
+  @@map("candles")
 }
 
-// ── analysis_results 스키마
+model DailyStockSnapshot {
+  id              Int      @id @default(autoincrement())
+  ticker          String   @map("code")
+  name            String   @db.VarChar(100)
+  syncDate        DateTime? @default(now())
+  currentPrice    Int?     @map("current_price")
+  entry1Price     Int?     @map("entry_price1")
+  entry2Price     Int?     @map("entry_price2")
+  targetPrice     Int?     @map("target_price1")
+  stopLossPrice   Int?     @map("stop_loss")
+  hybridScore     Int      @default(0) @map("score")
+  starRating      Float    @default(0)
+  yield           Float?
+  tradeAmount     BigInt?  @map("trade_amount")
+  aiComment       String?  @map("ai_comment") @db.Text
+  maArrangement   String?  @db.VarChar(20)
+  ma5             Int?     @map("ema5")
+  ma10            Int?     @map("ema10")
+  ma20            Int?     @map("ema20")
+  ma60            Int?     @map("ema60")
+  ma120           Int?
+  foreignNet      String?  @map("foreign_buy")
+  institutionNet  String?  @map("inst_buy")
+  category        String?  @db.VarChar(100)
+  signalVersion   String   @default("v9.3.3")
+  isTop5          Boolean  @default(false)
+  rank            Int?
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime? @updatedAt
+  inst_buy_manual     Int?      @map("inst_buy_manual")
+  inst_buy2_manual    Int?      @map("inst_buy2_manual")
+  target_manual       Int?      @map("target_manual")
+  stop_loss_manual    Int?      @map("stop_loss_manual")
+  is_manual_price     Boolean   @default(false) @map("is_manual_price")
+  manual_updated_at   DateTime? @map("manual_updated_at")
+
+  @@unique([ticker, syncDate], name: "ticker_syncDate")
+  @@index([syncDate, isTop5])
+  @@map("daily_stock_snapshots")
+}
+
+model DailyTop5 {
+  id           String   @id @default(uuid())
+  date         String
+  code         String   @db.VarChar(20)
+  name         String   @db.VarChar(100)
+  score        Int
+  currentPrice Float    @map("current_price")
+  yield        Float
+  entryPrice1  Float    @map("entry_price1")
+  entryPrice2  Float    @map("entry_price2")
+  stopLoss     Float    @map("stop_loss")
+  targetPrice1 Float    @map("target_price1")
+  category     String   @db.VarChar(100)
+  tradeAmount  BigInt   @map("trade_amount")
+  foreignBuy   Int      @map("foreign_buy")
+  instBuy      Int      @map("inst_buy")
+  styleTag     String?  @map("style_tag") @db.VarChar(100)
+  aiComment    String?  @map("ai_comment") @db.Text
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@unique([date, code])
+  @@index([date])
+  @@map("daily_top5_history")
+}
+
+model SystemStat {
+  id               String   @id @default(uuid())
+  date             String   @unique @db.VarChar(10)
+  visitorCount     Int      @default(0) @map("visitor_count")
+  loginCount       Int      @default(0) @map("login_count")
+  signupCount      Int      @default(0) @map("signup_count")
+  maxConcurrent    Int      @default(0) @map("max_concurrent")
+  freeUserCount    Int      @default(0) @map("free_user_count")
+  paidUserCount    Int      @default(0) @map("paid_user_count")
+  cpuUsageAvg      Float?   @map("cpu_usage_avg")
+  memUsageAvg      Float?   @map("mem_usage_avg")
+  diskUsageAvg     Float?   @map("disk_usage_avg")
+  healthStatus     String   @default("HEALTHY") @map("health_status")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@map("system_stats")
+}
+
+model SyncSaveLog {
+  id          String   @id @default(uuid())
+  tagName     String   @map("tag_name") @db.VarChar(100)
+  snapshot    Json     @db.JsonB
+  savedAt     DateTime @default(now()) @map("saved_at")
+
+  @@index([savedAt(sort: Desc)])
+  @@map("sync_save_logs")
+}
+
+model Report {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  authorId  String   @map("author_id")
+  sentAt    DateTime @default(now()) @map("sent_at")
+
+  author    User     @relation("ReportAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([sentAt(sort: Desc)])
+  @@map("reports")
+}
+
+model IncidentLog {
+  id          String    @id @default(uuid())
+  title       String    @db.VarChar(255)
+  description String?   @db.Text
+  severity    String    @default("INFO")
+  status      String    @default("OPEN")
+  occurredAt  DateTime  @default(now()) @map("occurred_at")
+  resolvedAt  DateTime? @map("resolved_at")
+  handlerName String?   @map("handler_name") @db.VarChar(100)
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  @@map("incident_logs")
+}
+
 model SignalCandidate {
-  @@schema("analysis_results")
   id           Int      @id @default(autoincrement())
   instrumentId Int
   timeframe    String
@@ -52,8 +252,8 @@ model SignalCandidate {
   triggerVol   Boolean
   entryApproved Boolean
   isTrending   Boolean
-  signalHH     Boolean  // 최종 추천 여부
-  displayScore Int      // UI 표시용 배점 (0~100)
+  signalHH     Boolean
+  displayScore Int
   entryPrice1  Float
   entryPrice2  Float?
   entryPrice3  Float?
@@ -64,130 +264,27 @@ model SignalCandidate {
   aiConfidenceScore Float?  @map("ai_confidence_score")
   aiAnalyzedAt      DateTime? @map("ai_analyzed_at")
   createdAt    DateTime @default(now())
+
+  @@map("signal_candidates")
 }
 
-// ── signal_approvals 스키마
-model ApprovedSignal {
-  @@schema("signal_approvals")
-  id              Int      @id @default(autoincrement())
-  candidateId     Int      @unique
-  execHash        String   @unique
-  sourceHash      String
-  status          String   // PASS | FAIL
-  approvedAt      DateTime @default(now())
-  rejectionReason String?
+model Lead {
+  id        String   @id @default(uuid())
+  email     String   @db.VarChar(255)
+  source    String?  @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("leads")
 }
 
-model SignalResult {
-  @@schema("signal_approvals")
-  id             Int      @id @default(autoincrement())
-  approvedSignalId Int
-  evalDate       DateTime
-  result         String   // SUCCESS | FAIL | IN_PROGRESS
-  evalHigh       Float
-  evalLow        Float
-  evalClose      Float
-  market         String   // kr_equity | crypto
-  evaluatedAt    DateTime @default(now())
+model SignalApproval {
+  id          String   @id @default(uuid())
+  ticker      String
+  timeframe   String
+  status      String   @default("PENDING")
+  approvedAt  DateTime?
+  createdAt   DateTime @default(now())
+
+  @@map("signal_approvals")
 }
 
-// ── system_audit 스키마
-model User {
-  @@schema("system_audit")
-  id             Int       @id @default(autoincrement())
-  email          String    @unique
-  passwordHash   String
-  name           String?
-  phone          String?
-  role           Role      @default(FREE_TRIAL)
-  trialExpiresAt DateTime?
-  telegramId     String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-}
-
-enum Role {
-  @@schema("system_audit")
-  PENDING
-  FREE_TRIAL
-  FREE
-  PAID
-  ADMIN
-}
-
-model RefreshToken {
-  @@schema("system_audit")
-  id        Int      @id @default(autoincrement())
-  userId    Int
-  tokenHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-}
-
-model AuditLog {
-  @@schema("system_audit")
-  id        Int      @id @default(autoincrement())
-  userId    Int?
-  action    String
-  details   Json?
-  ip        String?
-  createdAt DateTime @default(now())
-}
-
-model ErrorLog {
-  @@schema("system_audit")
-  id        Int      @id @default(autoincrement())
-  level     String
-  message   String
-  stack     String?
-  context   Json?
-  createdAt DateTime @default(now())
-}
-
-model AlarmLog {
-  @@schema("system_audit")
-  id             Int      @id @default(autoincrement())
-  userId         Int
-  symbol         String
-  entryPriceHit  Float
-  currentPrice   Float
-  sentAt         DateTime @default(now())
-}
-
-model ReportDistributionLog {
-  @@schema("system_audit")
-  id        Int      @id @default(autoincrement())
-  s3Key     String
-  type      String   // DAILY | WEEKLY | MONTHLY | YEARLY
-  date      String
-  createdAt DateTime @default(now())
-}
-
-model ScanRun {
-  @@schema("system_audit")
-  id             Int      @id @default(autoincrement())
-  market         String
-  timeframe      String
-  symbolsScanned Int
-  skipped        Int      @default(0)
-  duration       Int      // ms
-  startedAt      DateTime
-  completedAt    DateTime @default(now())
-}
-
-model SystemStat {
-  @@schema("system_audit")
-  id               Int      @id @default(autoincrement())
-  date             String   @unique
-  visitorCount     Int      @default(0)
-  loginCount       Int      @default(0)
-  signupCount      Int      @default(0)
-  maxConcurrent    Int      @default(0)
-  freeUserCount    Int      @default(0)
-  paidUserCount    Int      @default(0)
-  cpuUsageAvg      Float?
-  memUsageAvg      Float?
-  diskUsageAvg     Float?
-  healthStatus     String   @default("HEALTHY")
-  updatedAt        DateTime @updatedAt
-}
