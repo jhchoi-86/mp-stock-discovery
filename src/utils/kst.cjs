@@ -24,6 +24,21 @@ const getKSTDateString = (date = new Date()) => {
 };
 
 /**
+ * Returns KST ISO string without 'Z' (e.g. "2026-04-16T10:58:47.654")
+ * Matches user request for "actual KST" display format.
+ */
+const getKstISO = (date = new Date()) => {
+    return toKST(date).toISOString().replace('Z', '');
+};
+
+/**
+ * Returns KST date string in YYYYMMDD format
+ */
+const getKstDateCompact = (date = new Date()) => {
+    return getKSTDateString(date).replace(/-/g, '');
+};
+
+/**
  * Returns current timestamp in KST ms
  * @returns {number}
  */
@@ -35,4 +50,12 @@ const nowKST = () => toKST().getTime();
  */
 const getKstNow = () => toKST();
 
-module.exports = { toKST, getKSTDateString, getKstDateString: getKSTDateString, nowKST, getKstNow };
+module.exports = { 
+    toKST, 
+    getKSTDateString, 
+    getKstDateString: getKSTDateString,
+    getKstISO, 
+    getKstDateCompact,
+    nowKST, 
+    getKstNow 
+};

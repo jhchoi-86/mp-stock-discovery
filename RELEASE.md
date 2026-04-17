@@ -1,4 +1,97 @@
-# MP-STOCK Release Notes
+# MP Stock Discovery Release Notes (v9.6.2)
+
+## [v9.6.3] (f4ceee8) - 2026-04-17
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+### 🛠 주요 변경 사항
+- [FIX] 배포 파이프라인 하드닝 및 권한 자동화 적용
+- [NEW] 리비전 (f4ceee8) 자동 동기화 및 Nginx 배포 자동화
+- [SYS] PM2 Python 인터프리터 설정 최적화 (interpreter: none)
+
+---
+
+
+
+## [v9.6.2] - 2026-04-17
+### 🚀 TradingView Link Standardization & Mobile Compatibility
+- **[FIX] Unified Chart Links**: Standardized all TradingView URLs to `www.tradingview.com/chart/?symbol=KRX:{ticker}` format across PC/Mobile dashboards and Telegram alerts.
+- **[FIX] Mobile View-Only Issue**: Removed the shared layout ID (`icGUzNPH`) which caused 'View Only' mode on mobile browsers. Links now open the user's default interactive chart.
+- **[CLEANUP] iframe Widget Removal**: Deleted `TradingViewWidget.jsx` and removed all iframe-based charting references to streamline the platform.
+
+
+## [v9.5.9] - 2026-04-17
+### 🚀 Deep Price Enrichment & Synchronization Robustness
+- **[FIX] Missing Dashboard Prices**: Standardized field mapping between backend signals and frontend state. All entry, target, and stop loss prices now correctly populate after synchronization.
+- **[FIX] Signal Summary Merge**: Fixed a bug where prices were lost when merging new signals from the summary into the active dashboard list.
+
+---
+
+## [v9.5.10] - 2026-04-16
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+- **[STABILITY] DB Fallback Enrichment**: Enhanced `manualPriceEnricher.cjs` to provide standardized price aliases even when the database is unreachable, using baseline signal calculations as a source.
+- **[REFACTOR] Comprehensive Aliasing**: Added 15+ compatible field aliases (snake_case, camelCase, and legacy names) to ensure data integrity across all system components and reports.
+- **[UI] Fallback Enhancement**: Populated `t2H` status results to ensure Mobile/PC card UI components have reliable price data for automatic entry badges.
+
+
+## [v9.5.8] - 2026-04-17
+### 🚀 Persistent Manual Price Persistence & Unified Save UI
+- **[NEW] Batch Price Edit API**: Implemented `/api/signals/batch-price-edit` for atomic persistence of manual overrides to the database.
+- **[NEW] Unified Save Workflow**: Merged manual price saving with historical synchronization archiving in a single, consistent action.
+- **[UI] Save Status Indicator**: Added a real-time "dirty" state indicator to the dashboard's "가격편집저장" button, showing the number of pending unsaved changes.
+- **[FIX] Row-level Integration**: Connected individual stock editors to the centralized dashboard manager to ensure all manual adjustments are tracked and archived correctly.
+- **[STABILITY] KST Enforcement**: Re-verified that all manual edits are timestamped in KST for accurate history tracking.
+
+## [v9.5.7] - 2026-04-16
+### 🚀 Chart Link Standardization (Hotfix)
+- **Unified TV Links**: Replaced all hardcoded `KRX:` / `KOSDAQ:` prefixes with centralized `getChartUrl`.
+- **Ticker-only Format**: Enforced ticker-only URLs (`?symbol=059090`) for Korean stocks as requested.
+- **Layout ID Support**: Integrated user preferred layout ID (`icGUzNPH`) into the base URL.
+- **Cross-Component Sync**: Updated `reportUtils.js`, `useStockManager.js`, `DailySnapshotAnalytics.jsx`, and `kisWebSocketService.cjs`.
+
+## [v9.5.6] - 2026-04-17
+### 🚩 상태: [Hotfix] TradingView 차트 연동 호환성 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] TradingView Link Compatibility**: 특정 브라우저 환경에서 `KRX:` 접두사가 포함될 경우 차트 로딩이 실패하는 현상을 해결하기 위해, 국내 주식 링크를 종목코드(`059090`)만 단독으로 전달하도록 수정했습니다.
+2. **[UI/UX] Unified URL Generator**: 프론트엔드(`chartUtils.js`) 및 백엔드 텔레그램 리포트(`send_top5_report.cjs`)의 링크 형식을 일관되게 업데이트했습니다.
+
+## [v9.5.5] - 2026-04-17
+### 🚩 상태: [Hardened] 신호 파이프라인 고도화 및 운영 DB 영속화 완결 (Red Team-Audit)
+### 🛠 주요 변경 및 조치 사항
+1. **[NEW] Persistent Price Overrides**: 수동으로 편집한 가격(진입가, 목표가, 손절가)을 운영 DB(`SignalPriceEdit` 테이블)에 영속적으로 저장하도록 구현했습니다. 이제 시스템 재시작이나 자동 동기화 후에도 편집된 타점이 유지됩니다.
+2. **[ADVERSARIAL] Server-side Validation**: 가격 편집 API에 서버측 유효성 검증 로직(`stopLoss < entry2 < entry1 < target`)을 추가하여 비정상 데이터 진입을 차단했습니다.
+3. **[COMPLIANCE] Regulation Alignment**: 유사투자자문업 규정 준수를 위해 텔레그램 리포트 및 UI 내 '매수전략' 용어를 '진입전략'으로 표준화했습니다.
+4. **[UI/UX] TradingView Standardization**: 모든 차트 링크를 `KRX/UPBIT:CODE` 규격으로 통일하여 외부 차트 연동성을 강화했습니다.
+5. **[STABILITY] Secondary Sort Key**: 대시보드 정렬 시 점수가 동일할 경우 최신 신호(`timestamp`)가 상단에 오도록 보조 정렬 로직을 강화했습니다.
+6. **[DEPLOY] Production Migration**: 로컬 VPC 접속 제한 문제를 SSH 터널링/원격 명령으로 해결하여 운영 RDS 스키마 마이그레이션을 성공적으로 완료했습니다.
+
+## [v9.5.4] - 2026-04-16
+### 🚩 상태: [Stable] UI 안정화 및 초기화 로직 강화 (v1.1)
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Market/Name Normalization**: 프론트엔드와 백엔드에서 `'UNKNOWN'`으로 표시되던 시장 구분과 누락된 종목명을 동적 매핑 로직으로 정규화했습니다. `signals.json` 내 2,419건의 기존 데이터도 일괄 보정했습니다.
+2. **[UI] Entry Badge Logic**: `isValidPrice` 유틸리티를 도입하여 현재가나 타점이 유효하지 않을 경우(0원, -원 등) Entry 뱃지가 노출되지 않도록 개선했습니다.
+3. **[SECURITY] Admin Reset Hardening**: `/api/reset` 엔드포인트를 관리자 전용(`isAdmin`)으로 전환하고, 리셋 시 핵심 데이터 유실 없이 UI 관련 캐시(Redis, Memory)만 정밀 초기화하도록 수정했습니다.
+4. **[SSE] Real-time System Reset**: 백엔드 리셋 시 모든 관리자 클라이언트에 `system_reset` 이벤트를 브로드캐스트하여 즉각적인 화면 갱신이 이루어지도록 연동했습니다.
+
+
+## [v9.5.3] - 2026-04-16
+### 🚩 상태: [Stable] 수동 분석 서비스 무부하 장애 및 데이터 무결성 긴급 패치
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Manual Analysis Silent Failure**: 수동 분석 API 호출 시 "성공" 메시지는 출력되나 실제 데이터가 갱신되지 않던 결함을 수정했습니다. 원인은 Prisma Client 빌드 누락(`Instrument`, `Candle` 모델 접근 불가)이었으며, 이를 재발급하여 복구했습니다.
+2. **[HARDEN] Data Loss Prevention**: `analyzer.cjs` 분석 결과가 0건일 경우 `signals.json` 파일을 덮어쓰지 않도록 강제 차단(EMPTY_RESULTS throw) 로직을 추가하여 기존 데이터 유실을 원천 차단했습니다.
+3. **[SYS] Redis Key Standardization**: `systemStatsService`에서 사용되는 Redis 상태 키(`phase1_data_ready`, `phase2_complete_ts` 등)를 운영 규격에 맞춰 정규화하여 대시보드 진행률 표시의 정확도를 높였습니다.
+4. **[SYS] Prisma Runtime Check**: 배포 프로세스에 Prisma 모델 로드 여부를 확인하는 런타임 검증 단계를 추가하여 유사 장애 재발을 방지했습니다.
+
+## [v9.5.2] - 2026-04-16
+### 🚩 상태: [Stable] 전 시스템 KST 시각 통합 및 수동 동기화 상태 표시 결함 수정
+### 🛠 주요 변경 및 조치 사항
+1. **[FIX] Manual Sync Dashboard Status**: 관리자 대시보드에서 '수동 동기화' 실행 후 Phase 1-3 상태(준비 완료, 최근 동기화 시각)가 즉시 업데이트되지 않던 결함을 수정했습니다.
+2. **[SYS] Unified KST Lifecycle**: 데이터베이스 저장 시점(`fetchedAt`, `occurredAt`) 및 관리자 대시보드 타임스탬프를 한국 표준시(KST)로 완전 통일했습니다.
+3. **[SYS] Global Timezone Enforcement**: 서버 및 모든 동기화 프로세스(`server.cjs`, Phase 1-3 스케줄러)에 `Asia/Seoul` 시간대를 강제 적용하여 환경 변화에도 시계열 정합성을 유지합니다.
 
 ## [v9.5.1] - 2026-04-16
 ### 🚩 상태: [Hardened] 가격 정합성 결함 수정 및 동기화 무결성 강화 배포

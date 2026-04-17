@@ -1,6 +1,8 @@
 const cache = require('../src/services/cacheService.cjs');
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
+const axios = require('axios');
+const { enrichWithManualPrices } = require('../src/utils/manualPriceEnricher.cjs');
 
 const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TELEGRAM_CHAT_IDS = (process.env.TELEGRAM_CHAT_ID || "")
@@ -65,10 +67,10 @@ const generateMessage = (top5) => {
     top5.forEach((s, idx) => {
         content += `${idx + 1}️⃣ ${s.name} (${s.code}) - 점수: ${s.star_grade || 0}등급\n`;
         content += `- 현황: ${s.trend || '-'} | 추세강도: ${Math.round(s.trend_strength || 0)}\n`;
-        content += `- 매수전략: ${Math.round(s.entry_price_1 || 0).toLocaleString()}원(1차) / ${Math.round(s.entry_price_2 || 0).toLocaleString()}원(2차) 분할진입 유효\n`;
+        content += `- 진입전략: ${Math.round(s.entry_price_1 || 0).toLocaleString()}원(1차) / ${Math.round(s.entry_price_2 || 0).toLocaleString()}원(2차) 분할진입 유효\n`;
         content += `- 목표가: 1차 ${Math.round(s.target_price_1 || 0).toLocaleString()}원 / 2차 ${Math.round((s.target_price_1 || 0) * 1.05).toLocaleString()}원\n`;
         content += `- 손절가: ${Math.round(s.stop_loss || 0).toLocaleString()}원 (2차 진입가 대비 -2%)\n`;
-        content += `- 차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+        content += `- 차트: https://www.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
     });
 
     content += `💡 Antigravity Tip: 오전 10시 이후 눌림 지지 확인 후 진입 권장.\n`;
@@ -80,13 +82,11 @@ const generateMessage = (top5) => {
 async function sendReport() {
     console.log('[Telegram-Report] Starting...');
     try {
-        console.log('[Telegram-Report] Fetching Top 5 from DB/Cache (SSOT)...');
-        
-        // 1. DB에서 star_grade(별점)가 높은 상위 5종목 조회
+        // 1. DB에서 hybridScore(총점)가 높은 상위 5종목 조회
         const top5FromDb = await prisma.dailyStockSnapshot.findMany({
-            where: { star_grade: { gt: 0 } },
+            where: { hybridScore: { gt: 0 } },
             orderBy: [
-                { star_grade: 'desc' },
+                { hybridScore: 'desc' },
                 { createdAt: 'desc' }
             ],
             take: 5
@@ -97,22 +97,22 @@ async function sendReport() {
             return;
         }
 
-        // 2. Redis 캐시 보강 (R-MISS-02 보정)
-        const top5 = await Promise.all(top5FromDb.map(async (stock) => {
-            return await cache.getSignalReport(stock.code, async () => {
-                return {
-                    code: stock.code,
-                    name: stock.name,
-                    entry_price_1: stock.entry_price_1,
-                    entry_price_2: stock.entry_price_2,
-                    stop_loss: stock.stop_loss,
-                    target_price_1: stock.target_price_1,
-                    trend: stock.trend_type || stock.trend,
-                    trend_strength: stock.trend_strength,
-                    star_grade: stock.star_grade
-                };
-            });
-        }));
+        // 2. [v9.5.5] 중앙 집중형 관리 가격 보강 (ManualPriceEnricher 활용)
+        const enriched = await enrichWithManualPrices(top5FromDb, prisma);
+
+        const top5 = enriched.map((stock) => {
+            return {
+                code: stock.ticker || stock.code,
+                name: stock.name,
+                entry_price_1: stock.entry_price_1,
+                entry_price_2: stock.entry_price_2,
+                stop_loss: stock.stop_loss,
+                target_price_1: stock.target_price_1,
+                trend: stock.category || '-',
+                trend_strength: stock.adx || 0,
+                star_grade: stock.hybridScore // totalScore로 등급 대체
+            };
+        });
 
         const message = generateMessage(top5);
         console.log('--- GENERATED MESSAGE ---\n', message);

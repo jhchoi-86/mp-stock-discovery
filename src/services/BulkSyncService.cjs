@@ -33,7 +33,7 @@ class BulkSyncService {
                 ticker: sig.ticker || sig.code,
                 name: sig.name,
                 currentPrice: sig.current_price || 0,
-                hybridScore: typeof sig.score === 'number' ? sig.score : (sig.score?.total || 0),
+                hybridScore: (typeof sig.totalScore === 'number') ? sig.totalScore : (typeof sig.score === 'number' ? sig.score : (sig.score?.total || 0)),
                 targetPrice: sig.target_price_1 || 0,
                 stopLossPrice: sig.stop_loss || 0,
                 yield: sig.yield || 0,

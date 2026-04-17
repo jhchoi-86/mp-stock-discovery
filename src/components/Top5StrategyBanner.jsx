@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
 import useAuthStore from '../store/authStore';
+import { getChartUrl } from '../utils/chartUtils';
 // [v7.7.50] 하드코딩 데이터셋(OFFICIAL_TOP5) 제거 및 순수 DB SSOT 연동
 
 // 뉴스/공시 링크 생성 헬퍼
@@ -48,11 +49,11 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
             name: s.stock_name || s.name,
             price: s.current_price || s.currentPrice || s.price || 0,
             score: s.score || s.star_grade || 0,
-            // [v9.4.10] SSOT Mapping: result_1=Target, result_2=Entry1, result_3=Entry2
-            entry1: s.result_2 || s.entry_price_1 || s.entryPrice1 || s.entry1 || 0,
-            entry2: s.result_3 || s.entry_price_2 || s.entryPrice2 || s.entry2 || 0,
-            target: s.result_1 || s.target_price_1 || s.targetPrice1 || s.target || 0,
-            sl: s.stop_loss || s.stopLoss || s.sl || 0,
+            // [v9.5.9] Standardized field aliases support
+            entry1: s.entry1Price || s.entryPrice1 || s.entry1 || s.result_2 || s.entry_price_1 || 0,
+            entry2: s.entry2Price || s.entryPrice2 || s.entry2 || s.result_3 || s.entry_price_2 || 0,
+            target: s.targetPrice1 || s.targetPrice || s.target || s.result_1 || s.target_price_1 || 0,
+            sl: s.stopLossPrice || s.stopLoss || s.sl || s.stop_loss || 0,
             trade_amount: s.trade_amount || s.tradeAmount || 0,
             vol_ratio: s.vol_ratio || s.volRate || '0.00%',
             // [v9.4.10] Use null-coalescing for supply to preserve 0
@@ -304,7 +305,7 @@ const Top5StrategyBanner = ({ onLoginClick }) => {
 
                             {/* 실시간 차트 보기 */}
                             <a 
-                                href={`https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}`}
+                                href={getChartUrl(stock.code, stock.market)}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="btn-chart-link"

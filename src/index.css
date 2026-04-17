@@ -129,8 +129,8 @@ body {
 
 .dashboard-root .card {
   background: var(--glass);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   border: 1px solid var(--glass-border);
   border-radius: 12px;
   padding: 1.5rem;
@@ -190,7 +190,7 @@ body {
   margin-bottom: 3rem;
   padding: 1.5rem;
   background: var(--lp-glass-bg);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
   border: 1px solid var(--lp-glass-border);
   border-radius: 1rem;
 }
@@ -229,7 +229,7 @@ body {
 
 .lp-premium-wrap .card {
   background: rgba(20, 20, 20, 0.7);
-  backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
   border: 1px solid var(--lp-glass-border);
   border-radius: 1rem;
   overflow: hidden;
@@ -448,8 +448,9 @@ option {
 
 .glass-panel {
   background: rgba(255, 255, 255, 0.05);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  will-change: transform, opacity; /* GPU 가속 유도 및 레이어 격리 */
   border: 1px solid rgba(255, 255, 255, 0.1);
   box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
   border-radius: 16px;
@@ -582,8 +583,8 @@ option {
   height: 80px;
   display: flex;
   align-items: center;
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   background-color: var(--glass-bg);
   border-bottom: 1px solid var(--glass-border);
 }

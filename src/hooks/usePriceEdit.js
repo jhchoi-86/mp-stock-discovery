@@ -1,13 +1,12 @@
 import { useState, useCallback } from 'react';
 
-const today = () => new Date().toISOString().slice(0, 10);
 
-const usePriceEdit = (stockCode, initialPrices) => {
+const usePriceEdit = (stockCode, initialPrices, onEdit = null) => {
   const [isEditing, setIsEditing]   = useState(false);
   const [isSaving, setIsSaving]     = useState(false); // R-04: 중복 클릭 방지
   const [prices, setPrices]         = useState(initialPrices);
   const [editValues, setEditValues] = useState(initialPrices);
-  const [isManual, setIsManual]     = useState(initialPrices?.is_manual ?? false);
+  const [isManual, setIsManual]     = useState(initialPrices?.is_manual_price ?? initialPrices?.is_manual ?? false);
   const [error, setError]           = useState(null);
 
   const validate = useCallback((v) => {
@@ -24,9 +23,21 @@ const usePriceEdit = (stockCode, initialPrices) => {
   }, []);
 
   const handleChange = useCallback((field, value) => {
-    setEditValues(prev => ({ ...prev, [field]: value.replace(/[^0-9]/g, '') }));
+    const cleanValue = value.replace(/[^0-9]/g, '');
+    const nextValues = { ...editValues, [field]: cleanValue };
+    setEditValues(nextValues);
     setError(null);
-  }, []);
+    
+    // [v9.5.8] Notify external manager of changes
+    if (onEdit) {
+      onEdit(stockCode, {
+        entry1: Number(nextValues.entry1),
+        entry2: Number(nextValues.entry2),
+        target: Number(nextValues.target),
+        stop_loss: Number(nextValues.stop_loss)
+      });
+    }
+  }, [editValues, onEdit, stockCode]);
 
   const save = useCallback(async () => {
     if (isSaving) return; // R-04: 중복 클릭 차단
@@ -35,22 +46,23 @@ const usePriceEdit = (stockCode, initialPrices) => {
     setIsSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/stocks/${stockCode}/prices`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/signals/price-edit`, {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}` // accessToken으로 수정 (기존 패턴)
+          'Authorization': `Bearer ${localStorage.getItem('accessToken') || ''}`
         },
         body: JSON.stringify({
-          date: today(),
+          ticker:    stockCode,
           entry1:    Number(editValues.entry1),
           entry2:    Number(editValues.entry2),
           target:    Number(editValues.target),
-          stop_loss: Number(editValues.stop_loss)
+          stopLoss:  Number(editValues.stop_loss),
+          aiComment: editValues.aiComment || null
         })
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.message || '저장 실패'); return; }
+      if (!res.ok) { setError(data.error || data.message || '저장 실패'); return; }
       setPrices({ ...editValues });
       setIsManual(true);
       setIsEditing(false);

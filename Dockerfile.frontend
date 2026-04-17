@@ -1,0 +1,51 @@
+# ============================================================================
+# Stage 1: Build (Node.js + React)
+# ============================================================================
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+# Install build dependencies
+RUN apk add --no-cache python3 make g++
+
+# Copy package files
+COPY package*.json ./
+COPY tsconfig.json ./
+COPY vite.config.ts ./
+COPY index.html ./
+
+# Install dependencies
+RUN npm ci --legacy-peer-deps
+
+# Copy source
+COPY src ./src
+
+# Build
+RUN npm run build
+
+# ============================================================================
+# Stage 2: Runtime (Vite Dev Server)
+# ============================================================================
+FROM node:20-alpine
+
+WORKDIR /app
+
+RUN apk add --no-cache curl
+
+COPY --from=builder /app/node_modules ./node_modules
+COPY --from=builder /app/dist ./dist
+COPY package*.json ./
+COPY vite.config.ts ./
+COPY index.html ./
+COPY src ./src
+
+ENV VITE_HMR_HOST=localhost \
+    VITE_HMR_PORT=5173 \
+    VITE_HMR_PROTOCOL=ws
+
+EXPOSE 5173
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=20s --retries=3 \
+    CMD curl -f http://localhost:5173 || exit 1
+
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0"]

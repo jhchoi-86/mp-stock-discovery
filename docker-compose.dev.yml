@@ -1,0 +1,81 @@
+services:
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: mp-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-mp_stock}
+      TZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mp-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Redis Cache & Message Queue
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: mp-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mp-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Node.js Backend Server
+  # ============================================================================
+  backend:
+    image: mp-stock:latest
+    container_name: mp-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-mp_stock}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      TZ: Asia/Seoul
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_access_secret_key_12345_change_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_key_12345_change_in_production}
+      CORE_INTEGRITY_HASH: ${CORE_INTEGRITY_HASH:-dev_integrity_hash_12345}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - mp-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  mp-network:
+    driver: bridge

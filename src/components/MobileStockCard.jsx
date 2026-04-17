@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ExternalLink, ChevronDown, ChevronUp } from 'lucide-react';
 import SignalIndicator from '../SignalIndicator';
+import { getChartUrl } from '../utils/chartUtils';
 import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
 
 const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1D, isSyncing }) => {
@@ -160,7 +161,7 @@ const MobileStockCard = ({ stock, index, isStrong, isAbsolute, t1H, t2H, t4H, t1
         background: 'rgba(0,0,0,0.15)'
       }}>
         <a 
-          href={`https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}`}
+          href={getChartUrl(stock.code, stock.market)}
           target="_blank" rel="noopener noreferrer"
           style={{ flex: 1, padding: '0.6rem', textAlign: 'center', color: 'var(--primary)', fontSize: '0.8rem', textDecoration: 'none', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '4px', borderRight: '1px solid rgba(255,255,255,0.05)' }}
         >

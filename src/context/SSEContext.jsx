@@ -34,7 +34,14 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
         const maxRetries = 5;
 
         const connect = () => {
-            if (eventSource) eventSource.close();
+            if (eventSource) {
+                eventSource.onopen = null;
+                eventSource.onmessage = null;
+                eventSource.onerror = null;
+                eventSource.close();
+            }
+            
+            console.log("[SSE] Attempting connection...");
             eventSource = new EventSource(`${API_URL}/api/stream`, { withCredentials: true });
 
             eventSource.onopen = () => {
@@ -102,6 +109,12 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
                         // [v6.1.1] Push new notification to the front
                         setNotifications(prev => [data.data, ...prev].slice(0, 20));
                     }
+                    else if (data.type === 'system_reset') {
+                        // [Step 4] Clear realtime data on system reset
+                        setRealtimePrices({});
+                        setNotifications([]);
+                        setLastSignal(null);
+                    }
                 } catch (e) {
                     console.error("[SSE] Data Error:", e);
                 }
@@ -109,11 +122,20 @@ export const SSEProvider = ({ children, onUpdateRequested }) => {
 
             eventSource.onerror = (e) => {
                 setIsConnected(false);
-                setError("연결 재시도 중...");
-                eventSource.close();
+                // Don't set error message immediately to avoid noise on transient failures
+                if (retryCount > 0) setError("연결 재시도 중...");
+                
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+                
                 if (retryCount < maxRetries) {
                     retryCount++;
-                    setTimeout(connect, 2000 * retryCount);
+                    const delay = Math.min(10000, 2000 * retryCount);
+                    setTimeout(connect, delay);
+                } else {
+                    setError("연결 실패 (새로고침이 필요할 수 있습니다)");
                 }
             };
         };

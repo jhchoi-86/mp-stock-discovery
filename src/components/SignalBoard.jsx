@@ -4,6 +4,7 @@ import axiosClient from '../api/axiosClient';
 import reportService from '../api/reportService';
 import { useTop5Stocks } from '../hooks/useStockSnapshot';
 import { Activity, Clock, CheckCircle2, Zap, Calendar } from 'lucide-react';
+import { getChartUrl } from '../utils/chartUtils';
 
 const fetcher = url => axiosClient.get(url).then(res => res.data);
 
@@ -34,7 +35,8 @@ const SignalBoard = () => {
     // SSOT 응답 구조 { source, data: [] } 에 맞춰 데이터 추출 및 정규화
     const top5 = top5Data.map(s => ({
         code: s.ticker || s.code,
-        name: s.name
+        name: s.name,
+        market: s.market || 'KR_STOCK'
     }));
 
     // KST 시간 포맷팅 (YYYY-MM-DD HH:mm:ss)
@@ -153,7 +155,7 @@ const SignalBoard = () => {
                             <tr key={stock.code} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', height: '70px' }}>
                                 <td style={{ padding: '1rem' }}>
                                     <a 
-                                        href={`https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}`} 
+                                        href={getChartUrl(stock.code, stock.market)} 
                                         target="_blank" 
                                         rel="noopener noreferrer"
                                         style={{ textDecoration: 'none', cursor: 'pointer', display: 'block' }}

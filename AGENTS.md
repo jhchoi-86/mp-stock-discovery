@@ -1,4 +1,4 @@
-# AGENTS.md — MP Stock Discovery v3.0
+# AGENTS.md — MP Stock Discovery v3.0 (v9.6.1)
 # 에이전트 오케스트레이션 지침서 (기계 판독 최적화)
 # Compatible: Google Antigravity / Claude Code / Cursor / Windsurf
 # Red-Team Verified: 2026-04-10 | Fixed: 7 defects
@@ -192,6 +192,19 @@ fs.writeFileSync('signals.json', ...); // FORBIDDEN
 
 ---
 
+- [v9.6.1] 불필요한 분석 페이지(엔진검증, 종목분석, 성과분석 등) 및 메뉴 삭제 (Streamlining UI)
+- [v9.6.0] 로그인 페이지 브라우저 충돌(STATUS_ACCESS_VIOLATION) 결함 수정 및 성능 최적화 (fetchData 메모이제이션, CSS 레이어 격리)
+- [v9.5.9] 종목 동기화 후 진입/목표/손절가 표시 누락 결함 수정 및 가격 필드 표준화 (Deep Enrichment)
+- [v9.5.8] 수동 가격 편집 DB 영속화 및 '가격편집저장' 통합 UI 구현
+- [v9.5.7] KST 09:00 - 09:15 Opening Range 필터 강화
+- [v9.5.0] analyzer.cjs 0건 결과 시 signals.json write 차단 기능 추가
+- [v9.5.0] systemStatsService.cjs Redis 키 규격화 (7개 고정)
+- [v9.5.4] KST 18:00 UI 안정화 및 초기화 로직 강화 (v1.1) 적용
+- [v9.5.3] KST 09:15 Opening Range 필터 강화
+
+
+---
+
 ## 🔐 SECURITY RULES
 
 - 모든 시크릿 → `.env` 파일 관리, `.gitignore` 등록 필수 (`.env*` 전체 패턴)
@@ -199,6 +212,66 @@ fs.writeFileSync('signals.json', ...); // FORBIDDEN
 - Prisma 쿼리 → `$queryRawUnsafe` 사용 금지, 파라미터 바인딩 필수
 - SSE 인증 → JWT URL 파라미터 수신 후 서버에서 `jwt.verify()` 검증
 - 신규 외부 API 연동 → `audit-security` 스킬 선행 실행 필수
+
+---
+
+## 🛡️ 장애 방지 규칙 (2026-04-16 추가)
+
+### 스케줄러 배포 전 확인
+- `sync_scheduler.cjs` 수정 후 반드시 확인:
+  ```bash
+  node --check sync_scheduler.cjs
+  ```
+  → `SyntaxError` / `ReferenceError` 없음 확인 후 `pm2 restart`
+
+### Prisma 모델 변경 시
+- schema.prisma 수정 후 반드시 `prisma generate` 실행.
+- 배포 전 체크리스트에 포함:
+  ```bash
+  node -e "const p = require('@prisma/client'); console.log(Object.keys(new p.PrismaClient()))"
+  ```
+  → `Instrument`, `Candle` 등 신규 모델명이 출력되는지 확인.
+
+### signals.json write 보호
+- analyzer 결과가 0건이면 write 금지 (`EMPTY_RESULTS` throw).
+- 이 규칙은 어떤 경우에도 제거하지 않는다. (데이터 소멸 방지용)
+
+---
+
+## 🏗️ 배포 전 필수 확인 (2026-04-16 추가)
+
+- **코드 배포 후 반드시 실행**:
+  ```bash
+  npx prisma generate
+  ```
+- **확인**:
+  - `pm2 logs sync-scheduler --lines 10` 명령으로 Prisma 관련 에러가 없는지 확인.
+
+---
+
+## 🗄️ DB 초기화 체크리스트 (2026-04-16 추가)
+
+
+신규 서버 배포 또는 DB 재생성 시 반드시 아래 순서 실행:
+
+1. **Instrument 테이블 시딩**:
+   ```bash
+   node scripts/seed_instruments.cjs
+   ```
+
+2. **Phase 1 실행으로 Candle 초기 데이터 생성**:
+   ```bash
+   node -e "require('./sync/phase1_snapshot.cjs').runPhase1()"
+   ```
+
+3. **건수 확인**:
+   - `SELECT COUNT(DISTINCT ticker) FROM candles;` → **350** 목표
+
+4. **수동 동기화 테스트**:
+   - `/api/sync/manual-signal force:true` → `success:true` 확인
+
+**이 절차 없이 서비스 오픈 금지.**
+
 
 ---
 

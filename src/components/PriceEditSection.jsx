@@ -11,10 +11,10 @@ const FIELDS = [
   { label: '손절가 (SL)',          field: 'stop_loss' }
 ];
 
-const PriceEditSection = ({ stockCode, initialPrices, hideTitle = false }) => {
+const PriceEditSection = ({ stockCode, initialPrices, hideTitle = false, onEdit = null }) => {
   const { isEditing, isSaving, prices, editValues, isManual, error,
           setIsEditing, handleChange, save, cancel, handleKeyDown }
-    = usePriceEdit(stockCode, initialPrices);
+    = usePriceEdit(stockCode, initialPrices, onEdit);
 
   return (
     <div className={`price-edit-section ${isEditing ? 'editing' : ''} ${hideTitle ? 'compact' : ''}`}>

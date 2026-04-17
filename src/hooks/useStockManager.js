@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import axiosClient from '../api/axiosClient';
 import { generateReportContent, generateTelegramContent } from '../utils/reportUtils';
@@ -28,6 +28,9 @@ export const useStockManager = (isAuthenticated) => {
   const [syncProgress, setSyncProgress] = useState({ current: 0, total: 100, timeframe: '' });
   const [isSendingTg, setIsSendingTg] = useState(false);
 
+  // [v9.5.8] Manual Price Edits State (Centralized)
+  const [pendingEdits, setPendingEdits] = useState({}); // { [ticker]: { entry1, entry2, target, stop_loss } }
+
   // Archive Mode
   const [activeSnapshot, setActiveSnapshot] = useState(null); // { id, signals, createdAt }
 
@@ -47,7 +50,7 @@ export const useStockManager = (isAuthenticated) => {
 
   // [Phase 3] signals localStorage caching REMOVED - all data is server-side now.
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
     try {
       // [FIX-05] Promise.allSettled — 부분 실패 허용
       const [stocksResult, summaryResult] = await Promise.allSettled([
@@ -62,15 +65,17 @@ export const useStockManager = (isAuthenticated) => {
           const rawData = Array.isArray(stocksResult.value.data?.data) ? stocksResult.value.data.data : [];
           stocksData = rawData.map(t => ({
               code: t.ticker || t.code,
-              name: t.name,
+              name: t.name || t.stockName || t.ticker || '종목명 없음',
               current_price: t.currentPrice || t.current_price,
-              score: t.hybridScore || t.score,
-              entry1: t.entry1Price || t.entry1,
-              entry2: t.entry2Price || t.entry2,
-              target: t.targetPrice || t.target,
-              stopLoss: t.stopLossPrice || t.stopLoss,
-              market: 'UNKNOWN',
+              total_score: t.totalScore || t.hybridScore || t.score || 0,
+              entry1: t.entry1Price || t.entry1 || t.entry_price || 0,
+              entry2: t.entry2Price || t.entry2 || t.entry_price_2 || 0,
+              target: t.targetPrice || t.target || t.target_price_1 || 0,
+              stopLoss: t.stopLossPrice || t.stopLoss || t.stop_loss || t.sl || 0,
+              market: t.market || t.marketCode || (t.ticker?.includes('-') ? 'COIN' : 'KR_STOCK'),
               category: t.category,
+              is_manual_price: t.is_manual_price || false,
+              timestamp: t.timestamp || 0,
               sector: '기타'
           }));
       } else {
@@ -127,7 +132,7 @@ export const useStockManager = (isAuthenticated) => {
       console.error("Critical error in fetchData:", error);
       toast.error(`데이터 갱신 중 치명적 오류: ${error.message}`);
     }
-  };
+  }, []); // [] dependency to ensure stable reference
 
   useEffect(() => {
     if (!isAuthenticated) return;
@@ -166,6 +171,12 @@ export const useStockManager = (isAuthenticated) => {
             }
             if (data.type === 'sync_progress' || data.type === 'progress') {
                 setIsSyncing(true);
+            }
+            if (data.type === 'system_reset') {
+                // [Step 4] Clear local dashboard state on system reset
+                setStocks([]);
+                setSignalsSummary(new Map());
+                setIsSyncing(false);
             }
         } catch (e) {
             console.error('[useStockManager] SSE Parse Error:', e);
@@ -256,12 +267,18 @@ export const useStockManager = (isAuthenticated) => {
         const s = summary.latestSignal;
         baseStocks.push({
           code,
-          name: s?.name || 'Unknown',
+          name: s?.name || s?.stockName || code || '종목명 없음',
           current_price: s?.current_price || 0,
-          score: s?.score || 0,
-          market: s?.market || 'Unknown',
+          total_score: s?.totalScore || s?.score || 0,
+          market: s?.market || s?.marketCode || (code?.includes('-') ? 'COIN' : 'KR_STOCK'),
           category: s?.category || '기타',
-          sector: s?.sector || '기타'
+          sector: s?.sector || '기타',
+          timestamp: s?.timestamp || 0,
+          // [Fix] Include price fields when merging from signalsSummary
+          entry1: s?.result_2 || s?.entry_price || s?.entry1 || 0,
+          entry2: s?.result_3 || s?.entry_price_2 || s?.entry2 || 0,
+          target: s?.result_1 || s?.target_price || s?.target || 0,
+          stopLoss: s?.stop_loss || s?.sl || s?.stopLoss || 0
         });
       }
     }
@@ -300,19 +317,29 @@ export const useStockManager = (isAuthenticated) => {
       const isTopSector = topSectors.includes(stock.sector);
       
       // [SSOT] Unified Score logic exclusively trusts backend 'latest.score'
-      const rawScore = latest?.score;
-      const backendScore = (typeof rawScore === 'object' && rawScore !== null) ? rawScore.total : (rawScore || 0);
-      const total_score = backendScore; // Unified scoring from API
-
+      const rawScore = latest?.totalScore || latest?.score;
+      const total_score = (typeof rawScore === 'object' && rawScore !== null) ? rawScore.total : (rawScore || 0);
       const signalTimeframes = buildSignalTimeframes(tfSigs);
       const t2H = tfSigs['2H'] ? {
         sma5: tfSigs['2H'].sma5 || null,
         sma10: tfSigs['2H'].sma10 || null,
         sma20: tfSigs['2H'].sma20 || null,
         sma60: tfSigs['2H'].sma60 || null,
+        // [Fix] Include result fields for fallback support in MobileStockCard
+        result_1: tfSigs['2H'].result_1 || 0,
+        result_2: tfSigs['2H'].result_2 || 0,
+        result_3: tfSigs['2H'].result_3 || 0,
+        stop_loss: tfSigs['2H'].stop_loss || 0
       } : null;
 
       // [v9.4.34] 수동 편집 가격 반영 (stock 객체에 포함된 경우 우선)
+      // [v9.5.8] UI 펜딩 편집값 최우선 반영
+      const pending = pendingEdits[stock.code];
+      const e1 = pending?.entry1 ?? stock.entry1;
+      const e2 = pending?.entry2 ?? stock.entry2;
+      const t  = pending?.target ?? stock.target;
+      const sl = pending?.stop_loss ?? stock.stopLoss;
+
       return {
         ...stock,
         ...signalTimeframes,
@@ -325,13 +352,30 @@ export const useStockManager = (isAuthenticated) => {
         isTopSector,
         score: total_score,        
         total_score: total_score,
-        hybridScore: total_score
+        hybridScore: total_score,
+        // UI 반영 필드
+        entry1: e1,
+        entry2: e2,
+        target: t,
+        stopLoss: sl,
+        is_manual_price: stock.is_manual_price || !!pending
       };
     });
 
     // [v9.5.0] 정렬 및 슬라이싱: 
     // showAll이 꺼져 있으면 전체 종목 중 점수 상위 5개만 노출 (Dynamic Nomination)
-    const sorted = [...raw].sort((a, b) => (b.total_score || 0) - (a.total_score || 0));
+    const sorted = [...raw].sort((a, b) => {
+      // 1. 점수 내림차순 (desc)
+      const scoreA = a.total_score || 0;
+      const scoreB = b.total_score || 0;
+      if (scoreA !== scoreB) return scoreB - scoreA;
+      
+      // 2. 시간 내림차순 (desc) - 최신 신호 우선
+      const timeA = a.timestamp || a.latestSignal?.timestamp || 0;
+      const timeB = b.timestamp || b.latestSignal?.timestamp || 0;
+      return timeB - timeA;
+    });
+
     return showAll ? sorted : sorted.slice(0, 5);
   }, [filteredStocks, signalsSummary, showAll, topSectors]);
 
@@ -493,7 +537,7 @@ export const useStockManager = (isAuthenticated) => {
   const handleDownloadTVList = () => {
     const tvStocks = (Array.isArray(candidates) ? candidates : [])
       .filter(s => s.total_score >= 50)
-      .map(s => `KRX:${s.code}`)
+      .map(s => `${s.code}`)
       .join(', ');
 
     if (!tvStocks) {
@@ -607,6 +651,75 @@ export const useStockManager = (isAuthenticated) => {
     }
   };
 
+  /**
+   * [v9.5.8] Update local pending edits
+   */
+  const updatePriceEdit = (ticker, data) => {
+    setPendingEdits(prev => ({
+      ...prev,
+      [ticker]: { ...(prev[ticker] || {}), ...data }
+    }));
+  };
+
+  /**
+   * [v9.5.8] Batch Save Manual Edits
+   */
+  const handleBatchSavePrices = async () => {
+    const tickers = Object.keys(pendingEdits);
+    if (tickers.length === 0) {
+      toast.error("변경 된 가격이 없습니다.");
+      return;
+    }
+
+    try {
+      const edits = tickers.map(ticker => ({
+        ticker,
+        ...pendingEdits[ticker]
+      }));
+
+      const res = await axiosClient.post('/api/signals/batch-price-edit', { edits });
+      if (res.data.success) {
+        toast.success(`가격 편집 저장 완료 (${res.data.count}건)`);
+        setPendingEdits({});
+        await fetchData(); // DB 반영 데이터 재추출
+        return true;
+      }
+    } catch (e) {
+      console.error('[BatchSave] Failed:', e);
+      toast.error('가격 저장 중 오류가 발생했습니다.');
+      return false;
+    }
+    return false;
+  };
+
+  /**
+   * [v9.5.8] Unified Save (Manual Edits + Sync History)
+   * This is what "동기화 저장" and "가격편집저장" will call.
+   */
+  const handleUnifiedSave = async (top5Data) => {
+    // 1. If there are pending edits, save them first
+    if (Object.keys(pendingEdits).length > 0) {
+      const success = await handleBatchSavePrices();
+      if (!success) return; // Stop if batch save failed
+    }
+
+    // 2. Perform Sync History Save (Top 5)
+    if (!top5Data || top5Data.length === 0) {
+      toast.error("저장할 상위 종목 데이터가 없습니다.");
+      return;
+    }
+
+    try {
+      const res = await axiosClient.post('/api/admin/save-sync-history', { stocks: top5Data });
+      if (res.data?.success) {
+        toast.success(`[성공] 동기화 및 퍼블리싱 완료 (태그: ${res.data.tagName})`);
+      }
+    } catch (e) {
+      console.error('[UnifiedSave] Sync history failed:', e);
+      toast.error('동기화 저장 중 오류가 발생했습니다.');
+    }
+  };
+
   return {
     // State
     stocks, signalsSummary, lastUpdate,
@@ -629,6 +742,9 @@ export const useStockManager = (isAuthenticated) => {
     handleAutoSync: handleIntegratedSync, // Task-015 Alias
     handleIntegratedSync,
     handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
-    handleSnapshotSelected, activeSnapshot
+    handleSnapshotSelected, activeSnapshot,
+
+    // [v9.5.8] Manual Price Edits
+    pendingEdits, updatePriceEdit, handleBatchSavePrices, handleUnifiedSave
   };
 };

@@ -1,4 +1,5 @@
 'use strict';
+process.env.TZ = 'Asia/Seoul'; // [TASK-CC02] Global KST Enforcement
 
 // ──────────────────────────────────────────────────────────────────
 // sync/phase3_intraday.cjs — Phase 3: 장중 증분 (베이스라인 Delta)
@@ -20,6 +21,7 @@ const {
   TF_RESAMPLE_MAP,
 } = require('../lib/constants.cjs');
 const { fetchHybridHistory, resampleChartData, runBatchAnalysis } = require('../analyzer.cjs');
+const { getKstISO, nowKST, getKstNow } = require('../src/utils/kst.cjs'); // [TASK-CC02]
 
 const prisma = new PrismaClient();
 
@@ -44,7 +46,7 @@ async function startPhase3() {
 
   heartbeatTimer = setInterval(() => {
     try {
-      redis.publish('sse_heartbeat', JSON.stringify({ type: 'heartbeat', ts: Date.now() }));
+      redis.publish('sse_heartbeat', JSON.stringify({ type: 'heartbeat', ts: nowKST() })); // [TASK-CC02] KST ms
     } catch (err) {}
   }, 30000);
 
@@ -168,7 +170,7 @@ async function runLoop() {
       redis.publish('sse_event', JSON.stringify({
         type: 'data_update',
         changedCount: changedSymbols.size,
-        ts: Date.now(),
+        ts: nowKST(), // [TASK-CC02] KST ms
       }));
       console.log(`[Phase3] ${changedSymbols.size}종목 변경 감지 → analyzer 완료`);
     }
@@ -201,7 +203,7 @@ async function flushBuffer() {
     redis.publish('sse_event', JSON.stringify({
       type: 'data_update',
       changedCount: changedSymbols.size,
-      ts: Date.now(),
+      ts: nowKST(), // [TASK-CC02] KST ms
     }));
   }
 }
@@ -233,7 +235,7 @@ async function upsertCandle(instrumentId, tf, history, idx, source) {
       close:     history.close[idx],
       volume:    history.volume[idx] ?? 0,
       source,
-      fetchedAt: new Date(),
+      fetchedAt: getKstNow(), // [TASK-CC02] KST DB 저장
     },
     create: {
       instrumentId,
@@ -245,7 +247,7 @@ async function upsertCandle(instrumentId, tf, history, idx, source) {
       volume:     history.volume[idx] ?? 0,
       source,
       isValid:    true,
-      fetchedAt:  new Date(),
+      fetchedAt:  getKstNow(), // [TASK-CC02] KST DB 저장
       candleAt,
     },
   });

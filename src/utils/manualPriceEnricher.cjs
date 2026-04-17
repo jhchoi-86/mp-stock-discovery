@@ -16,87 +16,111 @@ async function enrichWithManualPrices(stocks, prisma, date) {
     const codes = stocks.map(s => s.code || s.ticker || s.stock_code).filter(Boolean);
     if (codes.length === 0) return stocks;
 
-    // Fetch latest snapshots for these codes on the specific date
-    const manualSnapshots = await prisma.dailyStockSnapshot.findMany({
-      where: {
-        ticker: { in: codes },
-        syncDate: targetDate
-      }
-    });
+    let manualSnapshots = [];
+    let persistentEdits = [];
+
+    // [v9.5.5] Fetch global persistent overrides (SignalPriceEdit)
+    try {
+      [manualSnapshots, persistentEdits] = await Promise.all([
+        prisma.dailyStockSnapshot.findMany({
+          where: { ticker: { in: codes }, syncDate: targetDate }
+        }),
+        prisma.signalPriceEdit.findMany({
+          where: { ticker: { in: codes } }
+        })
+      ]);
+    } catch (dbErr) {
+      console.warn(`[ManualPriceEnricher] DB fallback: Using signal data only. (${dbErr.message})`);
+    }
 
     const snapshotMap = new Map(manualSnapshots.map(s => [s.ticker, s]));
+    const editMap = new Map(persistentEdits.map(e => [e.ticker, e]));
 
     return stocks.map(stock => {
       const code = stock.code || stock.ticker || stock.stock_code;
       const snapshot = snapshotMap.get(code);
+      const persistentEdit = editMap.get(code);
 
-      if (!snapshot) return stock;
+      // [v9.5.5] Priority: Persistent Edit > Today's Manual Snapshot > Original
+      const entry1Value = persistentEdit?.entry1 ?? (snapshot?.is_manual_price ? snapshot.inst_buy_manual : (snapshot?.entry1Price || snapshot?.entryPrice1 || stock.entry1 || stock.entry_price || stock.entry_price_1 || stock.result_2 || stock.latestSignal?.result_2));
+      const entry2Value = persistentEdit?.entry2 ?? (snapshot?.is_manual_price ? snapshot.inst_buy2_manual : (snapshot?.entry2Price || snapshot?.entryPrice2 || stock.entry2 || stock.entry_price_2 || stock.result_3 || stock.latestSignal?.result_3));
+      const targetValue = persistentEdit?.target ?? (snapshot?.is_manual_price ? snapshot.target_manual : (snapshot?.targetPrice || snapshot?.targetPrice1 || stock.target || stock.target_price_1 || stock.result_1 || stock.latestSignal?.result_1));
+      const slValue     = persistentEdit?.stopLoss ?? (snapshot?.is_manual_price ? snapshot.stop_loss_manual : (snapshot?.stopLossPrice || snapshot?.stopLoss || stock.sl || stock.stop_loss || stock.latestSignal?.stop_loss));
+      const isManual    = !!persistentEdit || (snapshot?.is_manual_price || false);
 
-      // Priority Logic: Manual Price > Snapshot Price > Original Stock Object
-      const entry1 = snapshot.is_manual_price ? snapshot.inst_buy_manual : (snapshot.entry1Price || snapshot.entryPrice1 || stock.entry1 || stock.entry_price || stock.entry_price_1);
-      const entry2 = snapshot.is_manual_price ? snapshot.inst_buy2_manual : (snapshot.entry2Price || snapshot.entryPrice2 || stock.entry2 || stock.entry_price_2);
-      const target = snapshot.is_manual_price ? snapshot.target_manual : (snapshot.targetPrice || snapshot.targetPrice1 || stock.target || stock.target_price_1);
-      const sl = snapshot.is_manual_price ? snapshot.stop_loss_manual : (snapshot.stopLossPrice || snapshot.stopLoss || stock.sl || stock.stop_loss);
+      const nEntry1 = Number(entry1Value) || 0;
+      const nEntry2 = Number(entry2Value) || 0;
+      const nTarget = Number(targetValue) || 0;
+      const nSL     = Number(slValue) || 0;
 
       // [v9.5.1] Recursively enrich nested objects for report generator (reportUtils.js) compatibility
       const enriched = {
         ...stock,
-        // Standardize output fields to satisfy various frontend requirements
-        entry1: Number(entry1) || 0,
-        entry_price: Number(entry1) || 0,
-        entry_price_1: Number(entry1) || 0,
-        entry2: Number(entry2) || 0,
-        entry_price_2: Number(entry2) || 0,
-        target: Number(target) || 0,
-        target_price_1: Number(target) || 0,
-        sl: Number(sl) || 0,
-        stop_loss: Number(sl) || 0,
-        current_price: Number(snapshot.currentPrice || stock.current_price || stock.price) || 0,
-        score: snapshot.hybridScore || snapshot.score || stock.score || 0,
-        is_manual_price: snapshot.is_manual_price || false,
+        // Standardize output fields (Aliases for compatibility)
+        entry1: nEntry1,
+        entry1Price: nEntry1,
+        entry_price: nEntry1,
+        entry_price_1: nEntry1,
+        inst_buy_manual: nEntry1,
+
+        entry2: nEntry2,
+        entry2Price: nEntry2,
+        entry_price_2: nEntry2,
+        inst_buy2_manual: nEntry2,
+
+        target: nTarget,
+        targetPrice: nTarget,
+        target_price_1: nTarget,
+        target_manual: nTarget,
+
+        sl: nSL,
+        stop_loss: nSL,
+        stopLoss: nSL,
+        stopLossPrice: nSL,
+        stop_loss_manual: nSL,
+
+        current_price: Number(snapshot?.currentPrice || stock.currentPrice || stock.current_price || stock.price) || 0,
+        currentPrice: Number(snapshot?.currentPrice || stock.currentPrice || stock.current_price || stock.price) || 0,
+        score: snapshot?.hybridScore || snapshot?.score || stock.score || 0,
+        is_manual_price: isManual,
         enriched_at: new Date().toISOString()
       };
 
-      if (snapshot.is_manual_price) {
-        // A. Enrich latestSignal
-        if (enriched.latestSignal) {
-          enriched.latestSignal = {
-            ...enriched.latestSignal,
-            entry_price: Number(entry1),
-            result_1: Number(target),
-            result_2: Number(entry1),
-            result_3: Number(entry2),
-            stop_loss: Number(sl)
-          };
-        }
+      // Enrich nested objects for deep consistency
+      if (enriched.latestSignal) {
+        enriched.latestSignal = {
+          ...enriched.latestSignal,
+          entry_price: nEntry1,
+          result_1: nTarget,
+          result_2: nEntry1,
+          result_3: nEntry2,
+          stop_loss: nSL,
+          target_price: nTarget
+        };
+      }
 
-        // B. Enrich timeframeStatus (1H, 2H, 4H, 1D)
-        if (enriched.timeframeStatus) {
-          const tfs = ['1H', '2H', '4H'];
-          tfs.forEach(tf => {
-            if (enriched.timeframeStatus[tf]) {
-              enriched.timeframeStatus[tf] = {
-                ...enriched.timeframeStatus[tf],
-                result_2: Number(entry1),
-                result_3: Number(entry2)
-              };
-            }
-          });
-          
-          if (enriched.timeframeStatus['1D']) {
-            enriched.timeframeStatus['1D'] = {
-              ...enriched.timeframeStatus['1D'],
-              bb_upper: Number(target)
+      if (enriched.timeframeStatus) {
+        const tfs = ['30M', '1H', '2H', '4H', '1D'];
+        tfs.forEach(tf => {
+          if (enriched.timeframeStatus[tf]) {
+            enriched.timeframeStatus[tf] = {
+              ...enriched.timeframeStatus[tf],
+              result_1: nTarget,
+              result_2: nEntry1,
+              result_3: nEntry2,
+              stop_loss: nSL,
+              target_price: nTarget
             };
+            if (tf === '1D') enriched.timeframeStatus[tf].bb_upper = nTarget;
           }
-        }
+        });
       }
 
       return enriched;
     });
   } catch (err) {
-    console.error('[ManualPriceEnricher] Error:', err.message);
-    return stocks; // Return original on failure to prevent entire page crash
+    console.error('[ManualPriceEnricher] Unhandled Error:', err.message);
+    return stocks; 
   }
 }
 

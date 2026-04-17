@@ -3,8 +3,6 @@ import adminService from '../api/adminService';
 import axiosClient from '../api/axiosClient';
 import useAuthStore from '../store/authStore';
 import { UserCog, ShieldAlert, ShieldCheck, ToggleLeft, ToggleRight, Trash2, CheckCircle } from 'lucide-react';
-import BacktestReportWidget from './BacktestReportWidget';
-import DailySnapshotAnalytics from './DailySnapshotAnalytics';
 import AdminSignalHistory from './AdminSignalHistory';
 import SystemManagementTab from './SystemManagementTab';
 
@@ -160,10 +158,6 @@ const AdminDashboard = () => {
 
   return (
     <div className="fade-in" style={{ padding: '1.5rem', width: '100%' }}>
-      {/* 🚀 Phase 5: Backtest Performance Integration */}
-      <div style={{ marginBottom: '2.5rem' }}>
-        <BacktestReportWidget />
-      </div>
 
       <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid var(--glass-border)', marginBottom: '2rem' }}>
         <button 
@@ -175,16 +169,6 @@ const AdminDashboard = () => {
           }}
         >
           회원 관리
-        </button>
-        <button 
-          onClick={() => setActiveTab('analytics')}
-          style={{
-            padding: '0.75rem 1.5rem', background: activeTab === 'analytics' ? 'rgba(255,255,255,0.1)' : 'none',
-            border: 'none', borderBottom: activeTab === 'analytics' ? '2px solid var(--primary)' : '2px solid transparent',
-            color: activeTab === 'analytics' ? '#fff' : 'var(--text-muted)', cursor: 'pointer', fontWeight: 'bold'
-          }}
-        >
-          종목 성과 분석 📊
         </button>
         <button 
           onClick={() => setActiveTab('signals')}
@@ -208,9 +192,7 @@ const AdminDashboard = () => {
         </button>
       </div>
 
-      {activeTab === 'analytics' ? (
-        <DailySnapshotAnalytics />
-      ) : activeTab === 'signals' ? (
+      {activeTab === 'signals' ? (
         <AdminSignalHistory />
       ) : activeTab === 'system' ? (
         <SystemManagementTab />

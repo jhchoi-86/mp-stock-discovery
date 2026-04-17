@@ -385,3 +385,41 @@ model Candle {
   @@index([candleAt])
   @@map("candles")
 }
+
+model SignalPriceEdit {
+  ticker           String    @id @db.VarChar(50)
+  entry1           Int?
+  entry2           Int?
+  target           Int?
+  stopLoss         Int?      @map("stop_loss")
+  aiComment        String?   @map("ai_comment") @db.Text
+  isManual         Boolean   @default(true) @map("is_manual")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  @@map("signal_price_edits")
+}
+
+model PppWatchlist {
+  id                  Int       @id @default(autoincrement())
+  code                String
+  name                String
+  score               Float
+  ppp1                Boolean   @default(false)
+  ppp2                Boolean   @default(false)
+  g_buy               Float?
+  result_2            Float?
+  registered_at       DateTime  @default(now())
+  // ⚠️ [C1] KST 기준 날짜 문자열 (YYYY-MM-DD) — UTC toISOString() 직접 사용 금지
+  registered_date     String
+  expires_at          DateTime
+  is_active           Boolean   @default(true)
+  last_signal         String?   // "PPP2" | "PPP1" | "NONE"
+  last_signal_changed DateTime?
+  created_at          DateTime  @default(now())
+  updated_at          DateTime  @updatedAt
+
+  @@unique([code, registered_date])
+  @@index([is_active, expires_at])
+  @@index([score])
+  @@map("ppp_watchlist")
+}

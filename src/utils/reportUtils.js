@@ -1,3 +1,5 @@
+import { getChartUrl } from './chartUtils';
+
 export const generateReportContent = (candidates) => {
   // Collect all stocks that match current filter or at least have HH signal
   const reportStocks = candidates.filter(stock => {
@@ -156,7 +158,7 @@ export const generateTelegramContent = (reportStocks, selectedStocksSet, aiComme
     if (aiCommentsMap[s.code]) {
       content += `💡 AI 코멘트: ${aiCommentsMap[s.code]}\n`;
     }
-    content += `차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+    content += `차트: ${getChartUrl(s.code, 'KR_STOCK')}\n\n`;
   });
 
   content += `---\n\n`;
@@ -186,7 +188,7 @@ export const generateTop5StrategyContent = (top5) => {
     
     content += `- 목표가: 1차 ${Math.round(target1).toLocaleString()}원 / 2차 ${Math.round(target1 * 1.05).toLocaleString()}원\n`;
     content += `- 손절가: ${Math.round((sig2H?.result_3 || 0) * 0.98).toLocaleString()}원 (2차 진입가 대비 -2%)\n`;
-    content += `- 차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+    content += `- 차트: ${getChartUrl(s.code, 'KR_STOCK')}\n\n`;
   });
 
   content += `💡 Antigravity Tip: 시초가 급등 시 무리한 추격보다는 오전 눌림 지지를 확인하고 진입하는 것을 권장합니다.\n`;

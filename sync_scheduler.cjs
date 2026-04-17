@@ -15,6 +15,10 @@ const { runPhase2 }               = require('./sync/phase2_fullsync.cjs');
 const { startPhase3, stopPhase3 } = require('./sync/phase3_intraday.cjs');
 const { sendAlert }               = require('./lib/alert_manager.cjs');
 
+// [v9.5.4] Scheduler Flags
+let phase1Running = false;
+let phase2Running = false;
+
 cron.schedule('5 18 * * 1-5', async () => {
   if (phase1Running) { console.log('[Scheduler] Phase 1 이미 실행 중 — skip'); return; }
   

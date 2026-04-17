@@ -1,4 +1,5 @@
 'use strict';
+process.env.TZ = 'Asia/Seoul'; // [TASK-CC02] Global KST Enforcement
 
 // ──────────────────────────────────────────────────────────────────
 // sync/phase1_snapshot.cjs — Phase 1: 장마감 후 사전 DB 저장
@@ -24,6 +25,7 @@ const {
   fetchHybridHistory,
   resampleChartData,
 } = require('../analyzer.cjs');
+const { getKstISO, getKstDateCompact } = require('../src/utils/kst.cjs'); // [TASK-CC02]
 
 const prisma = new PrismaClient();
 
@@ -33,7 +35,7 @@ const MAX_RETRY   = 3;
 
 async function runPhase1() {
   const startTs = Date.now();
-  const today   = dayjs().format('YYYYMMDD');
+  const today   = getKstDateCompact(); // [TASK-CC02] KST Format (YYYYMMDD)
 
   console.log(`[Phase1] 사전 저장 시작 — ${today}`);
 
@@ -75,7 +77,7 @@ async function runPhase1() {
   const total       = instruments.length;
   const successRate = total > 0 ? successCount / total : 0;
   const elapsed     = ((Date.now() - startTs) / 1000).toFixed(1);
-  const nowIso      = new Date().toISOString();
+  const nowIso      = getKstISO(); // [TASK-CC02] KST ISO (No Z)
   const success     = successRate >= 0.80;
 
   await Promise.all([
@@ -166,7 +168,7 @@ async function saveCandles(instrumentId, timeframe, history) {
     volume:    volume[i] ?? 0,
     source:    'SNAPSHOT',
     isValid:   true,
-    fetchedAt: new Date(),
+    fetchedAt: getKstNow(), // [TASK-CC02] KST DB 저장
     candleAt:  new Date(timeArr[i] * 1000),
   }));
 

@@ -1,4 +1,4 @@
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import toast from 'react-hot-toast';
 
 /**
@@ -8,18 +8,23 @@ import toast from 'react-hot-toast';
  */
 export function useDataConsistency(onRefresh) {
   
+  const onRefreshRef = useRef(onRefresh);
+  useEffect(() => {
+    onRefreshRef.current = onRefresh;
+  }, [onRefresh]);
+
   const handleRefresh = useCallback((data) => {
     console.log('[Consistency] save_sync_complete 수신:', data);
     
-    if (onRefresh) {
-      onRefresh();
+    if (onRefreshRef.current) {
+      onRefreshRef.current();
       toast.success('실시간 동기화 완료: 최신 데이터를 불러왔습니다.', {
         id: 'sync-complete-toast', // 중복 표시 방지
         duration: 3000,
         icon: '🔄'
       });
     }
-  }, [onRefresh]);
+  }, []);
 
   useEffect(() => {
     const handleSseMessage = (event) => {

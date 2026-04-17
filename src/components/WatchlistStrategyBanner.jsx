@@ -2,6 +2,7 @@ import React from 'react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
 import useAuthStore from '../store/authStore';
+import { getChartUrl } from '../utils/chartUtils';
 
 // 뉴스/공시 링크 생성 헬퍼 (Top5StrategyBanner와 공유 로직)
 const getInfoLinks = (code, name) => [
@@ -145,7 +146,7 @@ const WatchlistStrategyBanner = () => {
 
                             {/* 실시간 차트 보기 */}
                             <a 
-                                href={`https://kr.tradingview.com/chart/?symbol=KRX:${stock.code}`}
+                                href={getChartUrl(stock.code, stock.market || 'KR_STOCK')}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="btn-chart-link-watchlist"

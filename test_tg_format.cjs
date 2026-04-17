@@ -67,7 +67,7 @@ const generateMessage = (top5) => {
         content += `- 매수전략: ${Math.round(sig2H?.result_2 || 0).toLocaleString()}원 부근 눌림 입성 유효\n`;
         content += `- 목표가: 1차 ${Math.round(sig2H?.bb_upper || 0).toLocaleString()}원 / 2차 ${Math.round((sig2H?.bb_upper || 0) * 1.05).toLocaleString()}원\n`;
         content += `- 손절가: ${Math.round((sig2H?.result_3 || 0) * 0.98).toLocaleString()}원 (지표 이탈 시)\n`;
-        content += `- 차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+        content += `- 차트: https://www.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
     });
 
     content += `💡 Antigravity Tip: 오전 10시 이후 눌림 지지 확인 후 진입 권장.\n`;

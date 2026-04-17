@@ -1,4 +1,5 @@
 require('dotenv').config();
+process.env.TZ = 'Asia/Seoul'; // [TASK-CC02] Global KST Enforcement
 const prisma = require('./src/utils/prismaClient.cjs');
 
 // [TASK-S14] Global BigInt Serialization Safety
@@ -13,6 +14,7 @@ const path = require('path');
 const https = require('https');
 const dns = require('dns');
 const jwt = require('jsonwebtoken'); // [TASK-005] Moved to top
+const cron = require('node-cron');
 const { v4: uuidv4 } = require('uuid'); // [MP-DEBUG-001] Added missing uuidv4
 const { prefetchKisCache } = require('./src/utils/kisCache.cjs');
 const redis = require('./platform/infra/redis/client.cjs'); // [TASK-E2] Global redis client for caching
@@ -20,15 +22,22 @@ const redis = require('./platform/infra/redis/client.cjs'); // [TASK-E2] Global 
 dns.setDefaultResultOrder('ipv4first');
 
 const { calculateTotalScore, getCategory, getStars } = require('./src/utils/scoreEngine.cjs');
-const { toKST, getKSTDateString, nowKST } = require('./src/utils/kst.cjs'); // [TASK-CC02] KST 공통 유틸 도입
+const { 
+    toKST, 
+    getKSTDateString, 
+    nowKST,
+    getKstISO, 
+    getKstDateCompact,
+    getKstNow 
+} = require('./src/utils/kst.cjs'); // [TASK-CC02]
 const { enrichWithManualPrices } = require('./src/utils/manualPriceEnricher.cjs'); // [v9.4.32] Dynamic Price Enrichment
 
 // 플랜 3: 백엔드 무결성 자동 검증 시스템 가동
 const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
 verifyIntegrity();
 
-const cron = require('node-cron');
 const { calculateSignals, resampleChartData, runBatchAnalysis } = require('./analyzer.cjs');
+const { runPppScan } = require('./ppp_filter.cjs');
 const { sendAlert: _sendSyncAlert } = require('./lib/alert_manager.cjs');
 const { TIMEFRAMES, ANALYZER_LOCK_TTL } = require('./lib/constants.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
@@ -389,6 +398,46 @@ app.get('/api/top5', authenticateToken, async (req, res) => {
   }
 });
 
+// [PPP Watchlist] Routes
+app.post('/api/ppp/scan', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const result = await runPppScan();
+    res.json({ success: true, data: result });
+  } catch (e) {
+    console.error('[API PPP Scan]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/ppp/watchlist', authenticateToken, requirePaidOrAdmin, async (req, res) => {
+  const limit = parseInt(req.query.limit) || 50;
+  try {
+    const watchlist = await prisma.pppWatchlist.findMany({
+      where: { is_active: true },
+      orderBy: { score: 'desc' },
+      take: limit
+    });
+    res.json({ success: true, data: watchlist });
+  } catch (e) {
+    console.error('[API PPP Watchlist]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.delete('/api/ppp/watchlist/:code', authenticateToken, isAdmin, async (req, res) => {
+  const { code } = req.params;
+  try {
+    await prisma.pppWatchlist.updateMany({
+      where: { code, is_active: true },
+      data: { is_active: false }
+    });
+    res.json({ success: true, message: `${code} 비활성화 완료` });
+  } catch (e) {
+    console.error('[API PPP Delete]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 // Forward /api/public/recommendations directly to the handler
 app.get('/api/public/recommendations', getLatestReportHandler);
 
@@ -459,7 +508,7 @@ app.get('/api/public/watchlist-strategy', (req, res) => {
     }
   } else {
     // Return empty but successful to avoid crashes if no watchlist set yet
-    res.json({ updatedAt: new Date().toISOString(), stocks: [] });
+    res.json({ updatedAt: getKstISO(), stocks: [] });
   }
 });
 
@@ -476,7 +525,7 @@ app.get('/api/public/live-notifications', (req, res) => {
     } else {
         // Return default/mock if file not yet created to avoid frontend crash
         res.json([
-            { message: "[알림] 실시간 매매 신호 엔진 가동 중...", timestamp: new Date().toISOString() }
+            { message: "[알림] 실시간 거래가 아직 준비 중입니다...", timestamp: getKstISO() }
         ]);
     }
 });
@@ -534,7 +583,7 @@ async function addLiveNotification(message) {
         // Add new notification to the beginning
         notifications.unshift({
             message,
-            timestamp: new Date().toISOString(),
+            timestamp: getKstISO(),
             id: uuidv4()
         });
         
@@ -754,7 +803,7 @@ async function saveDailySignalsToDB() {
 
     try {
         const db = JSON.parse(fs.readFileSync(TIME_SLOT_FILE, 'utf8'));
-        const today = new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString().split('T')[0];
+        const today = getKSTDateString(); // [TASK-CC02] KST Standard
         const signalsToday = db[today];
 
         if (!signalsToday) {
@@ -880,6 +929,138 @@ setInterval(async () => {
         }
     }
 
+
+// [STEP-04] POST /api/signals/price-edit - 수동 편집 가격 저장 (영속화)
+app.post('/api/signals/price-edit', authenticateToken, isAdmin, async (req, res) => {
+    const { ticker, entry1, entry2, target, stopLoss, aiComment } = req.body;
+    
+    if (!ticker) return res.status(400).json({ success: false, error: 'ticker is required' });
+
+    // [Adversarial Defense] 서버측 가격 논리 검증 (Red-Team 추천)
+    const pEntry1 = entry1 ? parseInt(entry1) : null;
+    const pEntry2 = entry2 ? parseInt(entry2) : null;
+    const pTarget = target ? parseInt(target) : null;
+    const pStopLoss = stopLoss ? parseInt(stopLoss) : null;
+
+    if (pEntry1 && pTarget && pEntry1 >= pTarget) {
+        return res.status(400).json({ success: false, error: '1차 진입가는 목표가보다 낮아야 합니다.' });
+    }
+    if (pEntry1 && pEntry2 && pEntry2 >= pEntry1) {
+        return res.status(400).json({ success: false, error: '2차 진입가는 1차 진입가보다 낮아야 합니다.' });
+    }
+    if (pEntry2 && pStopLoss && pStopLoss >= pEntry2) {
+        return res.status(400).json({ success: false, error: '손절가는 2차 진입가보다 낮아야 합니다.' });
+    }
+
+    try {
+        const result = await prisma.signalPriceEdit.upsert({
+            where: { ticker },
+            update: {
+                entry1: pEntry1,
+                entry2: pEntry2,
+                target: pTarget,
+                stopLoss: pStopLoss,
+                aiComment: aiComment || null,
+                updatedAt: new Date()
+            },
+            create: {
+                ticker,
+                entry1: pEntry1,
+                entry2: pEntry2,
+                target: pTarget,
+                stopLoss: pStopLoss,
+                aiComment: aiComment || null,
+            }
+        });
+
+        // 관련 캐시 초기화
+        if (redis) {
+            await redis.del(`mp:snapshot:${ticker}:*`);
+            await redis.del('mp:active_targets');
+            const keys = await redis.keys('mp:top:*');
+            if (keys && keys.length > 0) await redis.del(keys);
+        }
+
+        res.json({ success: true, data: result });
+    } catch (err) {
+        console.error('[PriceEdit API]', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
+// [v9.5.8] POST /api/signals/batch-price-edit - 일괄 수동 편집 가격 저장
+app.post('/api/signals/batch-price-edit', authenticateToken, isAdmin, async (req, res) => {
+    const { edits } = req.body; // Array of { ticker, entry1, entry2, target, stopLoss, aiComment }
+    
+    if (!Array.isArray(edits) || edits.length === 0) {
+        return res.status(400).json({ success: false, error: 'edits array is required' });
+    }
+
+    try {
+        const results = await prisma.$transaction(
+            edits.map(edit => {
+                const { ticker, entry1, entry2, target, stopLoss, aiComment } = edit;
+                const pEntry1 = entry1 ? parseInt(entry1) : null;
+                const pEntry2 = entry2 ? parseInt(entry2) : null;
+                const pTarget = target ? parseInt(target) : null;
+                const pStopLoss = stopLoss ? parseInt(stopLoss) : null;
+
+                return prisma.signalPriceEdit.upsert({
+                    where: { ticker },
+                    update: {
+                        entry1: pEntry1,
+                        entry2: pEntry2,
+                        target: pTarget,
+                        stopLoss: pStopLoss,
+                        aiComment: aiComment || null,
+                        updatedAt: new Date()
+                    },
+                    create: {
+                        ticker,
+                        entry1: pEntry1,
+                        entry2: pEntry2,
+                        target: pTarget,
+                        stopLoss: pStopLoss,
+                        aiComment: aiComment || null,
+                    }
+                });
+            })
+        );
+
+        // 관련 캐시 일괄 초기화
+        if (redis) {
+            const tickers = edits.map(e => e.ticker);
+            for (const ticker of tickers) {
+                await redis.del(`mp:snapshot:${ticker}:*`);
+            }
+            await redis.del('mp:active_targets');
+            const keys = await redis.keys('mp:top:*');
+            if (keys && keys.length > 0) await redis.del(keys);
+        }
+
+        // [v9.5.9] Trigger PublishingService update for static landing page files
+        if (global.publishingService) {
+            try {
+                const latestSync = await prisma.syncSaveLog.findFirst({
+                    orderBy: { savedAt: 'desc' }
+                });
+                if (latestSync && latestSync.snapshot) {
+                    console.log('[BatchPriceEdit] Re-publishing latest sync with updated prices...');
+                    const { enrichWithManualPrices } = require('./src/utils/manualPriceEnricher.cjs');
+                    const enriched = await enrichWithManualPrices(latestSync.snapshot, prisma, latestSync.savedAt);
+                    await global.publishingService.publishToAll(enriched);
+                }
+            } catch (pubErr) {
+                console.error('[BatchPriceEdit] Publishing update failed:', pubErr.message);
+            }
+        }
+
+        res.json({ success: true, count: results.length });
+    } catch (err) {
+        console.error('[BatchPriceEdit API]', err);
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
 
 app.get('/api/stocks', requireProAuth, (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -1069,11 +1250,30 @@ const broadcastToClients = (payload) => {
         try {
             client.write(data);
             if (client.flush) client.flush();
+            if (process.env.DEBUG_SSE === 'true') {
+                console.log(`[SSE] Broadcast sent to client: ${client.userId || 'unknown'}`);
+            }
         } catch (e) {
-            // console.error('[SSE] Broadcast Error:', e.message);
+            console.error('[SSE] Broadcast Error:', e.message);
         }
     });
 };
+
+/** 관리자 클라이언트들에게만 SSE 메시지 전송 (Step 3) */
+const broadcastToAdmin = (type, payload) => {
+    const data = `data: ${JSON.stringify({ type, payload })}\n\n`;
+    clients.forEach(client => {
+        if (client.userRole === 'ADMIN') {
+            try {
+                client.write(data);
+                if (client.flush) client.flush();
+            } catch (e) {
+                console.error('[SSE] Admin Broadcast Error:', e);
+            }
+        }
+    });
+};
+
 
 // [v3.8.1] Production Stabilized - No Heartbeat Needed
 app.get('/api/admin/online-users', authenticateToken, isAdmin, (req, res) => {
@@ -1495,7 +1695,7 @@ app.post('/api/realtime/signal', verifyInternalKey, async (req, res) => {
                     entryPrice:    payload.entryPrice  != null ? Math.round(payload.entryPrice)  : null,
                     targetPrice:   payload.targetPrice != null ? Math.round(payload.targetPrice) : null,
                     stopPrice:     payload.stopPrice   != null ? Math.round(payload.stopPrice)   : null,
-                    occurredAt:    payload.occurredAt  ? new Date(payload.occurredAt) : new Date(),
+                    occurredAt:    payload.occurredAt  ? new Date(payload.occurredAt) : getKstNow(), // [TASK-CC02] KST DB 저장
                 }
             });
             console.log(`[Realtime Signal] DB 저장 완료: ${payload.stockCode}`);
@@ -1635,23 +1835,44 @@ app.post('/api/import-csv', requireProAuth, async (req, res) => {
     }
 });
 
-// Reset all tracking data
-app.post('/api/reset', requireProAuth, async (req, res) => {
+// Reset all UI elements for administrators (Step 3)
+app.post('/api/reset', authenticateToken, isAdmin, async (req, res) => {
     try {
-        // 🔴 [Red Team 방어 - R2] TOCTOU 원자적 락 적용
-        await withSignalLock(async () => {
-            const resultStr = JSON.stringify([], null, 2);
-            const tmpFile = SIGNALS_FILE + '.tmp';
-            await fs.promises.writeFile(tmpFile, resultStr);
-            await fs.promises.rename(tmpFile, SIGNALS_FILE);
-            CACHED_SIGNALS = resultStr; // 즉시 신호 캐시만 갱신
-            lastSignalsMtimeMs = Date.now();
-        });
+        // 1. Redis UI 관련 키 삭제 (파이프라인 플래그 절대 삭제 금지)
+        const uiRedisKeys = [
+            'mp:active_targets',   // Top 5 고정 타겟
+            'mp:signals',          // UI 신호 캐시
+            'mp:cached_stocks'     // UI 종목 캐시
+        ];
+        await Promise.all(uiRedisKeys.map(key => redis.del(key)));
+
+        // 2. 메모리 캐시 초기화 (파일 삭제 금지 - 회원 데이터 보존)
+        CACHED_SIGNALS = '[]';
+        CACHED_STOCKS = '[]';
+        lastSignalsMtimeMs = Date.now();
+        lastStocksMtimeMs = Date.now();
+        
         alertCache.clear();
-        res.json({ message: '모든 분석 데이터가 초기화되었습니다.' });
+
+        // 3. SSE 브로드캐스트 (관리자 전용)
+        broadcastToAdmin('system_reset', {
+            message: '관리자 대시보드가 초기화되었습니다.',
+            timestamp: Date.now()
+        });
+
+        res.json({ 
+            success: true, 
+            data: { clearedKeys: uiRedisKeys.length, message: '초기화 완료' },
+            timestamp: Date.now() 
+        });
     } catch (error) {
-        console.error("Reset Error:", error);
-        res.status(500).json({ error: '초기화 중 오류가 발생했습니다.' });
+        console.error("[Reset] 초기화 실패:", error);
+        res.status(500).json({ 
+            success: false, 
+            error: error.message,
+            code: 'RESET_FAILED',
+            timestamp: Date.now() 
+        });
     }
 });
 
@@ -1734,7 +1955,7 @@ app.patch('/api/stocks/:code/prices', authenticateToken, isAdmin, priceEditLimit
         target_manual:     target,
         stop_loss_manual:  stop_loss,
         is_manual_price:   true,
-        manual_updated_at: new Date()
+        manual_updated_at: getKstNow()
       },
       create: {
         ticker:            code,
@@ -1745,7 +1966,7 @@ app.patch('/api/stocks/:code/prices', authenticateToken, isAdmin, priceEditLimit
         target_manual:     target,
         stop_loss_manual:  stop_loss,
         is_manual_price:   true,
-        manual_updated_at: new Date()
+        manual_updated_at: getKstNow()
       }
     });
 
@@ -2022,7 +2243,7 @@ const fetchHybridHistoryForTf = async (stock, currentTf, kisTokenGlobal, kisShar
             let currentLow = parseInt(kisData.stck_lwpr);
             
             // [v9.2.0] 장후 시간외 가격 반영
-            const kstNow = new Date(new Date().getTime() + (9 * 60 * 60 * 1000));
+            const kstNow = getKstNow();
             const kstHour = kstNow.getUTCHours();
             const overtimePrice = parseInt(kisData.ovtm_untp_prpr || 0);
             
@@ -2305,7 +2526,7 @@ app.post('/api/auto-sync', async (req, res) => {
             if (!fs.existsSync(VIP_LOGS_DIR)) fs.mkdirSync(VIP_LOGS_DIR, { recursive: true });
             const payload = {
                 stocks: snapshotData.slice(0, 10).map(s => ({ ...s, stars: getStars(s.score) })),
-                updatedAt: new Date().toISOString()
+                updatedAt: getKstISO()
             };
             fs.writeFileSync(path.join(VIP_LOGS_DIR, 'latest.json'), JSON.stringify(payload, null, 2));
         }
@@ -2362,8 +2583,10 @@ app.post('/api/sync/manual-signal', authenticateToken, isAdmin, async (req, res)
 
         const startTs = Date.now();
         try {
-            await runBatchAnalysis(null, TIMEFRAMES, { 
+            console.log(`[Manual-Sync] Analysis started for ${TIMEFRAMES.length} timeframes...`);
+            const results = await runBatchAnalysis(null, TIMEFRAMES, { 
                 useDBCache: true,
+                isManual:   req.body.force === true,
                 onProgress: (cur, tot, tf) => {
                     broadcastToClients({ 
                         type: 'sync_progress', 
@@ -2377,6 +2600,19 @@ app.post('/api/sync/manual-signal', authenticateToken, isAdmin, async (req, res)
                     });
                 }
             });
+            console.log('[Manual-Sync] Analysis completed successfully.');
+
+            // [FIX] 수동 동기화 성공 시 UI 상태 업데이트를 위한 Redis 키 갱신
+            const nowIso = getKstISO();
+            const today  = getKstDateCompact();
+            await Promise.all([
+                redis.set('phase1_success',      'true',  'EX', 86400).catch(() => {}),
+                redis.set('phase1_data_ready',   today,   'EX', 86400).catch(() => {}),
+                redis.set('phase1_snapshot_ts',  nowIso,  'EX', 86400).catch(() => {}),
+                redis.set('phase2_complete_ts',  nowIso,  'EX', 86400).catch(() => {}),
+                redis.set('phase2_modified_count', results.length, 'EX', 86400).catch(() => {})
+            ]);
+
             broadcastToClients({ type: 'sync_complete', tfCount: TIMEFRAMES.length });
         } finally {
             await redis.del('analyzer_lock');
@@ -2706,7 +2942,7 @@ if (isPrimaryWorker) {
                 }
                 
                 content += `${priceText}\n`;
-                content += `차트: https://kr.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
+                content += `차트: https://www.tradingview.com/chart/?symbol=KRX:${s.code}\n\n`;
               });
               content += `---\n\n`;
             }
@@ -2958,13 +3194,13 @@ app.listen(PORT, '0.0.0.0', async () => {
                     
                     const refreshStats = async () => {
                         const reportCodes = getPriorityCodes();
-                        const extraCount = 40 - reportCodes.length;
+                        const extraCount = 5 - reportCodes.length; // Reduced from 40 for stability testing
                         const extras = stockMaster
                             .filter(s => !reportCodes.includes(s.code))
                             .slice(0, Math.max(0, extraCount))
                             .map(s => s.code);
                         
-                        const targets = [...reportCodes, ...extras];
+                        const targets = [...reportCodes, ...extras].slice(0, 5);
                         await updateSubscriptions(targets);
                     };
 

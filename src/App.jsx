@@ -15,11 +15,9 @@ import { Routes, Route, useNavigate } from 'react-router-dom';
 import { useDataConsistency } from './hooks/useDataConsistency.js'; 
 
 // [v9.4.15] React.lazy를 사용하여 순환 참조(Circular Dependency) 차단 및 초기 번들 최적화
-const PerformancePage = React.lazy(() => import('./pages/PerformancePage.jsx'));
-const AnalysisPage = React.lazy(() => import('./pages/AnalysisPage.jsx'));
 const SignalsPage = React.lazy(() => import('./pages/SignalsPage.jsx'));
-const BacktestPage = React.lazy(() => import('./components/BacktestPage.jsx'));
 const MaintenancePage = React.lazy(() => import('./pages/MaintenancePage.jsx'));
+const PppWatchlist = React.lazy(() => import('./components/PppWatchlist.jsx'));
 
 // 프리미엄 스켈레톤 로더
 const PageLoader = () => (
@@ -77,17 +75,14 @@ const App = () => {
         <React.Suspense fallback={<PageLoader />}>
           <Routes>
             {/* Common Routes available to everyone */}
-            <Route path="/performance" element={<PerformancePage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
-            <Route path="/analysis" element={<AnalysisPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
             <Route path="/live-signals" element={<SignalsPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
-            <Route path="/backtest" element={<BacktestPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
 
             {/* Role-based Home Route */}
             <Route path="/" element={
               !isAuthenticated ? (
                 <LandingPage onLoginClick={handleLoginClick} />
               ) : (
-                isManagementUser ? (
+                ['ADMIN', 'PAID', 'PRO_USER'].includes(user?.role) ? (
                   isMobile ? <MobileDashboard manager={manager} user={user} clearAuth={authService.logout} /> : <PcDashboard manager={manager} user={user} clearAuth={authService.logout} />
                 ) : (
                   <LandingPage onLoginClick={handleLoginClick} isAuthenticated={true} onLogoutClick={authService.logout} />
@@ -97,6 +92,19 @@ const App = () => {
 
             {/* Login Route (Fallback for direct access) */}
             <Route path="/login" element={<Login onBack={() => navigate('/')} />} />
+
+            {/* [PPP Watchlist] Dedicated Route (PAID+) */}
+            <Route path="/ppp" element={
+              !isAuthenticated ? (
+                <Login onBack={() => navigate('/')} />
+              ) : (
+                ['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) ? (
+                  <PppWatchlist user={user} />
+                ) : (
+                  <LandingPage onLoginClick={handleLoginClick} isAuthenticated={true} onLogoutClick={authService.logout} />
+                )
+              )
+            } />
           </Routes>
         </React.Suspense>
       </SSEProvider>

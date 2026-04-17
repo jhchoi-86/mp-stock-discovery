@@ -191,9 +191,10 @@ async function startWebSocketService(onPriceUpdate) {
             console.log(`[KIS-WSS] Re-subscribing ${subscribedCodes.size} codes...`);
             for (const code of Array.from(subscribedCodes)) {
                 if (ws.readyState === WebSocket.OPEN) {
+                    console.log(`[KIS-WSS] Re-subscribing: ${code}`);
                     ws.send(createSubMsg(code));
                 }
-                await new Promise(r => setTimeout(r, 200)); // [v6.2.3] 200ms delay to prevent kick
+                await new Promise(r => setTimeout(r, 500)); // [v9.5.11] 500ms delay to prevent kick
             }
         }
     });
@@ -258,8 +259,8 @@ async function startWebSocketService(onPriceUpdate) {
     });
 
     ws.on('error', (e) => console.error('[KIS-WSS] Error:', e.message));
-    ws.on('close', () => {
-        console.warn('[KIS-WSS] 연결 종료. 5초 후 재시도...');
+    ws.on('close', (code, reason) => {
+        console.warn(`[KIS-WSS] 연결 종료 (Code: ${code}, Reason: ${reason}). 5초 후 재시도...`);
         setTimeout(() => startWebSocketService(onPriceUpdateCallback), 5000);
     });
 }
@@ -284,8 +285,11 @@ async function updateSubscriptions(codes) {
     // 등록할 종목
     for (const newCode of Array.from(newSet)) {
         if (!subscribedCodes.has(newCode)) {
-            ws.send(createSubMsg(newCode));
-            await new Promise(r => setTimeout(r, 200));
+            if (ws.readyState === WebSocket.OPEN) {
+                console.log(`[KIS-WSS] Subscribing new: ${newCode}`);
+                ws.send(createSubMsg(newCode));
+            }
+            await new Promise(r => setTimeout(r, 500));
         }
     }
 

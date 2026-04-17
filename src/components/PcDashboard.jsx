@@ -1,13 +1,8 @@
-import React, { useState, useRef } from 'react';
-import DailySnapshotAnalytics from './DailySnapshotAnalytics.jsx';
-import MPStockDailyReport from './MPStockDailyReport.jsx';
-import UserProfile from './UserProfile.jsx';
-import SubscriptionModal from './SubscriptionModal.jsx';
-import ReportArchive from './ReportArchive.jsx';
-import AdminDashboard from './AdminDashboard.jsx';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
+import PppWatchlist from './PppWatchlist.jsx';
 import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
+import { getChartUrl } from '../utils/chartUtils';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
 import reportService from '../api/reportService';
@@ -22,9 +17,11 @@ import {
   Activity, 
   RotateCcw, 
   Share2, 
+  CheckSquare,
   ExternalLink,
   HelpCircle
 } from 'lucide-react';
+import { isValidPrice } from '../utils/priceUtils';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -62,7 +59,9 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       isSyncing, isSendingTg, 
       candidates, topSectors, activeCount, 
       handleCsvUpload, handleReset, handleAutoSync, handleIntegratedSync,
-      handleDownloadReport, handleDownloadTVList, handleSendToTelegram
+      handleDownloadReport, handleDownloadTVList, handleSendToTelegram,
+      // [v9.5.8] Manual Price Edits
+      pendingEdits, updatePriceEdit, handleUnifiedSave
   } = manager;
 
   // Merge Real-time Prices (v3.7.6)
@@ -106,18 +105,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 >
                   MP 시그널
                 </button>
-                <button 
-                  onClick={() => { setLandingTab('DAILY_PERFORMANCE'); setShowAdminPanel(false); }}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'DAILY_PERFORMANCE' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
-                >
-                  Daily 성과
-                </button>
-                <button 
-                  onClick={() => { setLandingTab('DAILY_STOCK_ANALYSIS'); setShowAdminPanel(false); }}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'DAILY_STOCK_ANALYSIS' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
-                >
-                  Daily 종목 분석
-                </button>
+                {['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) && (
+                  <button 
+                    onClick={() => { setLandingTab('PPP'); setShowAdminPanel(false); }}
+                    style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'PPP' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                  >
+                    PPP 워치리스트
+                  </button>
+                )}
               </nav>
         </div>
         <div className="stats-bar">
@@ -165,6 +160,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             onClick={() => setIsProfileOpen(true)}
             style={{ textAlign: 'right', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '0.2rem 0.5rem', borderRadius: '4px', transition: 'background 0.2s', ':hover': { background: 'rgba(255,255,255,0.05)' } }}
           >
+            <span style={{ fontSize: '0.8rem', color: 'rgba(212, 175, 55, 0.4)', fontWeight: 600 }}>v9.5.8</span>
             <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0]}</div>
             <div style={{ 
               fontSize: '0.65rem', 
@@ -225,23 +221,10 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         <AdminDashboard />
       ) : (
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
-            {landingTab === 'DAILY_PERFORMANCE' ? (
-                <div className="fade-in">
-                    <MPStockDailyReport 
-                        data={reportData} 
-                        isLoading={isReportLoading} 
-                        isFallback={!reportData && !isReportLoading} 
-                    />
-                </div>
-            ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
-                <div className="fade-in">
-                    <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', color: '#fff', marginBottom: '1.5rem' }}>
-                        <Activity size={24} color="var(--primary)" /> 종목 성과 분석 📊
-                    </h2>
-                    <DailySnapshotAnalytics isPublic={true} isMobile={false} />
-                </div>
-            ) : (
-                <>
+          {landingTab === 'PPP' ? (
+            <PppWatchlist user={user} />
+          ) : (
+            <React.Fragment>
                 <div style={{ marginBottom: '1.5rem' }}>
                     <RoiRankingWidget />
                 </div>
@@ -364,15 +347,13 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 const top5 = rawTop5.map(s => {
                   const t2H = s.latestSignal || s.t2H;
                   const t1D = s.timeframeStatus?.['1D'] || {};
-                  
-                  // [v9.5.0] Prioritize Realtime Prices from SSE Context for accurate archival
                   const curPrice = Number(realtimePrices?.[s.code]?.price || s.currentPrice || s.current_price || 0);
                   
-                  // [v9.4.10] Correct Mapping: result_1=Target, result_2=Entry1, result_3=Entry2
-                  const ePrice1 = Math.round(t2H?.result_2 || t2H?.entry_price || 0);
-                  const ePrice2 = Math.round(t2H?.result_3 || 0) || Math.round(ePrice1 * 0.98);
-                  const sPrice = Math.round(t2H?.stop_loss || 0) || Math.round(ePrice1 * 0.95);
-                  const tPrice = Math.round(t1D?.bb_upper || s.targetPrice || s.target || 0);
+                  // [v9.5.8] Use manual prices if present
+                  const ePrice1 = Math.round(s.entry1 || t2H?.result_2 || t2H?.entry_price || 0);
+                  const ePrice2 = Math.round(s.entry2 || t2H?.result_3 || 0) || Math.round(ePrice1 * 0.98);
+                  const sPrice = Math.round(s.stopLoss || t2H?.stop_loss || 0) || Math.round(ePrice1 * 0.95);
+                  const tPrice = Math.round(s.target || t1D?.bb_upper || s.targetPrice || s.target || 0);
                   
                   return {
                     ...s,
@@ -388,7 +369,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   };
                 });
                 
-                // [v9.5.1] Zero-Price Safeguard: Warn if crucial data is missing
+                // [v9.5.1] Zero-Price Safeguard
                 const zeroPriceStocks = top5.filter(s => s.currentPrice === 0);
                 if (zeroPriceStocks.length > 0) {
                   const names = zeroPriceStocks.map(s => s.name).join(', ');
@@ -398,20 +379,68 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 }
 
                 if (window.confirm(`현재 화면의 상위 5개 종목 상태를 히스토리로 정합 저장하시겠습니까?\n대상: ${top5.map(s => s.name).join(', ')}`)) {
-                  try {
-                    const res = await adminService.saveSyncHistory(top5);
-                    alert(`[성공] 동기화 및 퍼블리싱이 완료되었습니다.\n태그: ${res.tagName}`);
-                  } catch (e) {
-                    console.error('[Sync Save Error]', e);
-                    const errorMsg = e.response?.data?.error || e.message;
-                    alert('동기화 저장에 실패했습니다.\n사유: ' + errorMsg);
-                  }
+                  handleUnifiedSave(top5);
                 }
               }}
               className="card" 
               style={{ padding: '0.75rem 1.5rem', background: 'rgba(255, 255, 255, 0.1)', border: '1px solid var(--primary)', color: '#fff', cursor: 'pointer', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
               <Share2 size={18} /> 동기화 저장
+            </button>
+
+            {/* [v9.5.8] 가격편집저장 버튼 추가 */}
+            <button 
+              onClick={async () => {
+                const rawTop5 = (candidates || []).slice(0, 5);
+                if (rawTop5.length === 0) {
+                  alert('저장할 종목 데이터가 없습니다.');
+                  return;
+                }
+                
+                const top5 = rawTop5.map(s => {
+                  const t2H = s.latestSignal || s.t2H;
+                  const t1D = s.timeframeStatus?.['1D'] || {};
+                  const curPrice = Number(realtimePrices?.[s.code]?.price || s.currentPrice || s.current_price || 0);
+                  
+                  const ePrice1 = Math.round(s.entry1 || t2H?.result_2 || t2H?.entry_price || 0);
+                  const ePrice2 = Math.round(s.entry2 || t2H?.result_3 || 0) || Math.round(ePrice1 * 0.98);
+                  const sPrice = Math.round(s.stopLoss || t2H?.stop_loss || 0) || Math.round(ePrice1 * 0.95);
+                  const tPrice = Math.round(s.target || t1D?.bb_upper || s.targetPrice || s.target || 0);
+                  
+                  return {
+                    ...s,
+                    currentPrice: curPrice,
+                    entryPrice1: ePrice1,
+                    entryPrice2: ePrice2,
+                    stopLoss: sPrice,
+                    targetPrice1: tPrice,
+                    yield: ePrice1 > 0 ? ((curPrice - ePrice1) / ePrice1 * 100) : 0,
+                    category: s.category || s.trendType || '주도주 눌림목',
+                    styleTag: s.styleTag || s.style_tag || '',
+                    aiComment: s.aiComment || s.ai_comment || ''
+                  };
+                });
+
+                const pendingCount = Object.keys(pendingEdits).length;
+                if (window.confirm(`${pendingCount > 0 ? `편집된 가격(${pendingCount}건)을 포함하여 ` : ''}현재 화면 상태를 저장하시겠습니까?`)) {
+                  handleUnifiedSave(top5);
+                }
+              }}
+              className="card" 
+              style={{ 
+                padding: '0.75rem 1.5rem', 
+                background: Object.keys(pendingEdits).length > 0 ? 'rgba(79, 70, 229, 0.3)' : 'rgba(255, 255, 255, 0.1)', 
+                border: Object.keys(pendingEdits).length > 0 ? '1px solid #6366f1' : '1px solid var(--primary)', 
+                color: '#fff', 
+                cursor: 'pointer', 
+                fontWeight: 600, 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem' 
+              }}
+            >
+              <CheckSquare size={18} /> 
+              가격편집저장 {Object.keys(pendingEdits).length > 0 ? `(${Object.keys(pendingEdits).length})` : ''}
             </button>
           </div>
         )}
@@ -602,11 +631,11 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                   let nulimmockColor = '';
                   let badgeHit = null;
                   
-                  if (entry2 > 0 && curPrice <= entry2) {
+                  if (isValidPrice(entry2) && isValidPrice(curPrice) && curPrice <= entry2) {
                       isNulimmock = true;
                       nulimmockColor = 'rgba(239, 68, 68, 0.2)'; // Deeper Red for Entry 2
                       badgeHit = 2;
-                  } else if (entry1 > 0 && curPrice <= entry1) {
+                  } else if (isValidPrice(entry1) && isValidPrice(curPrice) && curPrice <= entry1) {
                       isNulimmock = true;
                       nulimmockColor = 'rgba(245, 158, 11, 0.2)'; // Orange for Entry 1
                       badgeHit = 1;
@@ -729,7 +758,6 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                       </div>
                     </td>
 
-
                     <td style={{ textAlign: 'right', padding: '0.4rem 0.2rem', whiteSpace: 'nowrap' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', fontSize: '0.7rem' }}>
                         {(() => {
@@ -753,11 +781,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                                 <PriceEditSection
                                   stockCode={stock.code}
                                   hideTitle={true}
+                                  onEdit={updatePriceEdit}
                                   initialPrices={{
-                                    entry1:    stock.inst_buy_manual  ?? targetEntry1,
-                                    entry2:    stock.inst_buy2_manual ?? targetEntry2,
-                                    target:    stock.target_manual    ?? targetGoal,
-                                    stop_loss: stock.stop_loss_manual ?? stopLossVal,
+                                    entry1:    stock.entry1,
+                                    entry2:    stock.entry2,
+                                    target:    stock.target,
+                                    stop_loss: stock.stopLoss,
                                     is_manual: stock.is_manual_price  ?? false
                                   }}
                                 />
@@ -785,7 +814,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <a 
-                        href={`https://www.tradingview.com/chart/?symbol=${(stock.market?.includes('KOSPI') || stock.market === 'KOSPI200') ? 'KRX' : 'KOSDAQ'}:${stock.code}`} 
+                        href={getChartUrl(stock.code, stock.market)} 
                         target="_blank" 
                         rel="noopener noreferrer"
                         className="tv-link"
@@ -816,8 +845,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           </table>
         </div>
         </div>
-        </>
-            )}
+            </React.Fragment>
+          )}
         </div>
       )}
       <SignalNotificationWatcher />

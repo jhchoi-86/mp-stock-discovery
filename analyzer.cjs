@@ -373,9 +373,9 @@ function calculateSignals(ohlcHistory, timeframeStr = '1D') {
         sma5: Math.round(s5), sma10: Math.round(s10), sma20: Math.round(s20), sma60: Math.round(s60),
         maArrangement: (s5 > s20) ? '정배열' : '역배열',
         entry_approved: true, trigger_vol: (volRate > 1.5),
-        target_price: final_target, // Unified field name
-        target_price_1: final_target, // Legacy support
-        score: { total: 0, breakdown: [] } 
+        target_price: final_target,
+        target_price_1: final_target,
+        totalScore: 0 // Will be enriched in the loop
     };
 }
 
@@ -419,6 +419,7 @@ if (require.main === module) {
             console.log(`[Unified Engine] Filtering stocks: ${filterCodes.join(', ')}`);
         }
         const kisToken = await getKisAccessToken();
+        const currentSigs = fs.existsSync(SIGNALS_FILE) ? JSON.parse(fs.readFileSync(SIGNALS_FILE)) : [];
         const allSignals = [];
 
         for (const tf of timeframes) {
@@ -435,10 +436,25 @@ if (require.main === module) {
                         if (tf === '2H') finalHistory = resampleChartData(history, 2, '2H');
                         if (tf === '4H') finalHistory = resampleChartData(history, 4, '4H');
                         if (tf === '2D') finalHistory = resampleChartData(history, 2, '2D');
-                        const signal = calculateSignals(finalHistory, tf);
-                        if (signal) {
-                            return { ...signal, code: stock.code, name: stock.name };
-                        }
+                            const signal = calculateSignals(finalHistory, tf);
+                            if (signal) {
+                                // [v9.5.4] [MP-TASK-2026-005] Scoring Enrichment
+                                const sigsForStock = currentSigs.filter(s => (s.ticker || s.code) === stock.code);
+                                const tfMap = {};
+                                sigsForStock.forEach(s => { tfMap[s.timeframe] = s; });
+                                tfMap[tf] = signal; // Include newly calculated signal
+
+                                const scoreResult = ScoringService.calculateTotalScore(tfMap, signal, false);
+
+                                return { 
+                                    ...signal, 
+                                    code: stock.code, 
+                                    name: stock.name,
+                                    market: stock.market || (stock.code?.includes('-') ? 'COIN' : 'KR_STOCK'),
+                                    totalScore: scoreResult.totalScore,
+                                    score: scoreResult.totalScore // Sync with legacy mapping
+                                };
+                            }
                         return null;
                     } catch (err) {
                         console.error(`[Retry ${6-retries}] ${stock.code}: ${err.message}`);
@@ -461,7 +477,6 @@ if (require.main === module) {
         }
 
         // Save to signals.json (Atomic)
-        const currentSigs = fs.existsSync(SIGNALS_FILE) ? JSON.parse(fs.readFileSync(SIGNALS_FILE)) : [];
         const merged = [...currentSigs.filter(s => !timeframes.includes(s.timeframe)), ...allSignals].slice(-5000);
         fs.writeFileSync(SIGNALS_FILE + '.tmp', JSON.stringify(merged, null, 2));
         if (fs.existsSync(SIGNALS_FILE)) fs.unlinkSync(SIGNALS_FILE);
@@ -484,7 +499,7 @@ if (require.main === module) {
 // ──────────────────────────────────────────────────────────────────
 
 async function runBatchAnalysis(symbols, timeframes, options = {}) {
-    const { useDBCache = false } = options;
+    const { useDBCache = false, isManual = false } = options;
     const tfs = timeframes && timeframes.length > 0 ? timeframes : ['1D'];
     const BATCH_SIZE = parseInt(process.env.SYNC_BATCH_SIZE) || 10;
     const limit = pLimit(BATCH_SIZE);
@@ -502,6 +517,7 @@ async function runBatchAnalysis(symbols, timeframes, options = {}) {
     }
 
     const kisToken = useDBCache ? null : await getKisAccessToken().catch(() => null);
+    const currentSigs = fs.existsSync(SIGNALS_FILE) ? JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8')) : [];
     const allSignals = [];
 
     for (const tf of tfs) {
@@ -526,12 +542,28 @@ async function runBatchAnalysis(symbols, timeframes, options = {}) {
                     if (!finalHistory || !finalHistory.close || finalHistory.close.length === 0) return null;
 
                     const signal = calculateSignals(finalHistory, tf);
-                    if (signal) return { ...signal, code: stock.code, name: stock.name };
+                    if (signal) {
+                        // [v9.5.4] [MP-TASK-2026-005] Scoring Enrichment
+                        const sigsForStock = currentSigs.filter(s => (s.ticker || s.code) === stock.code);
+                        const tfMap = {};
+                        sigsForStock.forEach(s => { tfMap[s.timeframe] = s; });
+                        tfMap[tf] = signal;
+
+                        const scoreResult = ScoringService.calculateTotalScore(tfMap, signal, false);
+
+                        return { 
+                            ...signal, 
+                            code: stock.code, 
+                            name: stock.name,
+                            totalScore: scoreResult.totalScore,
+                            score: scoreResult.totalScore
+                        };
+                    }
                     return null;
-                } catch (err) {
+                } catch (e) {
+                    console.error(`[Analyzer] TF=${tf} ${stock.code} loadHistoryFromDB Failed:`, e.message);
                     retries--;
                     if (retries > 0) await new Promise(r => setTimeout(r, Math.pow(2, 3 - retries) * 200));
-                    else console.error(`[runBatchAnalysis] ${stock.code} ${tf} 실패: ${err.message}`);
                 }
             }
             return null;
@@ -541,13 +573,24 @@ async function runBatchAnalysis(symbols, timeframes, options = {}) {
         allSignals.push(...results.filter(r => r !== null));
     }
 
-    const currentSigs = fs.existsSync(SIGNALS_FILE)
-        ? JSON.parse(fs.readFileSync(SIGNALS_FILE, 'utf8'))
-        : [];
+    // [v9.5.4] EMPTY_RESULTS 방어 로직 정교화 (수동/자동 분리)
+    if (!allSignals || allSignals.length === 0) {
+        if (isManual) {
+            console.warn('[Analyzer] 수동 실행 결과 0건 — signals.json 유지, 에러 없음 (종목: ' + stocks.length + '개)');
+            return [];
+        } else {
+            console.error('[Analyzer] 분석 결과 0건 — signals.json write 차단 (데이터 소멸 방어)');
+            throw new Error('EMPTY_RESULTS');
+        }
+    }
+
     const merged = [
         ...currentSigs.filter(s => !tfs.includes(s.timeframe)),
         ...allSignals,
     ].slice(-5000);
+
+
+    console.log(`[Analyzer] signals.json write 완료. (추가: ${allSignals.length}건, 전체: ${merged.length}건)`);
     fs.writeFileSync(SIGNALS_FILE + '.tmp', JSON.stringify(merged, null, 2));
     if (fs.existsSync(SIGNALS_FILE)) fs.unlinkSync(SIGNALS_FILE);
     fs.renameSync(SIGNALS_FILE + '.tmp', SIGNALS_FILE);
@@ -557,7 +600,7 @@ async function runBatchAnalysis(symbols, timeframes, options = {}) {
         console.log(`[runBatchAnalysis] DB Sync: ${dbRes.success ? 'OK' : 'FAIL'} (${allSignals.length}건)`);
     }
 
-    console.log(`[runBatchAnalysis] 완료 — ${allSignals.length}건 (${tfs.join(',')}, useDBCache=${useDBCache})`);
+    console.log(`[runBatchAnalysis] 완료 — ${allSignals.length}건 (${tfs.join(',')}, useDBCache=${useDBCache}, isManual=${isManual})`);
     return allSignals;
 }
 

@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import DailySnapshotAnalytics from './DailySnapshotAnalytics.jsx';
-import MPStockDailyReport from './MPStockDailyReport.jsx';
 import MobileStockCard from './MobileStockCard.jsx';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
 import SignalNotificationWatcher from './SignalNotificationWatcher.jsx';
@@ -14,6 +12,7 @@ import { Activity, Archive, Share2, Filter, Layout, LogOut, UserCog, Search, X, 
 import { Virtuoso } from 'react-virtuoso';
 import AdminDashboard from './AdminDashboard.jsx';
 import BottomSheetFilter from './BottomSheetFilter.jsx';
+import PppWatchlist from './PppWatchlist.jsx';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -106,18 +105,14 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             >
               MP 시그널
             </button>
-            <button 
-              onClick={() => { setLandingTab('DAILY_PERFORMANCE'); setShowAdminPanel(false); }}
-              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'DAILY_PERFORMANCE' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
-            >
-              Daily 성과
-            </button>
-            <button 
-              onClick={() => { setLandingTab('DAILY_STOCK_ANALYSIS'); setShowAdminPanel(false); }}
-              style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'DAILY_STOCK_ANALYSIS' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
-            >
-              종목 분석
-            </button>
+            {['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) && (
+              <button 
+                onClick={() => { setLandingTab('PPP'); setShowAdminPanel(false); }}
+                style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'PPP' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
+              >
+                PPP
+              </button>
+            )}
           </nav>
       </header>
       
@@ -169,23 +164,10 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
-        {landingTab === 'DAILY_PERFORMANCE' ? (
-          <div style={{ padding: '1rem' }} className="fade-in">
-             <MPStockDailyReport 
-                data={reportData} 
-                isLoading={isReportLoading} 
-                isFallback={!reportData && !isReportLoading} 
-             />
-          </div>
-        ) : landingTab === 'DAILY_STOCK_ANALYSIS' ? (
-          <div style={{ padding: '1rem' }} className="fade-in">
-             <h2 style={{ fontSize: '1.1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#fff', marginBottom: '1rem' }}>
-                <Activity size={20} color="var(--primary)" /> 종목 성과 분석 📊
-             </h2>
-             <DailySnapshotAnalytics isPublic={true} isMobile={true} />
-          </div>
+        {landingTab === 'PPP' ? (
+          <PppWatchlist user={user} />
         ) : (
-          <>
+        <>
         {/* 2. Status Widget (수평 스크롤) */}
         <div style={{ 
           display: 'flex', gap: '1rem', overflowX: 'auto', padding: '1rem', 
@@ -312,10 +294,10 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             }}
           />
         </div>
-        </>
-        )}
-      </div>
+      </>
       )}
+    </div>
+    )}
 
       {/* 5. Floating Action Bar (FAB) - 전회원 텔레그램 발송 */}
       {selectedStocks.size > 0 && user && (

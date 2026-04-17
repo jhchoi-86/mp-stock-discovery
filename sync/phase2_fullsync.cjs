@@ -1,4 +1,5 @@
 'use strict';
+process.env.TZ = 'Asia/Seoul'; // [TASK-CC02] Global KST Enforcement
 
 // ──────────────────────────────────────────────────────────────────
 // sync/phase2_fullsync.cjs — Phase 2: 수정주가 Full Sync
@@ -15,6 +16,7 @@ const { getToken } = require('../lib/token_manager.cjs');
 const { sendAlert } = require('../lib/alert_manager.cjs');
 const { TIMEFRAMES, ANALYZER_LOCK_TTL } = require('../lib/constants.cjs');
 const { fetchHybridHistory, runBatchAnalysis } = require('../analyzer.cjs');
+const { getKstISO, getKstNow } = require('../src/utils/kst.cjs'); // [TASK-CC02]
 
 const prisma = new PrismaClient();
 const CONCURRENCY = 20;
@@ -70,9 +72,11 @@ async function runPhase2() {
   }
 
   const elapsed = ((Date.now() - startTs) / 1000).toFixed(1);
+  const nowIso  = getKstISO(); // [TASK-CC02] KST ISO (No Z)
 
   await Promise.all([
-    redis.set('phase2_complete_ts',    new Date().toISOString(), 'EX', 86400),
+    redis.set('phase2_complete_ts',    nowIso, 'EX', 86400),
+    redis.set('phase2_last_sync_ts',   nowIso, 'EX', 86400), // UI 호환용 추가
     redis.set('phase2_modified_count', String(modifiedSymbols.length), 'EX', 86400),
   ]);
 
@@ -122,7 +126,7 @@ async function checkAndUpdateDailyCandles(inst, kisToken) {
     volume:       apiHistory.volume[i] ?? 0,
     source:       'KRX_ADJ',
     isValid:      true,
-    fetchedAt:    new Date(),
+    fetchedAt:    getKstNow(), // [TASK-CC02] KST DB 저장
     candleAt:     new Date(apiHistory.time[i] * 1000),
   }));
 
@@ -142,7 +146,7 @@ async function checkAndUpdateDailyCandles(inst, kisToken) {
           update: {
             open: c.open, high: c.high, low: c.low,
             close: c.close, volume: c.volume,
-            source: c.source, fetchedAt: c.fetchedAt,
+            source: c.source, fetchedAt: getKstNow(), // [TASK-CC02] KST DB 저장
           },
           create: c,
         })

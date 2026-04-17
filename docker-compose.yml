@@ -1,0 +1,153 @@
+services:
+  # ============================================================================
+  # PostgreSQL Database
+  # ============================================================================
+  postgres:
+    image: postgres:16-alpine
+    container_name: mp-postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-mp_stock}
+      TZ: Asia/Seoul
+      PGTZ: Asia/Seoul
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-mp_stock}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mp-network
+
+  # ============================================================================
+  # Redis Cache & Message Queue
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: mp-redis
+    command: redis-server --appendonly yes --requirepass ${REDIS_PASSWORD:-redis123}
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mp-network
+
+  # ============================================================================
+  # Node.js Backend Server
+  # ============================================================================
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mp-backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3001
+      DATABASE_URL: postgresql://${DB_USER:-postgres}:${DB_PASSWORD:-postgres}@postgres:5432/${DB_NAME:-mp_stock}?schema=public
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      TZ: Asia/Seoul
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-dev_secret_key_change_in_production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev_refresh_secret_key_change_in_production}
+      CORE_INTEGRITY_HASH: ${CORE_INTEGRITY_HASH:-dev_hash}
+      KIS_APP_KEY: ${KIS_APP_KEY}
+      KIS_APP_SECRET: ${KIS_APP_SECRET}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID}
+      ADMIN_WHITELIST: ${ADMIN_WHITELIST}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:5173}
+      VITE_HMR_HOST: ${VITE_HMR_HOST:-localhost}
+      CRON_SECRET: ${CRON_SECRET:-cron_secret}
+      INTERNAL_API_SECRET: ${INTERNAL_API_SECRET:-internal_secret}
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/app/data
+      - ./logs:/app/logs
+    networks:
+      - mp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ============================================================================
+  # Python AI Service (Uvicorn FastAPI)
+  # ============================================================================
+  ai-service:
+    build:
+      context: ./ai-service
+      dockerfile: Dockerfile
+    container_name: mp-ai-service
+    depends_on:
+      - redis
+    environment:
+      REDIS_URL: redis://:${REDIS_PASSWORD:-redis123}@redis:6379
+      PYTHONUNBUFFERED: 1
+      TZ: Asia/Seoul
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ai-service:/app
+      - ./data:/app/data
+    networks:
+      - mp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  # ============================================================================
+  # Frontend Development Server (Optional - for hot reload)
+  # ============================================================================
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: mp-frontend
+    environment:
+      VITE_HMR_HOST: localhost
+      VITE_HMR_PROTOCOL: ws
+      VITE_API_URL: http://localhost:3001
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./src:/app/src
+      - ./index.html:/app/index.html
+      - ./vite.config.ts:/app/vite.config.ts
+      - /app/node_modules
+    networks:
+      - mp-network
+    restart: unless-stopped
+    command: npm run dev
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  mp-network:
+    driver: bridge

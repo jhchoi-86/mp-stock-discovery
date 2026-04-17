@@ -14,7 +14,8 @@ const systemStatsService = {
    * Get Today's Date String (YYYY-MM-DD)
    */
   getToday() {
-    return new Date(Date.now() + (9 * 60 * 60 * 1000)).toISOString().split('T')[0];
+    const { getKSTDateString } = require('../utils/kst.cjs');
+    return getKSTDateString();
   },
 
   /**
@@ -119,17 +120,32 @@ const systemStatsService = {
     // 4. Sync Pipeline Status (v2.1)
     let syncStatus = {};
     try {
-      const [phase1Ready, lastSnapshot, lastFullSync, avgSyncElapsed] = await Promise.all([
+      const [
+        phase1Ready, 
+        lastSnapshot, 
+        phase1DataReady,
+        phase2Complete, 
+        phase2Count,
+        phase3LastCandle,
+        phase3Complete
+      ] = await Promise.all([
         redisClient.get('phase1_success'),
         redisClient.get('phase1_snapshot_ts'),
-        redisClient.get('phase2_last_sync_ts'),
-        redisClient.get('phase2_avg_elapsed')
+        redisClient.get('phase1_data_ready'),
+        redisClient.get('phase2_complete_ts'),
+        redisClient.get('phase2_modified_count'),
+        redisClient.get('phase3_last_candle_ts'),
+        redisClient.get('phase3_complete_ts')
       ]);
+
       syncStatus = {
         phase1Ready: phase1Ready === 'true',
         lastSnapshot: lastSnapshot || '없음',
-        lastFullSync: lastFullSync || (phase1Ready === 'true' ? '진행 예정' : '미확인'),
-        avgSyncElapsed: parseInt(avgSyncElapsed) || 0
+        phase1DataReady: phase1DataReady || '',
+        lastFullSync: phase2Complete || (phase1Ready === 'true' ? '진행 예정' : '미확인'),
+        phase2Count: parseInt(phase2Count) || 0,
+        phase3LastCandle: phase3LastCandle || '',
+        phase3Complete: phase3Complete || ''
       };
     } catch (e) {
       console.warn('[SystemStats] Sync Status Fetch Error:', e.message);

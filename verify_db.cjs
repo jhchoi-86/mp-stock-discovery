@@ -1,31 +1,45 @@
 const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
-async function verify() {
-    try {
-        const latest = await prisma.dailyStockSnapshot.findFirst({
-            orderBy: { createdAt: 'desc' }
-        });
-
-        if (latest) {
-            console.log('--- DATABASE VERIFICATION REPORT ---');
-            console.log('Status: SUCCESS');
-            console.log(`Latest Update: ${latest.name} (${latest.code})`);
-            console.log(`Sync Time: ${latest.createdAt.toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`);
-            console.log(`Current Price: ${latest.currentPrice.toLocaleString()}원`);
-            console.log(`Score: ${Math.round(latest.score)}점`);
-            console.log(`Entry 1 (Guarded): ${latest.entryPrice1.toLocaleString()}원`);
-            console.log(`Target 1 (Guarded): ${latest.targetPrice1.toLocaleString()}원`);
-            console.log('------------------------------------');
-        } else {
-            console.log('Error: No data found in DailyStockSnapshot table.');
+async function checkDB() {
+  try {
+    console.log('Available Prisma models:', Object.keys(prisma).filter(k => !k.startsWith('_')));
+    
+    const instrumentCount = await prisma.instrument.count();
+    const candleCount = await prisma.candle.count();
+    
+    // Check for today's candles (2026-04-16)
+    const today = new Date('2026-04-16');
+    const todayCandleCount = await prisma.candle.count({
+      where: {
+        candleAt: {
+          gte: today
         }
-    } catch (e) {
-        console.error('Database Connection Error:', e.message);
-    } finally {
-        await prisma.$disconnect();
-        process.exit(0);
+      }
+    });
+
+    const lastCandle = await prisma.candle.findFirst({
+      orderBy: { candleAt: 'desc' },
+      include: { instrument: true }
+    });
+
+    console.log('--- DB Content Check ---');
+    console.log(`Total Instruments: ${instrumentCount}`);
+    console.log(`Total Candles: ${candleCount}`);
+    console.log(`Today's Candles (since 2026-04-16): ${todayCandleCount}`);
+    
+    if (lastCandle) {
+        console.log(`Latest Candle at: ${lastCandle.candleAt}`);
+        console.log(`Latest Candle for: ${lastCandle.instrument.symbol} (${lastCandle.instrument.name})`);
+    } else {
+        console.log('No candles found in DB.');
     }
+
+  } catch (e) {
+    console.error('DB Check failed:', e);
+  } finally {
+    await prisma.$disconnect();
+  }
 }
 
-verify();
+checkDB();

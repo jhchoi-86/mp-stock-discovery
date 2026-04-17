@@ -60,16 +60,33 @@ class PublishingService {
                 const currentStatus = statusMap[stockCode] || s.status || '분석완료';
                 const status = (['보유 중', '목표 도달', '손절 완료', '체결'].includes(currentStatus)) ? currentStatus : '분석완료';
                 
+                // [v9.5.9] Standardized field aliases for CSS/LandingPage compatibility
+                const nEntry1 = this.parsePrice(s.entry1Price || s.entryPrice1 || s.entry_price || s.entry1 || 0);
+                const nEntry2 = this.parsePrice(s.entry2Price || s.entryPrice2 || s.entry_price_2 || s.entry2 || s.result_3 || 0);
+                const nTarget = this.parsePrice(s.targetPrice1 || s.targetPrice || s.target_price || s.target || s.result_1 || 0);
+                const nSL     = this.parsePrice(s.stopLossPrice || s.stopLoss || s.stop_loss || s.sl || 0);
+                const nCurrent = this.parsePrice(s.currentPrice || s.current_price || 0);
+
                 return {
                     code: stockCode,
                     name: s.name,
                     score: s.score || s.total_score || 0,
                     category: s.category || '추세 지속형',
-                    currentPrice: this.parsePrice(s.currentPrice || s.current_price),
-                    entryPrice1: this.parsePrice(s.entryPrice1 || s.entry_price || s.entry1),
-                    entryPrice2: this.parsePrice(s.entryPrice2 || s.entry_price_2 || s.entry2 || s.result_3),
-                    stopLoss: this.parsePrice(s.stopLoss || s.stop_loss || s.sl),
-                    targetPrice1: this.parsePrice(s.targetPrice1 || s.target_price || s.target || s.result_1),
+                    // Aliased fields for robust frontend mapping
+                    currentPrice: nCurrent,
+                    current_price: nCurrent,
+                    entryPrice1: nEntry1,
+                    entry1Price: nEntry1,
+                    entry1: nEntry1,
+                    entryPrice2: nEntry2,
+                    entry2Price: nEntry2,
+                    entry2: nEntry2,
+                    stopLoss: nSL,
+                    stopLossPrice: nSL,
+                    sl: nSL,
+                    targetPrice1: nTarget,
+                    targetPrice: nTarget,
+                    target: nTarget,
                     yield: this.parseRate(s.yield || s.yield_pct || s.change_rate),
                     status,
                     recommended_at: displayDate,
@@ -184,10 +201,14 @@ class PublishingService {
                         name: s.name,
                         score: s.score || s.total_score || 0,
                         category: s.category || '추세 지속형',
-                        entryPrice: s.entryPrice1 || s.entry_price || 0,
-                        targetPrice: s.targetPrice1 || s.target_price || 0,
-                        stopLoss: s.stopLoss || s.stop_loss || 0,
-                        currentPrice: s.currentPrice || s.current_price || 0,
+                        // [v9.5.9] Detailed price fields for LandingPage.jsx compatibility
+                        entryPrice: s.entryPrice1 || 0,
+                        entryPrice1: s.entryPrice1 || 0,
+                        entryPrice2: s.entryPrice2 || 0,
+                        targetPrice: s.targetPrice1 || 0,
+                        targetPrice1: s.targetPrice1 || 0,
+                        stopLoss: s.stopLoss || 0,
+                        currentPrice: s.currentPrice || 0,
                         styleTag: s.styleTag || '',
                         aiComment: s.aiComment || '',
                         tradeAmount: s.tradeAmount || 0,
