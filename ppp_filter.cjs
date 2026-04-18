@@ -371,17 +371,9 @@ function calcPPP(candles, bgUp, params = {}) {
     const currentResult2 = result2series[last];
     const currentMid = (high[last] + low[last]) / 2;
 
-    let ppp1 = currentGBuy !== null && currentMid > currentGBuy && bgUp;
-    
-    // [TASK-08] Breakout Guard: 저항선 돌파 후 과도상승 종목 제외
-    if (ppp1 && currentGSell !== null) {
-        if (currentMid > currentGSell * (1 + gSellBreakoutThreshold)) {
-            // console.log(`[PPP Guard] Breakout Detected: Mid=${currentMid} > GSell=${currentGSell}*1.3`);
-            ppp1 = false;
-        }
-    }
-
-    const ppp2 = ppp1 && close[last] > currentGBuy && currentResult2 !== null && currentResult2 >= currentGBuy;
+    // [v9.7.8-patch] 데니얼 실전 수식 반영: (high+low)/2 > gSell AND bg_up AND result2 >= gSell
+    const ppp1 = currentGSell !== null && currentMid > currentGSell && bgUp;
+    const ppp2 = ppp1 && currentResult2 !== null && currentResult2 >= currentGSell;
 
     return {
         ppp1, ppp2, 
