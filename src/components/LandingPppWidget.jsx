@@ -161,6 +161,46 @@ const LandingPppWidget = ({ user }) => {
     );
   };
 
+  const TF_COLORS = {
+    '3M':  '#FF6B6B', '5M':  '#FF8E53', '30M': '#FFA726',
+    '1H':  '#FFCA28', '2H':  '#A5D6A7', '4H':  '#66BB6A',
+    '1D':  '#42A5F5', '2D':  '#1E88E5', '1W':  '#1565C0'
+  };
+
+  const parseMatchedTfs = (item) => {
+    try { return JSON.parse(item.matched_tfs || '[]'); } catch { return []; }
+  };
+  
+  const parseTfValues = (item) => {
+    try { return JSON.parse(item.tf_values || '{}'); } catch { return {}; }
+  };
+
+  const TfBadgeList = ({ item }) => {
+    const tfs = parseMatchedTfs(item);
+    const tfValues = parseTfValues(item);
+    if (tfs.length === 0) return <span style={{ color: 'rgba(255,255,255,0.2)', fontSize: '11px' }}>-</span>;
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+        {tfs.map(tf => {
+          const vals = tfValues[tf] || {};
+          return (
+            <div key={tf} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                background: TF_COLORS[tf] || '#888',
+                color: '#fff', borderRadius: '3px',
+                padding: '1px 4px', fontSize: '9px',
+                fontWeight: 'bold', minWidth: '30px', textAlign: 'center'
+              }}>{tf}</span>
+              <span style={{ fontSize: '9px', color: 'rgba(255,255,255,0.4)', whiteSpace: 'nowrap' }}>
+                G:{fmtPrice(vals.gSell)} / J:{fmtPrice(vals.result2)}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const PppTable = ({ items, emptyText }) => (
     <div style={{ 
       background: 'rgba(255,255,255,0.02)', 
@@ -175,7 +215,7 @@ const LandingPppWidget = ({ user }) => {
         <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', minWidth: '950px' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)', background: 'rgba(255,255,255,0.02)' }}>
-              {['순위', '종목코드', '종목명', '점수', 'PPP1', 'PPP2', 'G-Sell', '지지선', '등록일', '만료일', '잔여일', '신호', '관리'].map((h, i) => (
+              {['순위', '종목코드', '종목명', '점수', '현재가', 'PPP1', 'PPP2', '타임프레임(G/J)', 'G-Sell(대표)', '지지선(대표)', '등록일', '만료일', '잔여일', '신호', '관리'].map((h, i) => (
                 <th key={i} style={{ padding: '1rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)', fontWeight: 600 }}>{h}</th>
               ))}
             </tr>
@@ -198,8 +238,12 @@ const LandingPppWidget = ({ user }) => {
                     </a>
                   </td>
                   <td style={{ padding: '1rem', fontWeight: 800, color: getScoreColor(item.score) }}>{item.score}</td>
+                  <td style={{ padding: '1rem', fontWeight: 700, color: '#fff' }}>{fmtPrice(item.current_price)}</td>
                    <td style={{ padding: '1rem' }}>{item.ppp1 ? '✅' : '❌'}</td>
                   <td style={{ padding: '1rem' }}>{item.ppp2 ? '✅' : '❌'}</td>
+                  <td style={{ padding: '1rem' }}>
+                    <TfBadgeList item={item} />
+                  </td>
                   <td style={{ padding: '1rem', fontSize: '0.85rem' }}>{fmtPrice(item.g_sell)}</td>
                   <td style={{ padding: '1rem', fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)' }}>{fmtPrice(item.result_2)}</td>
                   <td style={{ padding: '1rem', fontSize: '0.8rem', color: 'rgba(255,255,255,0.4)' }}>{item.registered_date}</td>

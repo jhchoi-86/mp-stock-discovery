@@ -139,7 +139,10 @@ const PppWatchlist = ({ user }) => {
           <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold', color: '#fff' }}>
             {item.name}
           </h3>
-          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.code}</span>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{item.code}</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fff' }}>{fmtPrice(item.current_price)}</span>
+          </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
           {item.ppp2 ? (
