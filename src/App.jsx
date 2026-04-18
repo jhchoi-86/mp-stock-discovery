@@ -16,6 +16,7 @@ import { useDataConsistency } from './hooks/useDataConsistency.js';
 
 // [v9.4.15] React.lazy를 사용하여 순환 참조(Circular Dependency) 차단 및 초기 번들 최적화
 const SignalsPage = React.lazy(() => import('./pages/SignalsPage.jsx'));
+const WatchlistPage = React.lazy(() => import('./pages/WatchlistPage.jsx'));
 const MaintenancePage = React.lazy(() => import('./pages/MaintenancePage.jsx'));
 const PppWatchlist = React.lazy(() => import('./components/PppWatchlist.jsx'));
 
@@ -76,13 +77,13 @@ const App = () => {
           <Routes>
             {/* Common Routes available to everyone */}
             <Route path="/live-signals" element={<SignalsPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
+            <Route path="/watchlist" element={<WatchlistPage user={user} onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
 
-            {/* Role-based Home Route */}
             <Route path="/" element={
               !isAuthenticated ? (
                 <LandingPage onLoginClick={handleLoginClick} />
               ) : (
-                ['ADMIN', 'PAID', 'PRO_USER'].includes(user?.role) ? (
+                user?.role === 'ADMIN' ? (
                   isMobile ? <MobileDashboard manager={manager} user={user} clearAuth={authService.logout} /> : <PcDashboard manager={manager} user={user} clearAuth={authService.logout} />
                 ) : (
                   <LandingPage onLoginClick={handleLoginClick} isAuthenticated={true} onLogoutClick={authService.logout} />
@@ -92,19 +93,6 @@ const App = () => {
 
             {/* Login Route (Fallback for direct access) */}
             <Route path="/login" element={<Login onBack={() => navigate('/')} />} />
-
-            {/* [PPP Watchlist] Dedicated Route (PAID+) */}
-            <Route path="/ppp" element={
-              !isAuthenticated ? (
-                <Login onBack={() => navigate('/')} />
-              ) : (
-                ['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) ? (
-                  <PppWatchlist user={user} />
-                ) : (
-                  <LandingPage onLoginClick={handleLoginClick} isAuthenticated={true} onLogoutClick={authService.logout} />
-                )
-              )
-            } />
           </Routes>
         </React.Suspense>
       </SSEProvider>

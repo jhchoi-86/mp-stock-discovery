@@ -2,7 +2,7 @@
 
 const cron = require('node-cron');
 const { PrismaClient } = require('@prisma/client');
-const { runPppScan, checkSignalChanges } = require('./ppp_filter.cjs');
+const { runPppScan, checkSignalChanges, updateCurrentPrices } = require('./ppp_filter.cjs');
 const { sendMessage: sendTelegram } = require('./src/services/telegramService.cjs');
 
 const prisma = new PrismaClient();
@@ -13,7 +13,6 @@ const telegramId = process.env.TELEGRAM_CHAT_ID;
  */
 
 // 1. 매일 장 마감 후 16:30 스캔 시작 (평일 기준, KST)
-// [C2 반영] 스캔 완료 후 즉시 신호 변화 감지(checkSignalChanges)를 콜백으로 호출
 cron.schedule('30 16 * * 1-5', async () => {
     console.log('[PPP Scheduler] 일일 스캔 시작:', new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' }));
     try {
@@ -56,4 +55,21 @@ cron.schedule('5 0 * * *', async () => {
     }
 }, { timezone: 'Asia/Seoul' });
 
-console.log('[PPP Scheduler] 시스템 등록 완료 (16:30 스캔 / 00:05 만료 체크)');
+// 3. 평일 장중 1분 단위 현재가 동기화 (09:00 ~ 15:35, 월-금 KST)
+cron.schedule('*/1 9-15 * * 1-5', async () => {
+    const kstNow = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul' }));
+    const hour = kstNow.getHours();
+    const min = kstNow.getMinutes();
+    
+    // 15:35 이후 중단
+    if (hour === 15 && min > 35) return;
+
+    console.log('[PPP Scheduler] 실시간 가격 동기화 실행...');
+    try {
+        await updateCurrentPrices();
+    } catch (e) {
+        console.error('[PPP Scheduler] 가격 동기화 오류:', e.message);
+    }
+}, { timezone: 'Asia/Seoul' });
+
+console.log('[PPP Scheduler] 시스템 등록 완료 (16:30 스캔 / 00:05 만료체크 / 1분 간격 가격갱신)');

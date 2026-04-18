@@ -90,7 +90,8 @@ const resampleChartData = (raw, factor, tf) => {
  * Robust Hybrid History Fetcher with Overtime Price Support
  */
 async function fetchHybridHistory(stock, days, interval, kisTokenGlobal, kisCache = null) {
-    const suffix = stock.market.includes('KOSPI') ? '.KS' : '.KQ';
+    const market = stock.market || 'KOSPI';
+    const suffix = market.includes('KOSPI') ? '.KS' : '.KQ';
     const symbolKS = stock.code + suffix;
     const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
     const period2 = Math.floor(Date.now() / 1000);

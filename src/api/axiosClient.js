@@ -1,4 +1,5 @@
 import axios from 'axios';
+import toast from 'react-hot-toast';
 
 // Get base URL from environment or detect if we are in local development
 const isDevelopment = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -85,13 +86,25 @@ axiosClient.interceptors.response.use(
     // B. 403 Forbidden (RBAC Guard Check Failed)
     if (error.response?.status === 403) {
       const errorMsg = error.response?.data?.error || '접근 권한이 부족합니다. 회원 등급 혹은 승인 상태를 확인해주세요.';
-      alert(errorMsg);
+      toast.error(errorMsg, {
+        duration: 4000,
+        position: 'top-center',
+        style: {
+          background: '#1e293b',
+          color: '#fff',
+          borderRadius: '12px',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }
+      });
     }
 
     // C. 429 Too Many Requests (Usage Limit Reached)
     if (error.response?.status === 429) {
       const limit = error.response?.data?.limit || 0;
-      alert(`일일 API 사용량(${limit}회)을 모두 소진했습니다. 내일 다시 시도해주세요.`);
+      toast.error(`일일 API 사용량(${limit}회)을 모두 소진했습니다. 내일 다시 시도해주세요.`, {
+        duration: 5000,
+        position: 'top-center'
+      });
     }
 
     return Promise.reject(error);

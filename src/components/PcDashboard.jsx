@@ -1,6 +1,11 @@
+import React, { useState, useEffect, useRef } from 'react';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
-import PppWatchlist from './PppWatchlist.jsx';
+import LandingPppWidget from './LandingPppWidget.jsx';
+import UserProfile from './UserProfile.jsx';
+import SubscriptionModal from './SubscriptionModal.jsx';
+import ReportArchive from './ReportArchive.jsx';
+import AdminDashboard from './AdminDashboard.jsx';
 import PriceEditSection from './PriceEditSection'; // [STEP-08] 수동 편집 컴포넌트 추가
 import { getChartUrl } from '../utils/chartUtils';
 import SyncProgressHeader from './SyncProgressHeader.jsx';
@@ -160,7 +165,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
             onClick={() => setIsProfileOpen(true)}
             style={{ textAlign: 'right', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', padding: '0.2rem 0.5rem', borderRadius: '4px', transition: 'background 0.2s', ':hover': { background: 'rgba(255,255,255,0.05)' } }}
           >
-            <span style={{ fontSize: '0.8rem', color: 'rgba(212, 175, 55, 0.4)', fontWeight: 600 }}>v9.5.8</span>
+            <span style={{ fontSize: '0.8rem', color: 'rgba(212, 175, 55, 0.4)', fontWeight: 600 }}>v{__APP_VERSION__}</span>
             <div style={{ fontSize: '0.9rem', color: '#fff', fontWeight: 'bold', whiteSpace: 'nowrap' }}>{user?.name || user?.email?.split('@')[0]}</div>
             <div style={{ 
               fontSize: '0.65rem', 
@@ -222,7 +227,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
       ) : (
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
           {landingTab === 'PPP' ? (
-            <PppWatchlist user={user} />
+            <LandingPppWidget user={user} />
           ) : (
             <React.Fragment>
                 <div style={{ marginBottom: '1.5rem' }}>
@@ -310,8 +315,8 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
           onChange={(e) => { handleCsvUpload(e.target.files[0]); if(fileInputRef.current) fileInputRef.current.value=""; }}
         />
         
-        {/* === Control Panel === */}
-        {(user?.role === 'ADMIN' || user?.role === 'PAID') && (
+        {/* === Control Panel (ADMIN ONLY) === */}
+        {user?.role === 'ADMIN' && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center' }}>
             <button 
               onClick={handleIntegratedSync}
@@ -480,7 +485,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         >
           <ExternalLink size={18} /> 트래이딩뷰 추천 종목코드 다운로드
         </button>
-        {user && (
+        {user?.role === 'ADMIN' && (
           <button 
             onClick={handleSendToTelegram}
             disabled={isSendingTg}

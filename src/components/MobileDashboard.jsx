@@ -12,7 +12,7 @@ import { Activity, Archive, Share2, Filter, Layout, LogOut, UserCog, Search, X, 
 import { Virtuoso } from 'react-virtuoso';
 import AdminDashboard from './AdminDashboard.jsx';
 import BottomSheetFilter from './BottomSheetFilter.jsx';
-import PppWatchlist from './PppWatchlist.jsx';
+import LandingPppWidget from './LandingPppWidget.jsx';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -127,7 +127,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         <button onClick={() => setIsSubscriptionOpen(true)} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: 'linear-gradient(to right, var(--primary), var(--secondary))', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(236,72,153,0.3)' }}>
           👑 프리미엄
         </button>
-        {['ADMIN', 'PAID'].includes(user?.role) && (
+        {user?.role === 'ADMIN' && (
           <>
             <button onClick={() => handleIntegratedSync()} disabled={isSyncing} style={{ flexShrink: 0, padding: '0.5rem 0.8rem', background: isSyncing ? 'rgba(255,255,255,0.05)' : 'linear-gradient(to right, #10b981, #059669)', border: 'none', color: '#fff', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.8rem', cursor: isSyncing ? 'not-allowed' : 'pointer', boxShadow: isSyncing ? 'none' : '0 4px 12px rgba(16,185,129,0.3)' }}>
               <Activity size={14} className={isSyncing ? "spin" : ""} /> {isSyncing ? '진행중...' : '통합 분석'}
@@ -165,7 +165,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
       ) : (
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
         {landingTab === 'PPP' ? (
-          <PppWatchlist user={user} />
+          <LandingPppWidget user={user} />
         ) : (
         <>
         {/* 2. Status Widget (수평 스크롤) */}

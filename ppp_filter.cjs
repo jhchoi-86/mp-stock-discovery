@@ -233,57 +233,55 @@ async function kisGetMinuteCandles(code, minute, count = 200) {
  */
 async function fetchCandlesAllTF(stock) {
     const code = stock.code;
-    try {
-        const kisToken = await getKisAccessToken();
-
-        // 1. KIS 직접 수집 (3M, 5M, 30M)
-        const raw3M  = await kisGetMinuteCandles(code, 3);
-        const raw5M  = await kisGetMinuteCandles(code, 5);
-        const raw30M = await kisGetMinuteCandles(code, 30);
-
-        // 2. Yahoo Finance 수집 (1H, 1D, 1W)
-        const raw1H = await fetchHybridHistory(stock, 40,   '60m', kisToken);
-        const raw1D = await fetchHybridHistory(stock, 365,  '1d',  kisToken);
-        const raw1W = await fetchHybridHistory(stock, 1000, '1wk', kisToken);
-
-        // 3. 리샘플링 (2H / 4H / 2D)
-        const raw2H = raw1H ? resampleChartData(raw1H, 2, '2H') : null;
-        const raw4H = raw1H ? resampleChartData(raw1H, 4, '4H') : null;
-        const raw2D = raw1D ? resampleChartData(raw1D, 2, '2D') : null;
-
-        const MIN_CANDLES = {
-            '3M':  100,
-            '5M':  100,
-            '30M': 100,
-            '1H':  100,
-            '2H':   50,
-            '4H':   25,
-            '1D':  100,
-            '2D':   50,
-            '1W':   20
-        };
-
-        const candleMap = {
-            '3M': raw3M,  '5M': raw5M,  '30M': raw30M,
-            '1H': raw1H,  '2H': raw2H,  '4H': raw4H,
-            '1D': raw1D,  '2D': raw2D,  '1W': raw1W
-        };
-
-        const result = {};
-        for (const [tf, candles] of Object.entries(candleMap)) {
-            const minReq = MIN_CANDLES[tf] || 50;
-            if (candles && candles.close && candles.close.length >= minReq) {
-                result[tf] = candles;
-            } else {
-                console.warn(`[PPP] ${code} ${tf} 봉 부족(${candles?.close?.length || 0}/${minReq}) - 스킵`);
-                result[tf] = null;
-            }
-        }
-        return result;
+    const candlesMTF = {};
+    let kisToken = null;
+    try { 
+        kisToken = await getKisAccessToken(); 
     } catch (e) {
-        console.error(`[PPP] ${code} 캔들 수집 오류:`, e.message);
-        return null;
+        console.warn(`[PPP] ${code} KIS 토큰 획득 실패, KIS TFs 및 실시간 보정 제외.`);
     }
+
+    const MIN_CANDLES = {
+        '3M':  100,
+        '5M':  100,
+        '30M': 100,
+        '1H':  100,
+        '2H':   50,
+        '4H':   25,
+        '1D':  100,
+        '2D':   50,
+        '1W':   20
+    };
+
+    for (const tf of ALL_TIMEFRAMES) {
+        try {
+            let data = null;
+            if (KIS_MINUTE_TF[tf]) {
+                if (!kisToken) continue;
+                data = await kisGetMinuteCandles(code, KIS_MINUTE_TF[tf]);
+            } else if (YAHOO_TF[tf]) {
+                const days = { '1H': 60, '1D': 365, '1W': 1000 }[tf];
+                data = await fetchHybridHistory(stock, days, YAHOO_TF[tf], kisToken);
+            } else if (tf === '2H' && candlesMTF['1H']) {
+                data = resampleChartData(candlesMTF['1H'], 2, '2H');
+            } else if (tf === '4H' && candlesMTF['1H']) {
+                data = resampleChartData(candlesMTF['1H'], 4, '4H');
+            } else if (tf === '2D' && candlesMTF['1D']) {
+                data = resampleChartData(candlesMTF['1D'], 2, '2D');
+            }
+
+            const min = MIN_CANDLES[tf] || 50;
+            if (data && data.close && data.close.length >= min) {
+                candlesMTF[tf] = data;
+                // console.log(`  [Fetch] ${code} ${tf} 성공 (${data.close.length}봉)`);
+            }
+        } catch (e) {
+            console.warn(`[PPP Fetch Fail] ${code} ${tf}:`, e.message);
+        }
+    }
+
+    if (Object.keys(candlesMTF).length === 0) return null;
+    return candlesMTF;
 }
 
 /**
@@ -295,7 +293,8 @@ function calcPPP(candles, bgUp, params = {}) {
         rsiPeriod = 3,
         sto1 = 25, sto2 = 10, sto3 = 10,
         basisUp = 20, basisDown = 80,
-        periodLength = 12
+        periodLength = 12,
+        gSellBreakoutThreshold = 0.3 // [TASK-08] 30% breakout guard
     } = params;
 
     const { close, high, low, open } = candles;
@@ -372,7 +371,16 @@ function calcPPP(candles, bgUp, params = {}) {
     const currentResult2 = result2series[last];
     const currentMid = (high[last] + low[last]) / 2;
 
-    const ppp1 = currentGBuy !== null && currentMid > currentGBuy && bgUp;
+    let ppp1 = currentGBuy !== null && currentMid > currentGBuy && bgUp;
+    
+    // [TASK-08] Breakout Guard: 저항선 돌파 후 과도상승 종목 제외
+    if (ppp1 && currentGSell !== null) {
+        if (currentMid > currentGSell * (1 + gSellBreakoutThreshold)) {
+            // console.log(`[PPP Guard] Breakout Detected: Mid=${currentMid} > GSell=${currentGSell}*1.3`);
+            ppp1 = false;
+        }
+    }
+
     const ppp2 = ppp1 && close[last] > currentGBuy && currentResult2 !== null && currentResult2 >= currentGBuy;
 
     return {
@@ -396,23 +404,29 @@ async function calcPPPAllTF(stock, candlesMTF) {
     let mainGSell = null;
 
     for (const tf of ALL_TIMEFRAMES) {
-        if (!candlesMTF[tf]) continue;
+        try {
+            console.log(`  [PPP] TF: ${tf} 분석 중...`);
+            if (!candlesMTF[tf]) continue;
 
-        // BBMacd bgUp 필터 (2H/240 추천하나 지시서에 따라 해당 TF 기준)
-        const mtf = calcBBMacdMTF(candlesMTF[tf].close);
-        const res = calcPPP(candlesMTF[tf], mtf.bgUp);
+            // BBMacd bgUp 필터 (2H/240 추천하나 지시서에 따라 해당 TF 기준)
+            const mtf = calcBBMacdMTF(candlesMTF[tf].close);
+            const res = calcPPP(candlesMTF[tf], mtf.bgUp);
 
-        if (res.ppp1 || res.ppp2) {
-            matchedTfs.push(tf);
-            tfValues[tf] = {
-                gSell: res.gSell ? Math.round(res.gSell) : null,
-                result2: res.result2 ? Math.round(res.result2) : null
-            };
-            if (res.ppp1) finalPpp1 = true;
-            if (res.ppp2) finalPpp2 = true;
-            
-            // 대표 gSell은 가장 큰 TF(또는 첫 번째) 우선
-            if (!mainGSell) mainGSell = res.gSell;
+            if (res.ppp1 || res.ppp2) {
+                matchedTfs.push(tf);
+                tfValues[tf] = {
+                    gSell: res.gSell ? Math.round(res.gSell) : null,
+                    result2: res.result2 ? Math.round(res.result2) : null
+                };
+                if (res.ppp1) finalPpp1 = true;
+                if (res.ppp2) finalPpp2 = true;
+                
+                // 대표 gSell은 가장 큰 TF(또는 첫 번째) 우선
+                if (!mainGSell) mainGSell = res.gSell;
+            }
+        } catch (e) {
+            console.warn(`[PPP] ${stock.code} ${tf} 분석 에러:`, e.message);
+            continue;
         }
     }
 
@@ -436,7 +450,10 @@ async function calcPPPForStock(stock) {
         const allTfRes = await calcPPPAllTF(stock, candlesMTF);
         
         // 현재가 마지막 봉 기준 추출
-        const lastTf = Object.keys(candlesMTF)[0];
+        const tfKeys = Object.keys(candlesMTF);
+        if (tfKeys.length === 0) return null;
+
+        const lastTf = tfKeys[0];
         const currentPrice = candlesMTF[lastTf].close[candlesMTF[lastTf].close.length - 1];
 
         return {
@@ -689,6 +706,7 @@ async function updateCurrentPrices() {
             }
         } catch (e) {
             console.warn(`[PPP Price] ${item.code} 갱신 실패:`, e.message);
+            continue;
         }
     }
     console.log('[PPP Price] 현재가 갱신 종료.');
@@ -698,5 +716,6 @@ module.exports = {
     runPppScan, 
     checkSignalChanges, 
     calcPPPForStock,
+    calcPPPAllTF,
     updateCurrentPrices
 };

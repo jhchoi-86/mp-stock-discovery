@@ -61,10 +61,10 @@ function autoUpdateReleaseHistory() {
 }
 
 try {
-    log("Starting Robust Deployment (v5.3.0)...");
+    log("Starting Robust Tarball Deployment (v5.4.0)...");
 
-    // 0.5 Validate Syntax (v7.8.5 Permanent Fix)
-    log("Step 0.5: Validating server-side syntax (Permanent Stability Fix)...");
+    // 0.5 Validate Syntax
+    log("Step 0.5: Validating server-side syntax...");
     const serverFiles = [
         'server.cjs',
         'analyzer.cjs',
@@ -81,61 +81,79 @@ try {
         }
     });
 
-    // 0. Auto-increment version
-    log("Step 0: Incrementing version (npm version patch)...");
-    execSync('npm version patch --no-git-tag-version', { stdio: 'inherit' });
-
     // 1. Local Build
-    log("Step 1: Building locally (powershell -ExecutionPolicy Bypass -Command 'npm run build')...");
+    log("Step 1: Building locally...");
     execSync('powershell -ExecutionPolicy Bypass -Command "npm run build"', { stdio: 'inherit' });
     log("Local build succeeded.");
 
-    // [v6.2.9] Auto-update RELEASE.md before upload
     autoUpdateReleaseHistory();
 
-    log("Step 1.5: Cleaning remote dist and fixing permissions...");
-    const fixPermCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "sudo rm -rf ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}scripts && mkdir -p ${CONFIG.REMOTE_DIR}dist/assets ${CONFIG.REMOTE_DIR}scripts && sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}"`;
-    execSync(fixPermCmd, { stdio: 'inherit' });
-
-    log("Step 2: Uploading all backend assets to server...");
+    // 1.2 Local Compression
+    log("Step 1.2: Creating deployment tarball...");
     const assets = [
-        "dist/", 
-        "src/", 
-        "platform/", 
-        "prisma/", 
-        "scripts/", 
+        "dist", 
+        "src", 
+        "platform", 
+        "prisma", 
+        "scripts", 
+        "lib",
+        "public",
         "server.cjs", 
         "analyzer.cjs", 
+        "ppp_filter.cjs",
+        "ppp_scheduler.cjs",
+        "sync_scheduler.cjs",
+        "telegramBot.cjs",
+        "scoringEngine.cjs",
         "package.json", 
         "package-lock.json",
         "RELEASE.md"
     ];
-    const scpCmd = `scp -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no -r ${assets.map(a => `"${a}"`).join(' ')} ${CONFIG.USER}@${CONFIG.IP}:${CONFIG.REMOTE_DIR}`;
-    execSync(scpCmd, { stdio: 'inherit' });
-    log("Frontend and Backend assets uploaded successfully.");
+    // Use tar.exe for Windows compatibility
+    execSync(`tar -czf mp-deploy.tar.gz ${assets.join(' ')}`, { stdio: 'inherit' });
+    log("Deployment tarball created (mp-deploy.tar.gz).");
 
-    // 3. Remote Commands (Chmod + PM2 Reload)
-    log("Step 3: Synchronizing permissions and reloading services...");
+    log("Step 1.5: Halting remote services and aggressive cleanup...");
+    const fixPermCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "sudo pm2 stop all || true; sudo chattr -R -i ${CONFIG.REMOTE_DIR} || true; sudo rm -rf ${CONFIG.REMOTE_DIR}dist ${CONFIG.REMOTE_DIR}src ${CONFIG.REMOTE_DIR}scripts; mkdir -p ${CONFIG.REMOTE_DIR}dist/assets ${CONFIG.REMOTE_DIR}scripts ${CONFIG.REMOTE_DIR}src; sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}"`;
+    execSync(fixPermCmd, { stdio: 'inherit' });
+
+    log("Step 2: Uploading tarball to /tmp/...");
+    const scpCmd = `scp -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no mp-deploy.tar.gz ${CONFIG.USER}@${CONFIG.IP}:/tmp/mp-deploy.tar.gz`;
+    execSync(scpCmd, { stdio: 'inherit' });
+    log("Tarball uploaded to /tmp/ successfully.");
+
+    // 3. Remote Commands (Extract + Chmod + PM2 Reload)
+    log("Step 3: Extracting tarball with sudo and reloading services...");
     const remoteCommands = [
-        `chmod -R 755 ${CONFIG.REMOTE_DIR}dist`,
-        `cd ${CONFIG.REMOTE_DIR} && npx prisma generate && npx prisma db push --accept-data-loss && pm2 reload ${CONFIG.PM2_NAME} --update-env`
+        `sudo tar -xzf /tmp/mp-deploy.tar.gz -C ${CONFIG.REMOTE_DIR}`,
+        `sudo rm -f /tmp/mp-deploy.tar.gz`,
+        `sudo chown -R ${CONFIG.USER}:${CONFIG.USER} ${CONFIG.REMOTE_DIR}`,
+        `cd ${CONFIG.REMOTE_DIR}`,
+        `chmod -R 755 dist`,
+        `npx prisma generate`,
+        `npx prisma db push --accept-data-loss`,
+        `pm2 reload ${CONFIG.PM2_NAME} --update-env || pm2 start server.cjs --name ${CONFIG.PM2_NAME}`,
+        `sudo rm -rf ${CONFIG.NGINX_ROOT}`,
+        `sudo cp -r dist ${CONFIG.NGINX_ROOT}`,
+        `sudo chown -R www-data:www-data ${CONFIG.NGINX_ROOT}`
     ].join(' && ');
 
-
-    const sshCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "${remoteCommands} && sudo rm -rf ${CONFIG.NGINX_ROOT} && sudo cp -r ${CONFIG.REMOTE_DIR}dist ${CONFIG.NGINX_ROOT} && sudo chown -R www-data:www-data ${CONFIG.NGINX_ROOT}"`;
+    const sshCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "${remoteCommands}"`;
     execSync(sshCmd, { stdio: 'inherit' });
-    log("Server-side sync, Nginx root update, and reload complete.");
+    log("Remote extraction and reload complete.");
 
-    // 4. Verification (Health Check)
-    log("Step 4: Performing Remote Health Check (HTTP 200 OK Verification)...");
+    // 4. Verification
+    log("Step 4: Performing Remote Health Check...");
     const healthCheckCmd = `ssh -i "${CONFIG.KEY_PATH}" -o StrictHostKeyChecking=no ${CONFIG.USER}@${CONFIG.IP} "curl -s -o /dev/null -w '%{http_code}' https://mpstock.co.kr/"`;
     const httpCode = execSync(healthCheckCmd).toString().trim();
     
     if (httpCode === '200') {
         log(`\x1b[32m✔ Health Check Passed (HTTP ${httpCode})\x1b[0m`);
         log("\x1b[32m✔ DEPLOYMENT SUCCESSFUL!\x1b[0m");
+        // Cleanup local tarball
+        if (fs.existsSync('mp-deploy.tar.gz')) fs.unlinkSync('mp-deploy.tar.gz');
     } else {
-        error(`Health Check Failed! Server returned HTTP ${httpCode}. Possible 403/500.`);
+        error(`Health Check Failed! Server returned HTTP ${httpCode}.`);
     }
 
 } catch (err) {
