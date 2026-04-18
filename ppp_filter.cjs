@@ -402,13 +402,17 @@ async function calcPPPAllTF(stock, candlesMTF) {
     let finalPpp1 = false;
     let finalPpp2 = false;
     let mainGSell = null;
+    let mainResult2 = null;
+
+    // ──────────────────────────────────────────────────────────────────
+    // [v9.7.8-patch] 대표값 선정 전략: 1W -> 2D -> 1D 순으로 데이터가 있으면 우선 채택
+    // ──────────────────────────────────────────────────────────────────
+    const REPRESENTATIVE_TFS = ['1W', '2D', '1D', '4H', '2H', '1H', '30M', '5M', '3M'];
 
     for (const tf of ALL_TIMEFRAMES) {
         try {
-            console.log(`  [PPP] TF: ${tf} 분석 중...`);
             if (!candlesMTF[tf]) continue;
 
-            // BBMacd bgUp 필터 (2H/240 추천하나 지시서에 따라 해당 TF 기준)
             const mtf = calcBBMacdMTF(candlesMTF[tf].close);
             const res = calcPPP(candlesMTF[tf], mtf.bgUp);
 
@@ -420,20 +424,33 @@ async function calcPPPAllTF(stock, candlesMTF) {
                 };
                 if (res.ppp1) finalPpp1 = true;
                 if (res.ppp2) finalPpp2 = true;
-                
-                // 대표 gSell은 가장 큰 TF(또는 첫 번째) 우선
-                if (!mainGSell) mainGSell = res.gSell;
             }
+
+            // [v9.7.8-patch] 신호 발생 여부와 무관하게 유효한 데이터가 있다면 대표값 후보로 누적
+            // (이미 더 큰 타임프레임에서 잡혔다면 스킵)
         } catch (e) {
             console.warn(`[PPP] ${stock.code} ${tf} 분석 에러:`, e.message);
             continue;
         }
     }
 
+    // [v9.8.1] 최적의 대표값(G-Sell, 지지선) 결정
+    for (const tf of REPRESENTATIVE_TFS) {
+        if (!candlesMTF[tf]) continue;
+        try {
+            const mtf = calcBBMacdMTF(candlesMTF[tf].close);
+            const res = calcPPP(candlesMTF[tf], mtf.bgUp);
+            if (!mainGSell && res.gSell) mainGSell = res.gSell;
+            if (!mainResult2 && res.result2) mainResult2 = res.result2;
+            if (mainGSell && mainResult2) break;
+        } catch(e) {}
+    }
+
     return {
         ppp1: finalPpp1,
         ppp2: finalPpp2,
         g_sell: mainGSell,
+        result_2: mainResult2, // [FIX] 필드 누락 복구
         matched_tfs: JSON.stringify(matchedTfs),
         tf_values: JSON.stringify(tfValues)
     };
@@ -463,6 +480,7 @@ async function calcPPPForStock(stock) {
             ppp1:           allTfRes.ppp1,
             ppp2:           allTfRes.ppp2,
             g_sell:         allTfRes.g_sell,
+            result_2:       allTfRes.result_2, // [FIX] 지지선 바인딩
             matched_tfs:    allTfRes.matched_tfs,
             tf_values:      allTfRes.tf_values,
             current_price:  currentPrice
@@ -692,10 +710,24 @@ async function updateCurrentPrices() {
 
     for (const item of activeItems) {
         try {
-            // 최근 5일치 일봉 데이터를 가져와서 마지막 가격(현재가) 추출
+            // [v9.8.1] Jitter 추가하여 Rate Limit 분산 (100-300ms)
+            await new Promise(r => setTimeout(r, 100 + Math.random() * 200));
+
+            // KIS 우선 시도
+            let current = null;
             const data = await fetchHybridHistory(item, 5, '1d', kisToken);
             if (data && data.close && data.close.length > 0) {
-                const current = data.close[data.close.length - 1];
+                current = data.close[data.close.length - 1];
+            } else {
+                // [v9.8.1] KIS 실패 시 Yahoo Finance Failover
+                const yahooData = await fetchHybridHistory(item, 5, '1d', null);
+                if (yahooData && yahooData.close && yahooData.close.length > 0) {
+                    current = yahooData.close[yahooData.close.length - 1];
+                    // console.log(`[PPP Price] ${item.code} Yahoo Failover 성공: ${current}`);
+                }
+            }
+
+            if (current) {
                 await prisma.pppWatchlist.update({
                     where: { id: item.id },
                     data: { 
