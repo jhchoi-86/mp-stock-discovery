@@ -8,6 +8,7 @@ const {
 } = require('./analyzer.cjs');
 const { sendMessage: sendTelegram } = require('./src/services/telegramService.cjs');
 const redis = require('./platform/infra/redis/client.cjs');
+const axios = require('axios');
 
 const prisma = new PrismaClient();
 
@@ -21,6 +22,23 @@ function getKSTDateString() {
     const kst = new Date(now.getTime() + 9 * 60 * 60 * 1000);
     return kst.toISOString().slice(0, 10); // YYYY-MM-DD
 }
+
+// ──────────────────────────────────────────────────────────────────
+// [v9.7.9] TASK-03 확정 멀티 타임프레임 및 데이터 소스 정의
+// ──────────────────────────────────────────────────────────────────
+const ALL_TIMEFRAMES = ['3M', '5M', '30M', '1H', '2H', '4H', '1D', '2D', '1W'];
+
+const KIS_MINUTE_TF = {
+    '3M':  3,
+    '5M':  5,
+    '30M': 30
+};
+
+const YAHOO_TF = {
+    '1H': '60m',
+    '1D': '1d',
+    '1W': '1wk'
+};
 
 // ──────────────────────────────────────────────────────────────────
 // [수학 유틸리티 함수]
@@ -167,28 +185,103 @@ function calcBBMacdMTF(closeMTF, params = {}) {
 }
 
 /**
- * KIS API를 통한 멀티 TF 데이터 수집
- * [RT-2 반영] 2H/2D는 리샘플링 사용
+ * [v9.7.9] KIS API 직접 수집 (분봉 차트)
  */
-async function fetchCandlesMultiTF(code) {
+async function kisGetMinuteCandles(code, minute, count = 200) {
     try {
-        const kisToken = await getKisAccessToken();
-        const stockObj = { code }; // fetchHybridHistory 기대 형식
+        const token = await getKisAccessToken();
+        const url = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice';
+        
+        const res = await axios.get(url, {
+            headers: { 
+                'content-type': 'application/json',
+                'authorization': 'Bearer ' + token, 
+                'appkey': process.env.KIS_APP_KEY, 
+                'appsecret': process.env.KIS_APP_SECRET, 
+                'tr_id': 'FHKST03010200', 
+                'custtype': 'P' 
+            },
+            params: {
+                "FID_COND_MRKT_DIV_CODE": "J",
+                "FID_INPUT_ISCD": code,
+                "FID_ETC_CLS_CODE": "",
+                "FID_PW_DATA_INCU_YN": "Y",
+                "FID_HOUR_CLS_CODE": String(minute)
+            }
+        });
 
-        // 1H 데이터 (2H를 만들기 위해 수집)
-        // [RT-5] Warmup 확보 위해 200봉 요청
-        const raw1H = await fetchHybridHistory(stockObj, 60, '1h', kisToken);
-        if (!raw1H || !raw1H.close || raw1H.close.length < 100) return null;
+        const output2 = res.data.output2;
+        if (!output2 || output2.length < 20) return null;
 
-        // 2H 리샘플링 [RT-2]
-        const raw2H = resampleChartData(raw1H, 2, '2H');
-
-        return { 
-            '1H': raw1H, 
-            '2H': raw2H 
+        const reversed = [...output2].reverse();
+        return {
+            open: reversed.map(d => parseInt(d.stck_oprc)),
+            high: reversed.map(d => parseInt(d.stck_hgpr)),
+            low: reversed.map(d => parseInt(d.stck_lwpr)),
+            close: reversed.map(d => parseInt(d.stck_prpr)),
+            volume: reversed.map(d => parseInt(d.cntg_vol)),
+            time: reversed.map(d => d.stck_bsop_date + d.stck_cntg_hour)
         };
     } catch (e) {
-        console.error(`[PPP Filter] API 호출 오류(${code}):`, e.message);
+        console.error(`[KIS Minute] ${code} ${minute}M 실패:`, e.message);
+        return null;
+    }
+}
+
+/**
+ * [v9.7.9] 데이터 수집 전략 3원화 (KIS / Yahoo / 리샘플링)
+ */
+async function fetchCandlesAllTF(stock) {
+    const code = stock.code;
+    try {
+        const kisToken = await getKisAccessToken();
+
+        // 1. KIS 직접 수집 (3M, 5M, 30M)
+        const raw3M  = await kisGetMinuteCandles(code, 3);
+        const raw5M  = await kisGetMinuteCandles(code, 5);
+        const raw30M = await kisGetMinuteCandles(code, 30);
+
+        // 2. Yahoo Finance 수집 (1H, 1D, 1W)
+        const raw1H = await fetchHybridHistory(stock, 40,   '60m', kisToken);
+        const raw1D = await fetchHybridHistory(stock, 365,  '1d',  kisToken);
+        const raw1W = await fetchHybridHistory(stock, 1000, '1wk', kisToken);
+
+        // 3. 리샘플링 (2H / 4H / 2D)
+        const raw2H = raw1H ? resampleChartData(raw1H, 2, '2H') : null;
+        const raw4H = raw1H ? resampleChartData(raw1H, 4, '4H') : null;
+        const raw2D = raw1D ? resampleChartData(raw1D, 2, '2D') : null;
+
+        const MIN_CANDLES = {
+            '3M':  100,
+            '5M':  100,
+            '30M': 100,
+            '1H':  100,
+            '2H':   50,
+            '4H':   25,
+            '1D':  100,
+            '2D':   50,
+            '1W':   20
+        };
+
+        const candleMap = {
+            '3M': raw3M,  '5M': raw5M,  '30M': raw30M,
+            '1H': raw1H,  '2H': raw2H,  '4H': raw4H,
+            '1D': raw1D,  '2D': raw2D,  '1W': raw1W
+        };
+
+        const result = {};
+        for (const [tf, candles] of Object.entries(candleMap)) {
+            const minReq = MIN_CANDLES[tf] || 50;
+            if (candles && candles.close && candles.close.length >= minReq) {
+                result[tf] = candles;
+            } else {
+                console.warn(`[PPP] ${code} ${tf} 봉 부족(${candles?.close?.length || 0}/${minReq}) - 스킵`);
+                result[tf] = null;
+            }
+        }
+        return result;
+    } catch (e) {
+        console.error(`[PPP] ${code} 캔들 수집 오류:`, e.message);
         return null;
     }
 }
@@ -244,15 +337,24 @@ function calcPPP(candles, bgUp, params = {}) {
     const highestHigh3 = highestSeries(high, rsiPeriod, 1);
     const lowestLow3 = lowestSeries(low, rsiPeriod, 1);
 
-    // 5. G-Buy & Result_2
+    // 5. G-Buy & G-Sell (TF)
     const pLowSeries = lowestSeries(low, periodLength, 1);
+    const pHighSeries = highestSeries(high, periodLength, 1);
+
     const condBuy = kSeries.map((k, i) => {
         if (k === null || fSeries[i] === null || i === 0) return false;
         return (kSeries[i - 1] <= basisUp && k > basisUp) && 
                fSeries[i] <= k && open[i] < close[i];
     });
 
+    const condSell = kSeries.map((k, i) => {
+        if (k === null || fSeries[i] === null || i === 0) return false;
+        return (kSeries[i - 1] >= basisDown && k < basisDown) &&
+               fSeries[i] >= k && open[i] > close[i];
+    });
+
     const gBuySeries = valueWhen(condBuy, pLowSeries);
+    const gSellSeries = valueWhen(condSell, pHighSeries);
 
     const B2up = valueWhen(P2, lowestLow3).map((v, i, arr) => i > 0 && arr[i-1] !== null && v !== null && arr[i-1] < v);
     const Q2 = valueWhen(B2up, lowestSeries(low, rsiPeriod, 1));
@@ -266,6 +368,7 @@ function calcPPP(candles, bgUp, params = {}) {
     // 6. Final Evaluation
     const last = len - 1;
     const currentGBuy = gBuySeries[last];
+    const currentGSell = gSellSeries[last];
     const currentResult2 = result2series[last];
     const currentMid = (high[last] + low[last]) / 2;
 
@@ -275,33 +378,77 @@ function calcPPP(candles, bgUp, params = {}) {
     return {
         ppp1, ppp2, 
         gBuy: currentGBuy, 
+        gSell: currentGSell,
         result2: currentResult2,
         bgUp
     };
 }
 
 /**
- * 단일 종목 PPP 계산 래퍼
- [H1 반영]
+ * [v9.7.9] 멀티 TF 스캔 (9개 타임프레임 순회)
+ * [C2] matchedTfValues 수집 포함
+ */
+async function calcPPPAllTF(stock, candlesMTF) {
+    let matchedTfs = [];
+    let tfValues = {};
+    let finalPpp1 = false;
+    let finalPpp2 = false;
+    let mainGSell = null;
+
+    for (const tf of ALL_TIMEFRAMES) {
+        if (!candlesMTF[tf]) continue;
+
+        // BBMacd bgUp 필터 (2H/240 추천하나 지시서에 따라 해당 TF 기준)
+        const mtf = calcBBMacdMTF(candlesMTF[tf].close);
+        const res = calcPPP(candlesMTF[tf], mtf.bgUp);
+
+        if (res.ppp1 || res.ppp2) {
+            matchedTfs.push(tf);
+            tfValues[tf] = {
+                gSell: res.gSell ? Math.round(res.gSell) : null,
+                result2: res.result2 ? Math.round(res.result2) : null
+            };
+            if (res.ppp1) finalPpp1 = true;
+            if (res.ppp2) finalPpp2 = true;
+            
+            // 대표 gSell은 가장 큰 TF(또는 첫 번째) 우선
+            if (!mainGSell) mainGSell = res.gSell;
+        }
+    }
+
+    return {
+        ppp1: finalPpp1,
+        ppp2: finalPpp2,
+        g_sell: mainGSell,
+        matched_tfs: JSON.stringify(matchedTfs),
+        tf_values: JSON.stringify(tfValues)
+    };
+}
+
+/**
+ * 단일 종목 멀티 TF PPP 분석 래퍼
  */
 async function calcPPPForStock(stock) {
     try {
-        const candles = await fetchCandlesMultiTF(stock.code);
-        if (!candles || !candles['1H'] || !candles['2H']) return null;
+        const candlesMTF = await fetchCandlesAllTF(stock);
+        if (!candlesMTF || Object.keys(candlesMTF).length === 0) return null;
 
-        const mtfClose = candles['2H'].close;
-        const mtf = calcBBMacdMTF(mtfClose);
-
-        const pppResult = calcPPP(candles['1H'], mtf.bgUp);
+        const allTfRes = await calcPPPAllTF(stock, candlesMTF);
+        
+        // 현재가 마지막 봉 기준 추출
+        const lastTf = Object.keys(candlesMTF)[0];
+        const currentPrice = candlesMTF[lastTf].close[candlesMTF[lastTf].close.length - 1];
 
         return {
-            code:    stock.code,
-            name:    stock.name,
-            score:   stock.score,
-            ppp1:    pppResult.ppp1,
-            ppp2:    pppResult.ppp2,
-            gBuy:    pppResult.gBuy,
-            result2: pppResult.result2
+            code:           stock.code,
+            name:           stock.name,
+            score:          stock.score,
+            ppp1:           allTfRes.ppp1,
+            ppp2:           allTfRes.ppp2,
+            g_sell:         allTfRes.g_sell,
+            matched_tfs:    allTfRes.matched_tfs,
+            tf_values:      allTfRes.tf_values,
+            current_price:  currentPrice
         };
     } catch (e) {
         console.error(`[PPP Filter] ${stock.code} 분석 실패:`, e.message);
@@ -332,19 +479,50 @@ async function runPppScan() {
     try {
         console.log('[PPP Scan] 시작...');
         
-        // [1] 고득점 종목 조회 (70점↑)
-        const allStocks = await prisma.dailyStockSnapshot.findMany({
-            where: { hybridScore: { gte: 70 } },
-            orderBy: { hybridScore: 'desc' }
+        // [1] 최근 24시간 내 동기화된 고득점 종목 추출 (데이터 팽창 방지 및 350개 풀 복구)
+        const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        const allSnapshots = await prisma.dailyStockSnapshot.findMany({
+            where: { 
+                syncDate: { gte: dayAgo },
+                hybridScore: { gte: 70 } 
+            },
+            orderBy: { syncDate: 'desc' }
         });
 
+        // [2] 종목별 중복 제거 (여러 번 동기화된 경우 최신 점수 기준)
+        const uniqueMap = new Map();
+        for (const s of allSnapshots) {
+            if (!uniqueMap.has(s.ticker)) {
+                uniqueMap.set(s.ticker, s);
+            }
+        }
+        const allStocks = Array.from(uniqueMap.values());
+
         if (allStocks.length === 0) {
-            console.log('[PPP Scan] 대상 종목 없음 (70점↑)');
+            console.log('[PPP Scan] 최근 24시간 내 대상 종목 없음 (70점↑)');
+            await redis.set('mp:ppp_scan_progress', JSON.stringify({ status: 'idle', processed: 0, total: 0, percentage: 0 }));
             return { added: 0, skipped: 0, total: 0 };
         }
 
+        console.log(`[PPP Scan] 최근 24시간 분석 결과(${allStocks.length}종목) 기반 정밀 스캔 중...`);
+
+        // Initialize progress
+        await redis.set('mp:ppp_scan_progress', JSON.stringify({ 
+            status: 'scanning', 
+            processed: 0, 
+            total: allStocks.length, 
+            percentage: 0 
+        }), 'EX', 3600);
+
         // [2] 모니터링 중 코드
         const activeCodes = await getActiveWatchlistCodes();
+
+        // [2.5] 마켓 정보 매핑 (Yahoo Finance suffix 결정용)
+        const instruments = await prisma.instrument.findMany({
+            where: { symbol: { in: allStocks.map(s => s.ticker) } },
+            select: { symbol: true, market: true }
+        });
+        const marketMap = new Map(instruments.map(i => [i.symbol, i.market]));
 
         // [3] 배치 처리 [RT-1]
         const BATCH_SIZE = 3;
@@ -354,9 +532,24 @@ async function runPppScan() {
         for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
             const batch = allStocks.slice(i, i + BATCH_SIZE);
             const batchResults = await Promise.all(
-                batch.map(s => calcPPPForStock({ code: s.ticker, name: s.name, score: s.hybridScore }))
+                batch.map(s => calcPPPForStock({ 
+                    code: s.ticker, 
+                    name: s.name, 
+                    score: s.hybridScore,
+                    market: marketMap.get(s.ticker) || 'KOSPI'
+                }))
             );
             results.push(...batchResults.filter(Boolean));
+
+            // Update Progress in Redis
+            const processedCount = Math.min(i + BATCH_SIZE, allStocks.length);
+            const percentage = Math.floor((processedCount / allStocks.length) * 100);
+            await redis.set('mp:ppp_scan_progress', JSON.stringify({
+                status: 'scanning',
+                processed: processedCount,
+                total: allStocks.length,
+                percentage
+            }), 'EX', 3600);
 
             if (i + BATCH_SIZE < allStocks.length) {
                 const jitter = Math.floor(Math.random() * 200);
@@ -387,8 +580,11 @@ async function runPppScan() {
                         score:           stock.score,
                         ppp1:            stock.ppp1,
                         ppp2:            stock.ppp2,
-                        g_buy:           stock.gBuy,
-                        result_2:        stock.result2,
+                        g_sell:          stock.g_sell,
+                        matched_tfs:     stock.matched_tfs,
+                        tf_values:       stock.tf_values,
+                        current_price:   stock.current_price,
+                        price_updated_at: new Date(),
                         registered_date: todayStr,
                         expires_at:      expiresAt,
                         last_signal:     initSignal,
@@ -410,6 +606,7 @@ async function runPppScan() {
         console.error('[PPP Scan Error]', e);
         throw e;
     } finally {
+        await redis.set('mp:ppp_scan_progress', JSON.stringify({ status: 'idle', processed: 0, total: 0, percentage: 0 }));
         await redis.del(LOCK_KEY);
     }
 }
@@ -464,8 +661,42 @@ async function checkSignalChanges() {
     console.log('[PPP Signal] 변화 체크 완료.');
 }
 
+/**
+ * [TASK-03] 현재가 실시간 갱신 (KIS API)
+ */
+async function updateCurrentPrices() {
+    console.log('[PPP Price] 현재가 갱신 시작...');
+    const now = new Date();
+    const activeItems = await prisma.pppWatchlist.findMany({
+        where: { is_active: true, expires_at: { gt: now } }
+    });
+
+    const kisToken = await getKisAccessToken();
+
+    for (const item of activeItems) {
+        try {
+            // 최근 5일치 일봉 데이터를 가져와서 마지막 가격(현재가) 추출
+            const data = await fetchHybridHistory(item, 5, '1d', kisToken);
+            if (data && data.close && data.close.length > 0) {
+                const current = data.close[data.close.length - 1];
+                await prisma.pppWatchlist.update({
+                    where: { id: item.id },
+                    data: { 
+                        current_price: current, 
+                        price_updated_at: new Date() 
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn(`[PPP Price] ${item.code} 갱신 실패:`, e.message);
+        }
+    }
+    console.log('[PPP Price] 현재가 갱신 종료.');
+}
+
 module.exports = { 
     runPppScan, 
     checkSignalChanges, 
-    calcPPPForStock 
+    calcPPPForStock,
+    updateCurrentPrices
 };

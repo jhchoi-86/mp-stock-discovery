@@ -418,6 +418,13 @@ model PppWatchlist {
   created_at          DateTime  @default(now())
   updated_at          DateTime  @updatedAt
 
+  // ✅ [v9.7.9] TASK-02: Multi-TF 및 G-Sell 지원을 위한 신규 컬럼
+  g_sell           Float?
+  matched_tfs      String?   @default("[]")
+  tf_values        String?   @default("{}")
+  current_price    Float?
+  price_updated_at DateTime?
+
   @@unique([code, registered_date])
   @@index([is_active, expires_at])
   @@index([score])

@@ -409,6 +409,31 @@ app.post('/api/ppp/scan', authenticateToken, isAdmin, async (req, res) => {
   }
 });
 
+// [v9.7.5] PPP 스캔 강제 초기화 API
+app.post('/api/ppp/scan-reset', authenticateToken, isAdmin, async (req, res) => {
+  try {
+    const redis = require('./platform/infra/redis/client.cjs');
+    await redis.del('lock:ppp_scan');
+    await redis.del('mp:ppp_scan_progress');
+    console.log('[API PPP Scan Reset] Admin requested force reset.');
+    res.json({ success: true, message: 'PPP 스캔 상태가 초기화되었습니다.' });
+  } catch (e) {
+    console.error('[API PPP Scan Reset]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
+app.get('/api/ppp/scan-status', authenticateToken, requirePaidOrAdmin, async (req, res) => {
+  try {
+    const progress = await redis.get('mp:ppp_scan_progress');
+    const data = progress ? JSON.parse(progress) : { status: 'idle', processed: 0, total: 0, percentage: 0 };
+    res.json({ success: true, data });
+  } catch (e) {
+    console.error('[API PPP Scan Status]', e);
+    res.status(500).json({ success: false, error: e.message });
+  }
+});
+
 app.get('/api/ppp/watchlist', authenticateToken, requirePaidOrAdmin, async (req, res) => {
   const limit = parseInt(req.query.limit) || 50;
   try {

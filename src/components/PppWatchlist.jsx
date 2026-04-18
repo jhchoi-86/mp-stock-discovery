@@ -11,6 +11,52 @@ import {
   Clock
 } from 'lucide-react';
 
+const TF_COLORS = {
+  '3M':  '#FF6B6B', '5M':  '#FF8E53', '30M': '#FFA726',
+  '1H':  '#FFCA28', '2H':  '#A5D6A7', '4H':  '#66BB6A',
+  '1D':  '#42A5F5', '2D':  '#1E88E5', '1W':  '#1565C0'
+};
+
+const fmtPrice = (val) => {
+  if (val === null || val === undefined) return '-';
+  return Number(val).toLocaleString('ko-KR');
+};
+
+const parseMatchedTfs = (item) => {
+  try { return JSON.parse(item.matched_tfs || '[]'); } catch { return []; }
+};
+
+const parseTfValues = (item) => {
+  try { return JSON.parse(item.tf_values || '{}'); } catch { return {}; }
+};
+
+function MatchedTfValues({ item }) {
+  const tfs      = parseMatchedTfs(item);
+  const tfValues = parseTfValues(item);
+  if (tfs.length === 0) return <span style={{ color: '#888', fontSize: '11px' }}>-</span>;
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)', paddingTop: '8px' }}>
+      {tfs.map(tf => {
+        const vals = tfValues[tf] || {};
+        return (
+          <div key={tf} style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{
+              background: TF_COLORS[tf] || '#888',
+              color: '#fff', borderRadius: '4px',
+              padding: '2px 6px', fontSize: '10px',
+              fontWeight: 'bold', minWidth: '34px', textAlign: 'center'
+            }}>{tf}</span>
+            <div style={{ display: 'flex', gap: '8px', fontSize: '11px' }}>
+              <span style={{ color: 'var(--text-muted)' }}>G-Sell: <strong style={{ color: '#fff' }}>{fmtPrice(vals.gSell)}</strong></span>
+              <span style={{ color: 'var(--text-muted)' }}>지지: <strong style={{ color: '#fff' }}>{fmtPrice(vals.result2)}</strong></span>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
  * PppWatchlist Component (v3.0)
  * [v9.6.1] Streamlined UI with Glassmorphism
@@ -137,13 +183,15 @@ const PppWatchlist = ({ user }) => {
         gap: '4px'
       }}>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-muted)' }}>진입 판단가:</span>
-          <span style={{ color: '#fff', fontWeight: 600 }}>{Math.round(item.g_buy || 0).toLocaleString()}원</span>
+          <span style={{ color: 'var(--text-muted)' }}>G-Sell(대표):</span>
+          <span style={{ color: '#fff', fontWeight: 600 }}>{fmtPrice(item.g_sell)}</span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span style={{ color: 'var(--text-muted)' }}>RSI 최저:</span>
-          <span style={{ color: '#fff', fontWeight: 600 }}>{Math.round(item.result_2 || 0).toLocaleString()}원</span>
+          <span style={{ color: 'var(--text-muted)' }}>지지선(2H):</span>
+          <span style={{ color: '#fff', fontWeight: 600 }}>{fmtPrice(item.result_2)}</span>
         </div>
+
+        <MatchedTfValues item={item} />
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '4px' }}>
           <span style={{ color: 'var(--text-muted)' }}>등록일:</span>
           <span>{item.registered_date}</span>
