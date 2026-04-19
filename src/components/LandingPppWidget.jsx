@@ -169,12 +169,18 @@ const LandingPppWidget = ({ user }) => {
 
   const parseMatchedTfs = (item) => {
     if (Array.isArray(item.matched_tfs)) return item.matched_tfs;
-    try { return JSON.parse(item.matched_tfs || '[]'); } catch { return []; }
+    try { 
+      const parsed = JSON.parse(item.matched_tfs || '[]');
+      return Array.isArray(parsed) ? parsed : [];
+    } catch { return []; }
   };
   
   const parseTfValues = (item) => {
     if (typeof item.tf_values === 'object' && item.tf_values !== null) return item.tf_values;
-    try { return JSON.parse(item.tf_values || '{}'); } catch { return {}; }
+    try { 
+      const parsed = JSON.parse(item.tf_values || '{}');
+      return (parsed && typeof parsed === 'object') ? parsed : {};
+    } catch { return {}; }
   };
 
   const TfBadgeList = ({ item }) => {
