@@ -276,7 +276,7 @@ export const useStockManager = (isAuthenticated) => {
           timestamp: s?.timestamp || 0,
           // [Fix] Include price fields when merging from signalsSummary
           entry1: s?.result_2 || s?.entry_price || s?.entry1 || 0,
-          entry2: s?.result_3 || s?.entry_price_2 || s?.entry2 || 0,
+          entry2: s?.result_2 ? Math.round(s.result_2 * 0.95) : (s?.entry_price_2 || 0), // result_3 -> result_2 95% fallback
           target: s?.result_1 || s?.target_price || s?.target || 0,
           stopLoss: s?.stop_loss || s?.sl || s?.stopLoss || 0
         });
