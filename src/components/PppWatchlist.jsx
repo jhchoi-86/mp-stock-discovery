@@ -23,10 +23,12 @@ const fmtPrice = (val) => {
 };
 
 const parseMatchedTfs = (item) => {
+  if (Array.isArray(item.matched_tfs)) return item.matched_tfs;
   try { return JSON.parse(item.matched_tfs || '[]'); } catch { return []; }
 };
 
 const parseTfValues = (item) => {
+  if (typeof item.tf_values === 'object' && item.tf_values !== null) return item.tf_values;
   try { return JSON.parse(item.tf_values || '{}'); } catch { return {}; }
 };
 
