@@ -1,9 +1,124 @@
 # MP Stock Discovery Release Notes (v9.6.2)
 
-## [v9.6.3] (f4ceee8) - 2026-04-17
+## [v9.8.0] - 2026-04-19 (MASTER: Strategy Report Release)
+- **[NEW] Strategy Report Page**: Top 10 매매 전략 전용 대시보드 구현 (현재가/진입가/목표가/손절가 시각화)
+- **[NEW] Intelligent Rationale Engine**: `StrategyService`를 통한 기술적 지표 근거 자동 생성
+- **[Feature] One-Click Strategy Sharing**: 텔레그램 및 SNS 공유용 전략 복사 기능 추가
+
+---
+
+## [v9.8.9] - 2026-04-19
 ### 🚩 상태: 자동화 배포 완료 (Automated Release)
-### 🛠 주요 변경 사항
-- [FIX] 배포 파이프라인 하드닝 및 권한 자동화 적용
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.8] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.7] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.6] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.5] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.4] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.3] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.2] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+
+---
+
+## [v9.8.1] - 2026-04-19
+### 🚩 상태: 자동화 배포 완료 (Automated Release)
+
+### 🛠 주요 변경 및 조치 사항
+1. [NEW] 배포 자동화 및 리포트 엔진 안정화 최적화 패치
+2. [FIX] 릴리즈 이력 자동 기록 시스템 도입
+
+
+- **[UX] Navigation Integration**: 사이드바 및 메인 대시보드 내 전략 보고서 접근점 연동
+- **[System] MTF Alignment**: 멀티 타임프레임 시그널 정렬 상태 분석 로직 강화
+
+---
+
+## [v9.7.9] - 2026-04-19
+### 🚀 PPP Accuracy Engine Mastery & Data Strategy Optimization (FINAL)
+- **[ENGINE] Pine Script SSOT Realization**: EMA, RMA, RSI, and Stochastic formulas now fully mirror TradingView's mathematical model (Series-based).
+- **[FIX] Zero-Signal Write Protection**: Implemented a forced block on `signals.json` overwrites during 0-result analysis runs to prevent historical data loss.
+- **[STRATEGY] Hybrid Data Priority (v1.3)**: 
+  - **Group A (Intraday)**: KIS API (Primary) ↔ Yahoo Finance (Failover).
+  - **Group B (Daily/Weekly)**: Yahoo Finance (Primary) ↔ KIS API (Failover).
+- **[FIX] Confirmed-Bar Logic**: Migrated all analysis to `len-2` (Confirmed Bar) to eliminate intra-bar false signals (Repainting).
+- **[PERF] Timeframe Pruning**: Removed 3M, 5M, and 4H timeframes to optimize engine throughput and reduce noise.
+- **[STABILITY] KIS Rate Limit Guard**: Implemented 100ms staggered delays in KIS historical fetching to strictly adhere to 20/sec limits.
+- **[UI] Deep Field Binding**: Restored missing `result_2` (Support Line) fields and synchronized real-time `stck_prpr` / `rate` for dashboard consistency.
 
 ---
 

@@ -19,6 +19,7 @@ const SignalsPage = React.lazy(() => import('./pages/SignalsPage.jsx'));
 const WatchlistPage = React.lazy(() => import('./pages/WatchlistPage.jsx'));
 const MaintenancePage = React.lazy(() => import('./pages/MaintenancePage.jsx'));
 const PppWatchlist = React.lazy(() => import('./components/PppWatchlist.jsx'));
+const StrategyReportPage = React.lazy(() => import('./pages/StrategyReportPage.jsx'));
 
 // 프리미엄 스켈레톤 로더
 const PageLoader = () => (
@@ -78,6 +79,7 @@ const App = () => {
             {/* Common Routes available to everyone */}
             <Route path="/live-signals" element={<SignalsPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
             <Route path="/watchlist" element={<WatchlistPage user={user} onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
+            <Route path="/strategy-report" element={<StrategyReportPage onLoginClick={handleLoginClick} isAuthenticated={isAuthenticated} onLogoutClick={authService.logout} />} />
 
             <Route path="/" element={
               !isAuthenticated ? (

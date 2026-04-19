@@ -107,9 +107,21 @@ const systemStatsService = {
     let diskUsage = 0;
     try {
       const diskInfo = await new Promise((resolve) => {
-        exec("df -h / | tail -1 | awk '{print $5}'", (err, stdout) => {
-          if (err) resolve("0%");
-          resolve(stdout.trim());
+        const cmd = os.platform() === 'win32' ? 'wmic logicaldisk where "deviceid=\'C:\'" get size,freespace' : "df -h / | tail -1 | awk '{print $5}'";
+        exec(cmd, (err, stdout) => {
+          if (err || !stdout) resolve("0%");
+          if (os.platform() === 'win32') {
+            const lines = stdout.trim().split(/\s+/);
+            if (lines.length >= 4) {
+              const free = parseInt(lines[2]);
+              const total = parseInt(lines[3]);
+              const usedPct = (((total - free) / total) * 100).toFixed(0);
+              return resolve(`${usedPct}%`);
+            }
+            resolve("0%");
+          } else {
+            resolve(stdout.trim());
+          }
         });
       });
       diskUsage = parseFloat(diskInfo.replace('%', '')) || 0;

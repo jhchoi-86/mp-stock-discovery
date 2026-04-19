@@ -1,6 +1,6 @@
 // Docker 컨테이너 전용 PM2 설정
 const BASE = '.';
-const pyInterpreter = 'python3';
+const pyInterpreter = 'python';
 const uvicornScript = 'uvicorn';
 
 module.exports = {

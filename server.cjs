@@ -38,6 +38,7 @@ verifyIntegrity();
 
 const { calculateSignals, resampleChartData, runBatchAnalysis } = require('./analyzer.cjs');
 const { runPppScan } = require('./ppp_filter.cjs');
+const { runPppGeminiScan } = require('./ppp_gemini_scanner.cjs');
 const { sendAlert: _sendSyncAlert } = require('./lib/alert_manager.cjs');
 const { TIMEFRAMES, ANALYZER_LOCK_TTL } = require('./lib/constants.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
@@ -300,6 +301,7 @@ const leadsRouter = require('./src/routes/leads.cjs');
 const { router: publicReportsRouter, getLatestReportHandler } = require('./src/routes/publicReports.cjs');
 const ssotRouter = require('./src/routes/ssot.cjs');
 const dailyTop5Router = require('./src/routes/dailyTop5.cjs');
+const strategyRouter = require('./src/routes/strategy.cjs');
 
 // Trust proxies if behind AWS ELB/NGINX
 app.set('trust proxy', 1);
@@ -326,6 +328,7 @@ app.use('/api/v1/leads', leadsRouter);
 app.use('/api/reports/daily', publicReportsRouter);
 app.use('/api/ssot', ssotRouter);
 app.use('/api/daily-top5', dailyTop5Router);
+app.use('/api/strategy', strategyRouter);
 
 // [TASK-E4] GET /api/stock-snapshot - DB의 DailyStockSnapshot을 단일 소스로 반환
 app.get('/api/stock-snapshot', authenticateToken, async (req, res) => {
@@ -402,6 +405,34 @@ app.get('/api/top5', authenticateToken, async (req, res) => {
 app.post('/api/ppp/scan', authenticateToken, isAdmin, async (req, res) => {
   try {
     const result = await runPppScan();
+    
+    // [v9.8.3] 자동 전략 보고서 생성 트리거 (DB 기반)
+    setTimeout(async () => {
+      try {
+        const StrategyService = require('./src/services/StrategyService.cjs');
+        const { PrismaClient } = require('@prisma/client');
+        const prisma = new PrismaClient();
+        
+        // DB에서 활성 상위 10개 조회
+        const activeWatchlist = await prisma.pppWatchlist.findMany({
+            where: { is_active: true },
+            orderBy: { score: 'desc' },
+            take: 10
+        });
+
+        if (activeWatchlist.length > 0) {
+            // [v9.8.5] AI 근거 생성을 포함한 비동기 리포트 생성 대기
+            await StrategyService.generateStaticReport(activeWatchlist, path.join(__dirname, 'data'));
+            
+            // 텔레그램 방송 (ADMIN 채널 우선)
+            const telegramBot = require('./telegramBot.cjs');
+            await StrategyService.broadcastTop10(activeWatchlist, telegramBot, process.env.TG_CHANNEL_ADMIN);
+        }
+      } catch (err) {
+        console.error('[Strategy AutoGen Error]', err);
+      }
+    }, 1000); // 1초 뒤 실행 (DB 쓰기 완료 대기)
+
     res.json({ success: true, data: result });
   } catch (e) {
     console.error('[API PPP Scan]', e);
@@ -2639,6 +2670,17 @@ app.post('/api/sync/manual-signal', authenticateToken, isAdmin, async (req, res)
             ]);
 
             broadcastToClients({ type: 'sync_complete', tfCount: TIMEFRAMES.length });
+
+            // ── [TASK-009] PPP+Gemini 백그라운드 자동 실행 ───────────────────────────────
+            // [C-01] 비동기 즉시 반환 — 동기화 응답에 영향 없음
+            // [C-03] runBatchAnalysis() 완료 후 실행 — signals.json 최신 상태 보장
+            runPppGeminiScan().then(r => {
+              if (r?.success) {
+                console.log(`[Manual-Sync] PPP+Gemini 완료 — PPP:${r.pppTotal}건 Top10:${r.top10?.join(',')} Gemini:${r.geminiDone}건`);
+              }
+            }).catch(e => console.error('[Manual-Sync] PPP+Gemini 오류:', e.message));
+            // ── END TASK-009 ──────────────────────────────────────────────────────────────
+
         } finally {
             await redis.del('analyzer_lock');
         }

@@ -190,6 +190,19 @@ const AdminDashboard = () => {
         >
           시스템 관리 ⚙️
         </button>
+        <button 
+          onClick={() => {
+            const navigate = window.location.pathname === '/' ? null : null; // React context check
+            window.location.href = '/strategy-report';
+          }}
+          style={{
+            padding: '0.75rem 1.5rem', background: 'none',
+            border: 'none', borderBottom: '2px solid transparent',
+            color: '#fbbf24', cursor: 'pointer', fontWeight: 'bold'
+          }}
+        >
+          전략 보고서 📊
+        </button>
       </div>
 
       {activeTab === 'signals' ? (

@@ -93,6 +93,7 @@ try {
     const assets = [
         "dist", 
         "src", 
+        "ai-service",
         "platform", 
         "prisma", 
         "scripts", 
@@ -101,6 +102,7 @@ try {
         "server.cjs", 
         "analyzer.cjs", 
         "ppp_filter.cjs",
+        "ppp_gemini_scanner.cjs",
         "ppp_scheduler.cjs",
         "sync_scheduler.cjs",
         "telegramBot.cjs",
@@ -109,8 +111,8 @@ try {
         "package-lock.json",
         "RELEASE.md"
     ];
-    // Use tar.exe for Windows compatibility
-    execSync(`tar -czf mp-deploy.tar.gz ${assets.join(' ')}`, { stdio: 'inherit' });
+    // Use tar.exe for Windows compatibility with excludes for Python env
+    execSync(`tar -czf mp-deploy.tar.gz --exclude="*/venv" --exclude="*/__pycache__" ${assets.join(' ')}`, { stdio: 'inherit' });
     log("Deployment tarball created (mp-deploy.tar.gz).");
 
     log("Step 1.5: Halting remote services and aggressive cleanup...");
@@ -133,6 +135,7 @@ try {
         `npx prisma generate`,
         `npx prisma db push --accept-data-loss`,
         `pm2 reload ${CONFIG.PM2_NAME} --update-env || pm2 start server.cjs --name ${CONFIG.PM2_NAME}`,
+        `pm2 reload mp-stock-ai-api --update-env || pm2 start "python3 -m uvicorn main:app --host 0.0.0.0 --port 8000" --name mp-stock-ai-api --cwd ${CONFIG.REMOTE_DIR}ai-service`,
         `sudo rm -rf ${CONFIG.NGINX_ROOT}`,
         `sudo cp -r dist ${CONFIG.NGINX_ROOT}`,
         `sudo chown -R www-data:www-data ${CONFIG.NGINX_ROOT}`

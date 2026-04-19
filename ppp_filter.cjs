@@ -26,11 +26,9 @@ function getKSTDateString() {
 // ──────────────────────────────────────────────────────────────────
 // [v9.7.9] TASK-03 확정 멀티 타임프레임 및 데이터 소스 정의
 // ──────────────────────────────────────────────────────────────────
-const ALL_TIMEFRAMES = ['3M', '5M', '30M', '1H', '2H', '4H', '1D', '2D', '1W'];
+const ALL_TIMEFRAMES = ['30M', '1H', '2H', '1D', '2D', '1W'];
 
 const KIS_MINUTE_TF = {
-    '3M':  3,
-    '5M':  5,
     '30M': 30
 };
 
@@ -47,20 +45,25 @@ const YAHOO_TF = {
 /**
  * EMA 시계열 반환 (Pine Script ta.ema와 동일)
  */
-function calcEMASeries(prices, period) {
-    const k = 2 / (period + 1);
-    const result = new Array(prices.length).fill(null);
-    if (prices.length < period) return result;
+/**
+ * EMA 시계열 반환 (Pine Script ta.ema 완전 일치)
+ * 초기화: 첫 번째 유효값으로 시작 (SMA 아님)
+ */
+function calcEMASeries(src, length) {
+    const alpha = 2 / (length + 1);
+    const result = new Array(src.length).fill(null);
+    let ema = null;
 
-    let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
-    result[period - 1] = ema;
-
-    for (let i = period; i < prices.length; i++) {
-        if (prices[i] === null) {
-            result[i] = result[i - 1];
+    for (let i = 0; i < src.length; i++) {
+        if (src[i] === null || src[i] === undefined || isNaN(src[i])) {
+            result[i] = ema;
             continue;
         }
-        ema = prices[i] * k + (result[i - 1] !== null ? result[i - 1] : ema) * (1 - k);
+        if (ema === null) {
+            ema = src[i];
+        } else {
+            ema = alpha * src[i] + (1 - alpha) * ema;
+        }
         result[i] = ema;
     }
     return result;
@@ -89,38 +92,81 @@ function calcSTDEV(values, period) {
 /**
  * Wilder's RSI 시계열 (ta.rsi와 동일)
  */
-function calcRSISeries(prices, period) {
-    const rsi = new Array(prices.length).fill(null);
-    if (prices.length <= period) return rsi;
+/**
+ * Pine Script ta.rma() — Wilder's Smoothing (RSI 내부 사용)
+ */
+function calcRMASeries(src, length) {
+    const alpha = 1 / length;
+    const result = new Array(src.length).fill(null);
+    let rma = null;
+    let sum = 0;
+    let count = 0;
 
-    let gains = 0, losses = 0;
-    for (let i = 1; i <= period; i++) {
-        const diff = prices[i] - prices[i - 1];
-        if (diff > 0) gains += diff; else losses -= diff;
+    for (let i = 0; i < src.length; i++) {
+        if (src[i] === null || src[i] === undefined || isNaN(src[i])) {
+            result[i] = rma;
+            continue;
+        }
+        if (rma === null) {
+            sum += src[i];
+            count++;
+            if (count >= length) {
+                rma = sum / length;
+                result[i] = rma;
+            }
+        } else {
+            rma = alpha * src[i] + (1 - alpha) * rma;
+            result[i] = rma;
+        }
+    }
+    return result;
+}
+
+/**
+ * Pine Script ta.rsi() 완전 구현 (Wilder's RMA 방식)
+ */
+function calcRSISeries(close, length) {
+    const n = close.length;
+    const gains = new Array(n).fill(null);
+    const losses = new Array(n).fill(null);
+
+    for (let i = 1; i < n; i++) {
+        if (close[i] === null || close[i-1] === null) continue;
+        const diff = close[i] - close[i - 1];
+        gains[i] = diff > 0 ? diff : 0;
+        losses[i] = diff < 0 ? -diff : 0;
     }
 
-    let avgGain = gains / period;
-    let avgLoss = losses / period;
-    rsi[period] = 100 - 100 / (1 + (avgLoss === 0 ? Infinity : avgGain / avgLoss));
+    const avgGains = calcRMASeries(gains, length);
+    const avgLosses = calcRMASeries(losses, length);
+    const result = new Array(n).fill(null);
 
-    for (let i = period + 1; i < prices.length; i++) {
-        const diff = prices[i] - prices[i - 1];
-        avgGain = (avgGain * (period - 1) + Math.max(diff, 0)) / period;
-        avgLoss = (avgLoss * (period - 1) + Math.max(-diff, 0)) / period;
-        rsi[i] = 100 - 100 / (1 + (avgLoss === 0 ? Infinity : avgGain / avgLoss));
+    for (let i = 0; i < n; i++) {
+        if (avgGains[i] === null || avgLosses[i] === null) continue;
+        if (avgLosses[i] === 0) {
+            result[i] = 100;
+        } else {
+            const rs = avgGains[i] / avgLosses[i];
+            result[i] = 100 - (100 / (1 + rs));
+        }
     }
-    return rsi;
+    return result;
 }
 
 /**
  * ta.valuewhen(condition, value, N)
  */
+/**
+ * ta.valuewhen(condition, value, N)
+ * [v1.2] 배열 길이 검증 및 역방향 탐색 최적화
+ */
 function valueWhen(condArr, valArr, N = 0) {
+    if (condArr.length !== valArr.length) throw new Error('[valueWhen] 배열 길이 불일치');
     const result = new Array(condArr.length).fill(null);
     const occurrences = [];
 
     for (let i = 0; i < condArr.length; i++) {
-        if (condArr[i]) {
+        if (condArr[i] === true) {
             occurrences.push(valArr[i]);
         }
         if (occurrences.length > 0) {
@@ -130,6 +176,11 @@ function valueWhen(condArr, valArr, N = 0) {
     }
     return result;
 }
+
+/**
+ * [v1.2] 시리즈 기반 valueWhen (배열 전체 반환이 아닌 특정 시점 계산용 최적화 가능)
+ * 기본적으로 valueWhen()은 시계열 배열을 반환함.
+ */
 
 function highestSeries(arr, period, offset = 0) {
     return arr.map((_, i) => {
@@ -172,113 +223,88 @@ function calcBBMacdMTF(closeMTF, params = {}) {
         return emaSeries_rapida[i] - emaSeries_lenta[i];
     });
 
-    const validBbmacd = bbmacdSeries.filter(v => v !== null);
-    if (validBbmacd.length < signalPeriod) return { bbmacd: null, bgUp: false };
-
-    const bbmacd = validBbmacd[validBbmacd.length - 1];
-    const avg = calcEMA(validBbmacd, signalPeriod);
-    const sdev = calcSTDEV(validBbmacd, signalPeriod);
-    const bandaSupe = avg + stdv * sdev;
-    const bgUp = bbmacd > bandaSupe && bbmacd > 0;
-
-    return { bbmacd, avg, sdev, bandaSupe, bgUp };
-}
-
-/**
- * [v9.7.9] KIS API 직접 수집 (분봉 차트)
- */
-async function kisGetMinuteCandles(code, minute, count = 200) {
-    try {
-        const token = await getKisAccessToken();
-        const url = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice';
-        
-        const res = await axios.get(url, {
-            headers: { 
-                'content-type': 'application/json',
-                'authorization': 'Bearer ' + token, 
-                'appkey': process.env.KIS_APP_KEY, 
-                'appsecret': process.env.KIS_APP_SECRET, 
-                'tr_id': 'FHKST03010200', 
-                'custtype': 'P' 
-            },
-            params: {
-                "FID_COND_MRKT_DIV_CODE": "J",
-                "FID_INPUT_ISCD": code,
-                "FID_ETC_CLS_CODE": "",
-                "FID_PW_DATA_INCU_YN": "Y",
-                "FID_HOUR_CLS_CODE": String(minute)
-            }
-        });
-
-        const output2 = res.data.output2;
-        if (!output2 || output2.length < 20) return null;
-
-        const reversed = [...output2].reverse();
-        return {
-            open: reversed.map(d => parseInt(d.stck_oprc)),
-            high: reversed.map(d => parseInt(d.stck_hgpr)),
-            low: reversed.map(d => parseInt(d.stck_lwpr)),
-            close: reversed.map(d => parseInt(d.stck_prpr)),
-            volume: reversed.map(d => parseInt(d.cntg_vol)),
-            time: reversed.map(d => d.stck_bsop_date + d.stck_cntg_hour)
-        };
-    } catch (e) {
-        console.error(`[KIS Minute] ${code} ${minute}M 실패:`, e.message);
-        return null;
+    const avgSeries = calcEMASeries(bbmacdSeries, signalPeriod);
+    const sdevSeries = new Array(closeMTF.length).fill(null);
+    for (let i = signalPeriod - 1; i < bbmacdSeries.length; i++) {
+        const slice = bbmacdSeries.slice(i - signalPeriod + 1, i + 1).filter(v => v !== null);
+        if (slice.length === signalPeriod) {
+            const mean = slice.reduce((a, b) => a + b, 0) / signalPeriod;
+            const variance = slice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / (signalPeriod); // Pine stddev uses N
+            sdevSeries[i] = Math.sqrt(variance);
+        }
     }
+
+    const bandaSupeSeries = avgSeries.map((a, i) => (a !== null && sdevSeries[i] !== null) ? a + stdv * sdevSeries[i] : null);
+    
+    // [C1] bg_up 반드시 배열로 계산 (series bool)
+    const bgUpSeries = bbmacdSeries.map((v, i) => (v !== null && bandaSupeSeries[i] !== null && v > bandaSupeSeries[i] && v > 0));
+
+    return { bbmacdSeries, avgSeries, sdevSeries, bandaSupeSeries, bgUpSeries };
 }
 
+// [v1.3] kisGetMinuteCandles 삭제 (analyzer.cjs의 fetchHybridHistory가 통합 처리)
+
 /**
- * [v9.7.9] 데이터 수집 전략 3원화 (KIS / Yahoo / 리샘플링)
+ * [v1.3] 데이터 수집 전략 고도화 (Primary/Secondary 전환형)
  */
 async function fetchCandlesAllTF(stock) {
     const code = stock.code;
     const candlesMTF = {};
     let kisToken = null;
-    try { 
-        kisToken = await getKisAccessToken(); 
-    } catch (e) {
-        console.warn(`[PPP] ${code} KIS 토큰 획득 실패, KIS TFs 및 실시간 보정 제외.`);
-    }
+    try { kisToken = await getKisAccessToken(); } catch (e) {}
 
     const MIN_CANDLES = {
-        '3M':  100,
-        '5M':  100,
-        '30M': 100,
-        '1H':  100,
-        '2H':   50,
-        '4H':   25,
-        '1D':  100,
-        '2D':   50,
-        '1W':   20
+        '30M': 300,
+        '1H':  300,
+        '2H':  150,
+        '1D':  500,
+        '2D':  250,
+        '1W':   60
     };
 
-    for (const tf of ALL_TIMEFRAMES) {
+    // [v9.8.2] 최적화: 현재가 1회 조회 후 캐싱 (중복 조회 방지)
+    let kisCache = null;
+    if (kisToken) {
         try {
-            let data = null;
-            if (KIS_MINUTE_TF[tf]) {
-                if (!kisToken) continue;
-                data = await kisGetMinuteCandles(code, KIS_MINUTE_TF[tf]);
-            } else if (YAHOO_TF[tf]) {
-                const days = { '1H': 60, '1D': 365, '1W': 1000 }[tf];
-                data = await fetchHybridHistory(stock, days, YAHOO_TF[tf], kisToken);
-            } else if (tf === '2H' && candlesMTF['1H']) {
-                data = resampleChartData(candlesMTF['1H'], 2, '2H');
-            } else if (tf === '4H' && candlesMTF['1H']) {
-                data = resampleChartData(candlesMTF['1H'], 4, '4H');
-            } else if (tf === '2D' && candlesMTF['1D']) {
-                data = resampleChartData(candlesMTF['1D'], 2, '2D');
-            }
-
-            const min = MIN_CANDLES[tf] || 50;
-            if (data && data.close && data.close.length >= min) {
-                candlesMTF[tf] = data;
-                // console.log(`  [Fetch] ${code} ${tf} 성공 (${data.close.length}봉)`);
+            const res = await axios.get('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price', {
+                headers: { 'authorization': 'Bearer ' + kisToken, 'appkey': process.env.KIS_APP_KEY, 'appsecret': process.env.KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
+                params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": code },
+                timeout: 3000
+            });
+            if (res.data?.output) {
+                kisCache = { [code]: { price: res.data.output } };
             }
         } catch (e) {
-            console.warn(`[PPP Fetch Fail] ${code} ${tf}:`, e.message);
+            console.warn(`[PPP Price Cache] ${code} 조회 실패:`, e.message);
         }
     }
+
+    // [v9.8.2] 최적화: 타임프레임 병렬 수집 (Promise.all)
+    const primaryTFs = ['30M', '1H', '1D', '1W'];
+    const fetchTasks = primaryTFs.map(async (tf) => {
+        try {
+            const days = { '30M': 10, '1H': 60, '1D': 730, '1W': 2000 }[tf];
+            const interval = { '30M': '30m', '1H': '60m', '1D': '1d', '1W': '1wk' }[tf];
+            
+            const data = await fetchHybridHistory(stock, days, interval, kisToken, kisCache);
+
+            if (data && data.close && data.close.length >= (MIN_CANDLES[tf] || 50)) {
+                return { tf, data };
+            }
+        } catch (e) {
+            console.warn(`[PPP Fetch] ${code} ${tf} 실패:`, e.message);
+        }
+        return null;
+    });
+
+    const results = await Promise.all(fetchTasks);
+    results.forEach(res => {
+        if (res) candlesMTF[res.tf] = res.data;
+    });
+
+    // [v1.3] 리샘플링 루프: 2H(from 1H), 2D(from 1D)
+    if (candlesMTF['1H']) candlesMTF['2H'] = resampleChartData(candlesMTF['1H'], 2, '2H');
+    if (candlesMTF['1D']) candlesMTF['2D'] = resampleChartData(candlesMTF['1D'], 2, '2D');
 
     if (Object.keys(candlesMTF).length === 0) return null;
     return candlesMTF;
@@ -288,99 +314,87 @@ async function fetchCandlesAllTF(stock) {
  * PPP 필터 주 로직
  * [RT-8 반영] look-ahead 방지를 위한 offset=1 적용
  */
-function calcPPP(candles, bgUp, params = {}) {
-    const {
-        rsiPeriod = 3,
-        sto1 = 25, sto2 = 10, sto3 = 10,
-        basisUp = 20, basisDown = 80,
-        periodLength = 12,
-        gSellBreakoutThreshold = 0.3 // [TASK-08] 30% breakout guard
-    } = params;
-
+/**
+ * [v1.2] PPP 필터 주 로직 (확정봉 분석 시스템)
+ */
+function calcPPP(candles, indicators = {}) {
     const { close, high, low, open } = candles;
+    const { bgUpSeries = [] } = indicators;
+    
+    // [v1.2] 확정봉 기준 고정: len-2 (장중 실시간 대응 시 len-1도 가능하지만, 보수적으로 len-2 채택)
     const len = close.length;
-    if (len < sto1 + sto2 + sto3) return { ppp1: false, ppp2: false };
+    const last = len - 2; 
+    
+    // [v1.2] Warmup 검증 (최소 50봉 필요)
+    if (last < 50) return null;
 
-    // 1. RSI
+    const rsiPeriod = 3;
+    const sto1 = 25; const sto2 = 10; const sto3 = 10;
+    const basisUp = 20; const basisDown = 80;
+    const periodLength = 12;
+
+    // 1. RSI (Series)
     const rsiSeries = calcRSISeries(close, rsiPeriod);
 
-    // 2. Stochastic
-    const kSeries = close.map((_, i) => {
-        if (i < sto1 - 1) return null;
-        const slice_h = high.slice(i - sto1 + 1, i + 1);
-        const slice_l = low.slice(i - sto1 + 1, i + 1);
-        const hh = Math.max(...slice_h);
-        const ll = Math.min(...slice_l);
-        return hh === ll ? 50 : ((close[i] - ll) / (hh - ll)) * 100;
-    });
+    // 2. Stochastic (Series) - [C4] offset=1 적용된 신규 버전 사용
+    const kSeries = new Array(len).fill(null);
+    for (let i = sto1; i < len; i++) {
+        // [C4] i-sto1부터 i-1까지 탐색 (현재 봉 i 제외)
+        const hSlice = high.slice(i - sto1, i);
+        const lSlice = low.slice(i - sto1, i);
+        const hh = Math.max(...hSlice);
+        const ll = Math.min(...lSlice);
+        if (hh === ll) { kSeries[i] = null; } 
+        else { kSeries[i] = 100 * (close[i] - ll) / (hh - ll); }
+    }
+    const fSeries = calcEMASeries(kSeries, sto3);
 
-    const dSeries = kSeries.map((_, i) => {
-        if (i < sto2 - 1) return null;
-        const slice = kSeries.slice(i - sto2 + 1, i + 1).filter(v => v !== null);
-        return slice.length === sto2 ? slice.reduce((a, b) => a + b, 0) / sto2 : null;
-    });
-
-    const fSeries = calcEMASeries(kSeries.filter(v => v !== null), sto3);
-
-    // 3. Peaks (바 확정 기준 대응: 마지막 봉 제외) - M2, P2
-    const M2 = rsiSeries.map((v, i) => {
-        if (i < 2 || i === len - 1) return false;
-        return rsiSeries[i-2] < rsiSeries[i-1] && rsiSeries[i-1] > v;
-    });
+    // 3. Peaks (P2) - Series
     const P2 = rsiSeries.map((v, i) => {
-        if (i < 2 || i === len - 1) return false;
+        if (i < 2) return false;
         return rsiSeries[i-2] > rsiSeries[i-1] && rsiSeries[i-1] < v;
     });
 
-    // 4. Highest/Lowest (offset=1)
-    const highestHigh3 = highestSeries(high, rsiPeriod, 1);
-    const lowestLow3 = lowestSeries(low, rsiPeriod, 1);
-
-    // 5. G-Buy & G-Sell (TF)
-    const pLowSeries = lowestSeries(low, periodLength, 1);
+    // 4. Highest/Lowest (offset=1) - Series
+    const lowestLow3 = lowestSeries(low, 3, 1);
     const pHighSeries = highestSeries(high, periodLength, 1);
 
-    const condBuy = kSeries.map((k, i) => {
-        if (k === null || fSeries[i] === null || i === 0) return false;
-        return (kSeries[i - 1] <= basisUp && k > basisUp) && 
-               fSeries[i] <= k && open[i] < close[i];
-    });
-
+    // 5. condSell, gSell (Series)
     const condSell = kSeries.map((k, i) => {
         if (k === null || fSeries[i] === null || i === 0) return false;
         return (kSeries[i - 1] >= basisDown && k < basisDown) &&
                fSeries[i] >= k && open[i] > close[i];
     });
 
-    const gBuySeries = valueWhen(condBuy, pLowSeries);
     const gSellSeries = valueWhen(condSell, pHighSeries);
 
+    // 6. Support Line (result_2) - Series
     const B2up = valueWhen(P2, lowestLow3).map((v, i, arr) => i > 0 && arr[i-1] !== null && v !== null && arr[i-1] < v);
-    const Q2 = valueWhen(B2up, lowestSeries(low, rsiPeriod, 1));
-    const QQ2 = valueWhen(B2up, lowestSeries(low, rsiPeriod, 1), 1);
+    const Q2 = valueWhen(B2up, lowestSeries(low, 3, 1));
+    const QQ2 = valueWhen(B2up, lowestSeries(low, 3, 1), 1);
 
     const result2series = Q2.map((q, i) => {
         if (q === null || QQ2[i] === null) return null;
         return q > QQ2[i] ? q : QQ2[i];
     });
 
-    // 6. Final Evaluation
-    const last = len - 1;
-    const currentGBuy = gBuySeries[last];
-    const currentGSell = gSellSeries[last];
-    const currentResult2 = result2series[last];
-    const currentMid = (high[last] + low[last]) / 2;
+    // 7. Scalar Extraction (at 'last' index)
+    const mid = (high[last] + low[last]) / 2;
+    const gSell = gSellSeries[last];
+    const bgUp = bgUpSeries[last];
+    const result2 = result2series[last];
 
-    // [v9.7.8-patch] 데니얼 실전 수식 반영: (high+low)/2 > gSell AND bg_up AND result2 >= gSell
-    const ppp1 = currentGSell !== null && currentMid > currentGSell && bgUp;
-    const ppp2 = ppp1 && currentResult2 !== null && currentResult2 >= currentGSell;
+    if (gSell === null || bgUp === undefined) return null;
+
+    const ppp1 = mid > gSell && bgUp;
+    const ppp2 = ppp1 && result2 !== null && result2 >= gSell;
 
     return {
         ppp1, ppp2, 
-        gBuy: currentGBuy, 
-        gSell: currentGSell,
-        result2: currentResult2,
-        bgUp
+        gSell,
+        result2,
+        bgUp,
+        lastPrice: close[last]
     };
 }
 
@@ -399,16 +413,16 @@ async function calcPPPAllTF(stock, candlesMTF) {
     // ──────────────────────────────────────────────────────────────────
     // [v9.7.8-patch] 대표값 선정 전략: 1W -> 2D -> 1D 순으로 데이터가 있으면 우선 채택
     // ──────────────────────────────────────────────────────────────────
-    const REPRESENTATIVE_TFS = ['1W', '2D', '1D', '4H', '2H', '1H', '30M', '5M', '3M'];
+    const REPRESENTATIVE_TFS = ['1W', '2D', '1D', '2H', '1H', '30M'];
 
     for (const tf of ALL_TIMEFRAMES) {
         try {
             if (!candlesMTF[tf]) continue;
 
-            const mtf = calcBBMacdMTF(candlesMTF[tf].close);
-            const res = calcPPP(candlesMTF[tf], mtf.bgUp);
+            const indicators = calcBBMacdMTF(candlesMTF[tf].close);
+            const res = calcPPP(candlesMTF[tf], indicators);
 
-            if (res.ppp1 || res.ppp2) {
+            if (res && (res.ppp1 || res.ppp2)) {
                 matchedTfs.push(tf);
                 tfValues[tf] = {
                     gSell: res.gSell ? Math.round(res.gSell) : null,
@@ -417,23 +431,20 @@ async function calcPPPAllTF(stock, candlesMTF) {
                 if (res.ppp1) finalPpp1 = true;
                 if (res.ppp2) finalPpp2 = true;
             }
-
-            // [v9.7.8-patch] 신호 발생 여부와 무관하게 유효한 데이터가 있다면 대표값 후보로 누적
-            // (이미 더 큰 타임프레임에서 잡혔다면 스킵)
         } catch (e) {
             console.warn(`[PPP] ${stock.code} ${tf} 분석 에러:`, e.message);
             continue;
         }
     }
 
-    // [v9.8.1] 최적의 대표값(G-Sell, 지지선) 결정
+    // [v1.2] 최적의 대표값(G-Sell, 지지선) 결정 - 모든 TF 재분석 (리샘플링 무관하게 recalculate)
     for (const tf of REPRESENTATIVE_TFS) {
         if (!candlesMTF[tf]) continue;
         try {
-            const mtf = calcBBMacdMTF(candlesMTF[tf].close);
-            const res = calcPPP(candlesMTF[tf], mtf.bgUp);
-            if (!mainGSell && res.gSell) mainGSell = res.gSell;
-            if (!mainResult2 && res.result2) mainResult2 = res.result2;
+            const indicators = calcBBMacdMTF(candlesMTF[tf].close);
+            const res = calcPPP(candlesMTF[tf], indicators);
+            if (res && !mainGSell && res.gSell) mainGSell = res.gSell;
+            if (res && !mainResult2 && res.result2) mainResult2 = res.result2;
             if (mainGSell && mainResult2) break;
         } catch(e) {}
     }
@@ -551,9 +562,9 @@ async function runPppScan() {
         });
         const marketMap = new Map(instruments.map(i => [i.symbol, i.market]));
 
-        // [3] 배치 처리 [RT-1]
-        const BATCH_SIZE = 3;
-        const BASE_DELAY = 200;
+        // [3] 배치 처리 최적화 (v9.8.2)
+        const BATCH_SIZE = 4;
+        const BASE_DELAY = 150;
         const results = [];
 
         for (let i = 0; i < allStocks.length; i += BATCH_SIZE) {
@@ -587,48 +598,63 @@ async function runPppScan() {
             if (global.gc) global.gc();
         }
 
-        // [4, 5, 6] 필터 및 저장
+        // [4, 5, 6] 필터 및 배치 저장 (v9.8.6)
         const pppPassed = results.filter(r => r.ppp1 || r.ppp2);
-        const newStocks = pppPassed.filter(r => !activeCodes.has(r.code));
-
-        let added = 0;
         const todayStr = getKSTDateString();
+        const expiresAt = new Date();
+        expiresAt.setDate(expiresAt.getDate() + 30);
 
-        for (const stock of newStocks) {
-            const expiresAt = new Date();
-            expiresAt.setDate(expiresAt.getDate() + 30);
+        console.log(`[PPP Scan] 분석 완료 종목: ${pppPassed.length}건. DB Upsert 시작...`);
+
+        // 트런잭션을 통한 배치 업서트 (성능 최적화)
+        const upsertTasks = pppPassed.map(stock => {
             const initSignal = stock.ppp2 ? 'PPP2' : 'PPP1';
-
-            try {
-                await prisma.pppWatchlist.create({
-                    data: {
-                        code:            stock.code,
-                        name:            stock.name,
-                        score:           stock.score,
-                        ppp1:            stock.ppp1,
-                        ppp2:            stock.ppp2,
-                        g_sell:          stock.g_sell,
-                        matched_tfs:     stock.matched_tfs,
-                        tf_values:       stock.tf_values,
-                        current_price:   stock.current_price,
-                        price_updated_at: new Date(),
-                        registered_date: todayStr,
-                        expires_at:      expiresAt,
-                        last_signal:     initSignal,
-                        last_signal_changed: new Date()
+            return prisma.pppWatchlist.upsert({
+                where: { 
+                    code_registered_date: {
+                        code: stock.code,
+                        registered_date: todayStr
                     }
-                });
-                added++;
-            } catch (e) {
-                // P2002: Unique constraint failed
-                if (e.code !== 'P2002') {
-                    console.error(`[PPP Scan] DB 저장 오류(${stock.code}):`, e.message);
+                },
+                update: {
+                    score:           stock.score,
+                    ppp1:            stock.ppp1,
+                    ppp2:            stock.ppp2,
+                    g_sell:          stock.g_sell,
+                    result_2:        stock.result_2,
+                    matched_tfs:     JSON.stringify(stock.matched_tfs || []),
+                    tf_values:       JSON.stringify(stock.tf_values || {}),
+                    current_price:   stock.current_price,
+                    price_updated_at: new Date(),
+                    is_active:       true, // 재스캔 시 활성화 보장
+                    last_signal:     initSignal,
+                    updated_at:      new Date()
+                },
+                create: {
+                    code:            stock.code,
+                    name:            stock.name,
+                    score:           stock.score,
+                    ppp1:            stock.ppp1,
+                    ppp2:            stock.ppp2,
+                    g_sell:          stock.g_sell,
+                    result_2:        stock.result_2,
+                    matched_tfs:     JSON.stringify(stock.matched_tfs || []),
+                    tf_values:       JSON.stringify(stock.tf_values || {}),
+                    current_price:   stock.current_price,
+                    price_updated_at: new Date(),
+                    registered_date: todayStr,
+                    expires_at:      expiresAt,
+                    is_active:       true,
+                    last_signal:     initSignal,
+                    last_signal_changed: new Date()
                 }
-            }
-        }
+            });
+        });
 
-        console.log(`[PPP Scan] 완료 (추가: ${added}, 스킵: ${pppPassed.length - added})`);
-        return { added, skipped: pppPassed.length - added, total: pppPassed.length };
+        const results_db = await prisma.$transaction(upsertTasks);
+        console.log(`[PPP Scan] DB Upsert 완료: ${results_db.length}건`);
+
+        return { total: pppPassed.length, updated: results_db.length };
     } catch (e) {
         console.error('[PPP Scan Error]', e);
         throw e;
@@ -741,5 +767,11 @@ module.exports = {
     checkSignalChanges, 
     calcPPPForStock,
     calcPPPAllTF,
-    updateCurrentPrices
+    updateCurrentPrices,
+    // [Testing] Exported for verification
+    calcEMASeries,
+    calcRSISeries,
+    calcRMASeries,
+    valueWhen,
+    calcPPP
 };

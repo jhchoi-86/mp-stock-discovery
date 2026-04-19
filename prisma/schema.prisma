@@ -1,6 +1,6 @@
 generator client {
   provider      = "prisma-client-js"
-  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x"]
+  binaryTargets = ["native", "debian-openssl-3.0.x", "debian-openssl-1.1.x", "linux-musl-openssl-3.0.x"]
 }
 
 datasource db {
@@ -424,6 +424,14 @@ model PppWatchlist {
   tf_values        String?   @default("{}")
   current_price    Float?
   price_updated_at DateTime?
+
+  // ── [TASK-009] Gemini 분석 결과 컬럼 ─────────────────────────────
+  gemini_entry_1    Int?       // 1차 진입가 (KRX tick 단위, null = 미분석)
+  gemini_entry_2    Int?       // 2차 진입가
+  gemini_stop_loss  Int?       // 손절가
+  gemini_target     Int?       // 목표가
+  gemini_rationale  String?    @db.Text   // 분석 근거 (100자, 투자 권유 없음)
+  gemini_scanned_at DateTime?  // Gemini 분석 시각
 
   @@unique([code, registered_date])
   @@index([is_active, expires_at])

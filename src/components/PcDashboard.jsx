@@ -26,6 +26,7 @@ import {
   ExternalLink,
   HelpCircle
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { isValidPrice } from '../utils/priceUtils';
 
 // KST 기준 장중 상태 판별
@@ -40,6 +41,7 @@ function getMarketStatus() {
 }
 
 const PcDashboard = ({ manager, user, clearAuth }) => {
+  const navigate = useNavigate();
   const { realtimePrices } = useSSE();
   const isManagementUser = user && user.role === 'ADMIN';
   const [showAdminPanel, setShowAdminPanel] = useState(false);
@@ -118,6 +120,12 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                     PPP 워치리스트
                   </button>
                 )}
+                <button 
+                  onClick={() => navigate('/strategy-report')}
+                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
+                >
+                  전략 보고서
+                </button>
               </nav>
         </div>
         <div className="stats-bar">
@@ -209,6 +217,14 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               <Archive size={18} /> VIP 자료실
             </button>
           )}
+          <button 
+            onClick={() => navigate('/strategy-report')} 
+            className="action-btn"
+            style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: 500, transition: 'all 0.2s' }}
+            title="전력 보고서"
+          >
+            📊 전략 보고서
+          </button>
           <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
           <button 
             onClick={clearAuth} 

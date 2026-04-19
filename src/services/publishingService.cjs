@@ -227,8 +227,44 @@ class PublishingService {
                 };
                 await this.writeJsonAtomic(this.LATEST_FILE, latestData);
 
-                // 3.3 watchlist_strategy.json (Optional but good for fallback)
-                await this.writeJsonAtomic(this.WATCHLIST_FILE, landingData);
+                // 3.3 watchlist_strategy.json — StrategyReportPage.jsx 호환 형식으로 저장 (v9.8.7)
+                const watchlistData = {
+                    updatedAt: kstNow.toISOString(),
+                    version: '9.8.7',
+                    source: 'publish',
+                    stocks: processedStocks.map(s => ({
+                        // 기본 정보
+                        id: `ppp-${s.code}`,
+                        code: s.code,
+                        name: s.name,
+                        score: s.score || 0,
+                        category: s.category || '추세 지속형',
+                        market: 'KR_STOCK',
+                        timeframe: 'MTF',
+                        // ✅ 신규 필드명 (StrategyReportPage.jsx 요구사항)
+                        current_price: s.currentPrice || s.current_price || 0,
+                        entry_1: s.entryPrice1 || s.entry1 || 0,
+                        entry_2: s.entryPrice2 || s.entry2 || 0,
+                        target: s.targetPrice1 || s.target || 0,
+                        stop_loss: s.stopLoss || s.stop_loss || 0,
+                        // 지표
+                        rationale: s.aiComment || '기술적 반등 및 수급 개선 시그널 발생',
+                        is_ai_generated: !!(s.aiComment),
+                        chartUrl: `https://www.tradingview.com/chart/?symbol=KRX:${s.code}`,
+                        metrics: { adx: s.adx || 20, bbw: 100, ma: 'N/A', volTrigger: false },
+                        // ✅ 레거시 필드명 (하위 호환)
+                        currentPrice: s.currentPrice || 0,
+                        entryPrice1: s.entryPrice1 || 0,
+                        entryPrice2: s.entryPrice2 || 0,
+                        targetPrice1: s.targetPrice1 || 0,
+                        stopLoss: s.stopLoss || 0,
+                        styleTag: s.styleTag || '',
+                        aiComment: s.aiComment || '',
+                        tradeAmount: s.tradeAmount || 0,
+                        yield: s.yield || 0
+                    }))
+                };
+                await this.writeJsonAtomic(this.WATCHLIST_FILE, watchlistData);
 
                 // 3.4 [v9.1.8] Flush Redis Cache for Landing Page (SSOT Real-time Policy)
                 try {

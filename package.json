@@ -1,7 +1,7 @@
 {
-  "name": "-",
+  "name": "mp-stock-discovery",
   "private": true,
-  "version": "9.7.8",
+  "version": "9.8.9",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -34,6 +34,7 @@
     "@aws-sdk/client-s3": "^3.1014.0",
     "@aws-sdk/lib-storage": "^3.1014.0",
     "@aws-sdk/s3-request-presigner": "^3.1014.0",
+    "@google/generative-ai": "^0.24.1",
     "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "body-parser": "^2.2.2",

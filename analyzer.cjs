@@ -89,129 +89,193 @@ const resampleChartData = (raw, factor, tf) => {
 /**
  * Robust Hybrid History Fetcher with Overtime Price Support
  */
+/**
+ * [v1.3] TF별 메인/보조 데이터 소스 전환 및 하이브리드 수집
+ */
 async function fetchHybridHistory(stock, days, interval, kisTokenGlobal, kisCache = null) {
+    // interval 변환 (yf 규격 -> 시스템 규격)
+    const intervalMap = { '30m': '30m', '60m': '60m', '120m': '120m', '1d': '1d', '1wk': '1wk' };
+    const normInterval = intervalMap[interval] || interval;
+
+    const groupA = ['30m', '60m', '120m']; // 인트라데이 (KIS 메인)
+    const isGroupA = groupA.includes(normInterval);
+
+    let chartData = null;
+    let errorLog = [];
+
+    // [v1.3] 1차 시도 (메인 소스 선택)
+    try {
+        if (isGroupA && kisTokenGlobal) {
+            chartData = await fetchKISHistory(stock, normInterval, kisTokenGlobal);
+        } else {
+            chartData = await fetchYahooHistory(stock, days, normInterval);
+        }
+    } catch (e) {
+        errorLog.push(`Primary Source Failed (${isGroupA ? 'KIS' : 'Yahoo'}): ${e.message}`);
+    }
+
+    // [v1.3] 2차 시도 (보조 소스/Failover)
+    if (!chartData) {
+        try {
+            if (isGroupA) {
+                // 인트라데이 KIS 실패 시 Yahoo Failover
+                chartData = await fetchYahooHistory(stock, days, normInterval);
+            } else if (kisTokenGlobal) {
+                // 일봉/주봉 Yahoo 실패 시 KIS Failover
+                chartData = await fetchKISHistory(stock, normInterval, kisTokenGlobal);
+            }
+        } catch (e) {
+            errorLog.push(`Secondary Source Failed: ${e.message}`);
+        }
+    }
+
+    if (!chartData) {
+        throw new Error(`Data Fetch Failed for ${stock.code} [${interval}]. Errors: ${errorLog.join(' | ')}`);
+    }
+
+    // [v1.3] 실시간 가격 보정 (Enrichment)
+    if (kisTokenGlobal) {
+        chartData = await enrichWithCurrentKISPrice(stock, chartData, kisTokenGlobal, kisCache);
+    }
+
+    return chartData;
+}
+
+/**
+ * [v1.3] Yahoo Finance 데이터 수집 엔진 (Internal)
+ */
+async function fetchYahooHistory(stock, days, interval) {
     const market = stock.market || 'KOSPI';
     const suffix = market.includes('KOSPI') ? '.KS' : '.KQ';
     const symbolKS = stock.code + suffix;
-    const period1 = Math.floor(Date.now() / 1000) - (86400 * days);
-    const period2 = Math.floor(Date.now() / 1000);
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbolKS}?period1=${period1}&period2=${period2}&interval=${interval}`;
+    const p1 = Math.floor(Date.now() / 1000) - (86400 * days);
+    const p2 = Math.floor(Date.now() / 1000);
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbolKS}?period1=${p1}&period2=${p2}&interval=${interval}&includeAdjustedClose=false`;
     
-    const response = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
-    if (!response.ok) throw new Error(`Yahoo Fetch Failed: ${response.status}`);
-    const data = await response.json();
-    const result = data.chart.result[0];
+    const resp = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+    if (!resp.ok) throw new Error(`Yahoo HTTP ${resp.status}`);
+    const body = await resp.json();
+    const result = body.chart.result[0];
+    if (!result || !result.timestamp) throw new Error('Yahoo Response Empty');
+
     const quotes = result.indicators.quote[0];
-    const timestamps = result.timestamp;
-    
-    let validIndices = [];
+    const ts = result.timestamp;
+    const valid = [];
     for (let i = 0; i < quotes.close.length; i++) {
-        if (quotes.close[i] !== null && timestamps[i] !== null) validIndices.push(i);
+        if (quotes.close[i] !== null && ts[i] !== null) valid.push(i);
     }
 
-    let chartData = {
-        open: validIndices.map(i => quotes.open[i]),
-        high: validIndices.map(i => quotes.high[i]),
-        low: validIndices.map(i => quotes.low[i]),
-        close: validIndices.map(i => quotes.close[i]),
-        volume: validIndices.map(i => quotes.volume[i]),
-        time: validIndices.map(i => timestamps[i])
+    return {
+        open: valid.map(i => quotes.open[i]),
+        high: valid.map(i => quotes.high[i]),
+        low: valid.map(i => quotes.low[i]),
+        close: valid.map(i => quotes.close[i]),
+        volume: valid.map(i => quotes.volume[i]),
+        time: valid.map(i => ts[i])
+    };
+}
+
+/**
+ * [v1.3] KIS API 데이터 수집 엔진 (Historical)
+ */
+async function fetchKISHistory(stock, interval, kisToken) {
+    const isMinute = interval.includes('m');
+    const tr_id = isMinute ? 'FHKST03010200' : 'FHKST03010100';
+    const endpoint = isMinute ? '/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice' : '/uapi/domestic-stock/v1/quotations/inquire-daily-itemchartprice';
+
+    const params = {
+        "FID_COND_MRKT_DIV_CODE": "J",
+        "FID_INPUT_ISCD": stock.code,
+        "FID_ETC_CLS_CODE": ""
     };
 
-    if (kisTokenGlobal) {
-        let kisData = null;
-        let foreignBuy = 0, instBuy = 0;
+    if (isMinute) {
+        params["FID_PW_DATA_INCU_YN"] = "Y";
+        params["FID_INPUT_HOUR_1"] = ""; 
+    } else {
+        params["FID_PERIOD_DIV_CODE"] = "D";
+        params["FID_ORG_ADJ_PRC"] = "1"; // 비수정주가
+    }
 
+    const res = await axios.get(`https://openapi.koreainvestment.com:9443${endpoint}`, {
+        headers: { 
+            'authorization': 'Bearer ' + kisToken, 
+            'appkey': KIS_APP_KEY, 
+            'appsecret': KIS_APP_SECRET, 
+            'tr_id': tr_id,
+            'custtype': 'P'
+        },
+        params,
+        timeout: 5000
+    });
+
+    // [v1.4] KIS Rate Limit Prevention (명세서 5.1 준수)
+    await sleep(100);
+
+    const output = res.data.output2 || res.data.output;
+    if (!output || !Array.isArray(output)) throw new Error(`KIS Output Error: ${res.data.msg1 || 'Empty'}`);
+
+    // KIS는 최신순이므로 과거순으로 정렬
+    const sorted = [...output].reverse(); 
+
+    return {
+        open: sorted.map(d => parseInt(d.stck_oprc || d.stck_prpr)),
+        high: sorted.map(d => parseInt(d.stck_hgpr || d.stck_prpr)),
+        low: sorted.map(d => parseInt(d.stck_lwpr || d.stck_prpr)),
+        close: sorted.map(d => parseInt(d.stck_prpr)),
+        volume: sorted.map(d => parseInt(d.acml_vol || 0)),
+        time: sorted.map(d => {
+            const dateStr = d.stck_bsop_date || d.target_date;
+            const hourStr = d.stck_cntg_hour || '153000';
+            const year = dateStr.slice(0, 4), month = dateStr.slice(4, 6), day = dateStr.slice(6, 8);
+            const hour = hourStr.slice(0, 2), min = hourStr.slice(2, 4), sec = hourStr.slice(4, 6);
+            return Math.floor(new Date(`${year}-${month}-${day}T${hour}:${min}:${sec}+09:00`).getTime() / 1000);
+        })
+    };
+}
+
+/**
+ * [v1.3] KIS 현재가 보정 (Enrichment)
+ */
+async function enrichWithCurrentKISPrice(stock, chartData, kisToken, kisCache) {
+    try {
+        let kisData = null;
         if (kisCache && kisCache[stock.code]) {
             kisData = kisCache[stock.code].price;
-            foreignBuy = kisCache[stock.code].foreign_buy || 0;
-            instBuy = kisCache[stock.code].inst_buy || 0;
         } else {
-            try {
-                const kisUrl = 'https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price';
-                const kisRes = await axios.get(kisUrl, {
-                    headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
-                    params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
-                    timeout: 5000
-                });
-                kisData = kisRes.data.output;
-                
-                // [Red Team Fix] [v9.4.6] Staggered delay to prevent KIS Rate Limit (20/sec)
-                await sleep(300);
-
-                // [Red Team Fix] [v9.4.12] Hardened Investor Data Fetch with Retail & Logging
-                let investorFetchSuccess = false;
-                for (let retry = 0; retry < 2; retry++) {
-                    try {
-                        const trendRes = await axios.get('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-investor', {
-                            headers: { 'authorization': 'Bearer ' + kisTokenGlobal, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010900' },
-                            params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
-                            timeout: 5000 // Increased to 5s
-                        });
-                        if (trendRes.data.output) {
-                            const out = Array.isArray(trendRes.data.output) ? trendRes.data.output[0] : trendRes.data.output;
-                            foreignBuy = parseInt(out.frgn_ntby_qty) || 0;
-                            instBuy = parseInt(out.orgn_ntby_qty) || 0;
-                            investorFetchSuccess = true;
-                            break; 
-                        }
-                    } catch (trendErr) {
-                        const isRateLimit = trendErr.response && trendErr.response.data && trendErr.response.data.msg_cd === 'EGW00201';
-                        console.warn(`[KIS API] Investor Fetch Alert for ${stock.code}: ${trendErr.message} (Retry: ${retry + 1})`);
-                        if (isRateLimit) await sleep(1000); // Backoff if rate limited
-                        else await sleep(300);
-                    }
-                }
-                if (!investorFetchSuccess) {
-                    console.error(`[KIS API] CRITICAL: Final failure fetching investor data for ${stock.code}`);
-                }
-
-                if (kisCache) kisCache[stock.code] = { price: kisData, foreign_buy: foreignBuy, inst_buy: instBuy };
-            } catch(e) {
-                if (e.response && e.response.data && e.response.data.msg_cd === 'EGW00123') throw { type: 'TOKEN_EXPIRED', originalError: e };
-                throw new Error(`[KIS API] Required Price Fetch Failed for ${stock.code}: ${e.message}`);
-            }
+            const res = await axios.get('https://openapi.koreainvestment.com:9443/uapi/domestic-stock/v1/quotations/inquire-price', {
+                headers: { 'authorization': 'Bearer ' + kisToken, 'appkey': KIS_APP_KEY, 'appsecret': KIS_APP_SECRET, 'tr_id': 'FHKST01010100' },
+                params: { "FID_COND_MRKT_DIV_CODE": "J", "FID_INPUT_ISCD": stock.code },
+                timeout: 3000
+            });
+            kisData = res.data.output;
         }
 
         if (kisData && kisData.stck_prpr) {
-            let currentPrice = parseInt(kisData.stck_prpr);
-            const currentHigh = parseInt(kisData.stck_hgpr);
-            const currentLow = parseInt(kisData.stck_lwpr);
-            
-            // [LEGACY MERGE] Overtime Price Support (16:00 - 20:00)
-            const kstNow = getKstNow();
-            const kstHour = kstNow.getUTCHours(); // KST is UTC+9, but getKstNow returns adjusted object
-            const overtimePrice = parseInt(kisData.ovtm_untp_prpr || 0);
-            if (kstHour >= 16 && kstHour <= 20 && overtimePrice > 0) {
-                currentPrice = overtimePrice;
-            }
+            const curP = parseInt(kisData.stck_prpr);
+            const curH = parseInt(kisData.stck_hgpr);
+            const curL = parseInt(kisData.stck_lwpr);
+            const kst = getKstNow();
 
             chartData.kis_change_data = {
-                sign: kisData.prdy_vrss_sign,
-                change: parseInt(kisData.prdy_vrss),
                 rate: parseFloat(kisData.prdy_ctrt),
-                trade_amount: parseInt(kisData.acml_tr_pbmn),
-                foreign_buy: foreignBuy,
-                inst_buy: instBuy,
-                stck_prpr: currentPrice
+                stck_prpr: curP,
+                trade_amount: parseInt(kisData.acml_tr_pbmn || 0)
             };
 
-            const lastIdx = chartData.close.length - 1;
-            if (lastIdx >= 0) {
-                const lastDate = new Date(chartData.time[lastIdx] * 1000);
-                const isSameDay = (lastDate.getUTCDate() === kstNow.getUTCDate() && lastDate.getUTCMonth() === kstNow.getUTCMonth());
-                
-                if (isSameDay) {
-                    chartData.close[lastIdx] = currentPrice;
-                    chartData.high[lastIdx] = Math.max(chartData.high[lastIdx], currentHigh);
-                    chartData.low[lastIdx] = Math.min(chartData.low[lastIdx], currentLow);
-                } else {
-                    chartData.open.push(currentPrice); chartData.high.push(currentHigh);
-                    chartData.low.push(currentLow); chartData.close.push(currentPrice);
-                    chartData.volume.push(0); chartData.time.push(Math.floor(Date.now() / 1000));
+            const lIdx = chartData.close.length - 1;
+            if (lIdx >= 0) {
+                const lDate = new Date(chartData.time[lIdx] * 1000);
+                const same = (lDate.getUTCDate() === kst.getUTCDate() && lDate.getUTCMonth() === kst.getUTCMonth());
+                if (same) {
+                    chartData.close[lIdx] = curP;
+                    chartData.high[lIdx] = Math.max(chartData.high[lIdx], curH);
+                    chartData.low[lIdx] = Math.min(chartData.low[lIdx], curL);
                 }
             }
         }
+    } catch (e) {
+        console.warn(`[Enrichment] ${stock.code} Failed: ${e.message}`);
     }
     return chartData;
 }
