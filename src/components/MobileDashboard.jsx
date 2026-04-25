@@ -12,7 +12,6 @@ import { Activity, Archive, Share2, Filter, Layout, LogOut, UserCog, Search, X, 
 import { Virtuoso } from 'react-virtuoso';
 import AdminDashboard from './AdminDashboard.jsx';
 import BottomSheetFilter from './BottomSheetFilter.jsx';
-import LandingPppWidget from './LandingPppWidget.jsx';
 
 // KST 기준 장중 상태 판별
 function getMarketStatus() {
@@ -105,14 +104,6 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
             >
               MP 시그널
             </button>
-            {['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) && (
-              <button 
-                onClick={() => { setLandingTab('PPP'); setShowAdminPanel(false); }}
-                style={{ flex: 1, padding: '0.5rem', borderRadius: '7px', border: 'none', background: landingTab === 'PPP' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem', transition: 'all 0.2s' }}
-              >
-                PPP
-              </button>
-            )}
           </nav>
       </header>
       
@@ -164,9 +155,7 @@ const MobileDashboard = ({ manager, user, clearAuth }) => {
         </div>
       ) : (
       <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '80px' }}>
-        {landingTab === 'PPP' ? (
-          <LandingPppWidget user={user} />
-        ) : (
+        {false ? null : (
         <>
         {/* 2. Status Widget (수평 스크롤) */}
         <div style={{ 

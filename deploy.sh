@@ -20,14 +20,7 @@ echo "3. 프론트엔드 빌드 (npm run build)..."
 # release 스크립트 대신 직접 빌드하여 PM2 리로드 시점 조절
 npm run build
 
-echo "4. Python 가상환경 및 마이크로서비스 세팅 (ai-service)..."
-cd ai-service
-python3 -m venv venv || true
-source venv/bin/activate
-pip install -r requirements.txt
-cd ..
-
-echo "5. Prisma DB 스키마 갱신..."
+echo "4. Prisma DB 스키마 갱신..."
 npx prisma db push --schema=platform/infra/db/schema.prisma --skip-generate || echo "Warning: Infra schema push failed, skipping..."
 npx prisma db push --schema=prisma/schema.prisma
 

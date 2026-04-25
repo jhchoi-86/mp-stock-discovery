@@ -4,7 +4,6 @@ import React from 'react';
 import { Menu, X, Rocket, Shield, BarChart3, Sparkles, TrendingUp, CheckCircle, Smartphone, Activity, Share2, LogIn, ChevronRight, Play, Zap, Bell, CheckCircle2 } from 'lucide-react';
 import useSWR from 'swr';
 import reportService from '../api/reportService';
-import Top5StrategyBanner from './Top5StrategyBanner';
 import LandingHeader from './LandingHeader';
 import { useSSE } from '../hooks/useSSE';
 
@@ -141,7 +140,7 @@ const LandingPage = ({ onLoginClick, isAuthenticated, onLogoutClick }) => {
         <SocialMarquee notifications={dynamicAlerts} />
       </section>
 
-      <Top5StrategyBanner onLoginClick={onLoginClick} />
+
 
       <header className="lp-hero" id="home">
         <div style={{textAlign: 'center', width: '100%'}}>

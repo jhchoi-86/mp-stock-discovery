@@ -37,8 +37,6 @@ const { verifyIntegrity } = require('./src/utils/integrityGuard.cjs');
 verifyIntegrity();
 
 const { calculateSignals, resampleChartData, runBatchAnalysis } = require('./analyzer.cjs');
-const { runPppScan } = require('./ppp_filter.cjs');
-const { runPppGeminiScan } = require('./ppp_gemini_scanner.cjs');
 const { sendAlert: _sendSyncAlert } = require('./lib/alert_manager.cjs');
 const { TIMEFRAMES, ANALYZER_LOCK_TTL } = require('./lib/constants.cjs');
 const { savePastRecommendations, evaluatePastRecommendations, generateSummaryReport, EXCEL_FILE } = require('./src/utils/historyManager.cjs');
@@ -53,15 +51,6 @@ const { isKSTTradingHours, isTradingDay } = require('./platform/markets/kr_equit
 const PublishingService = require('./src/services/publishingService.cjs');
 const BulkSyncService = require('./src/services/BulkSyncService.cjs'); // [STEP-04] Added for manual price protection
 global.publishingService = new PublishingService();
-
-let aiScoringQueue = null;
-try {
-    const redisClient = require('./platform/infra/redis/client.cjs');
-    aiScoringQueue = new Queue('aiScoringQueue', { connection: redisClient });
-    console.log('[BullMQ] aiScoringQueue initialized successfully.');
-} catch (e) {
-    console.warn('[BullMQ] Redis unavailable. AI scoring queue disabled:', e.message);
-}
 
 const app = express();
 // [TASK-S14] Safe BigInt Serialization (Alternative to global prototype patch)
@@ -301,7 +290,6 @@ const leadsRouter = require('./src/routes/leads.cjs');
 const { router: publicReportsRouter, getLatestReportHandler } = require('./src/routes/publicReports.cjs');
 const ssotRouter = require('./src/routes/ssot.cjs');
 const dailyTop5Router = require('./src/routes/dailyTop5.cjs');
-const strategyRouter = require('./src/routes/strategy.cjs');
 
 // Trust proxies if behind AWS ELB/NGINX
 app.set('trust proxy', 1);
@@ -328,7 +316,6 @@ app.use('/api/v1/leads', leadsRouter);
 app.use('/api/reports/daily', publicReportsRouter);
 app.use('/api/ssot', ssotRouter);
 app.use('/api/daily-top5', dailyTop5Router);
-app.use('/api/strategy', strategyRouter);
 
 // [TASK-E4] GET /api/stock-snapshot - DB의 DailyStockSnapshot을 단일 소스로 반환
 app.get('/api/stock-snapshot', authenticateToken, async (req, res) => {
@@ -401,99 +388,6 @@ app.get('/api/top5', authenticateToken, async (req, res) => {
   }
 });
 
-// [PPP Watchlist] Routes
-app.post('/api/ppp/scan', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const result = await runPppScan();
-    
-    // [v9.8.3] 자동 전략 보고서 생성 트리거 (DB 기반)
-    setTimeout(async () => {
-      try {
-        const StrategyService = require('./src/services/StrategyService.cjs');
-        const { PrismaClient } = require('@prisma/client');
-        const prisma = new PrismaClient();
-        
-        // DB에서 활성 상위 10개 조회
-        const activeWatchlist = await prisma.pppWatchlist.findMany({
-            where: { is_active: true },
-            orderBy: { score: 'desc' },
-            take: 10
-        });
-
-        if (activeWatchlist.length > 0) {
-            // [v9.8.5] AI 근거 생성을 포함한 비동기 리포트 생성 대기
-            await StrategyService.generateStaticReport(activeWatchlist, path.join(__dirname, 'data'));
-            
-            // 텔레그램 방송 (ADMIN 채널 우선)
-            const telegramBot = require('./telegramBot.cjs');
-            await StrategyService.broadcastTop10(activeWatchlist, telegramBot, process.env.TG_CHANNEL_ADMIN);
-        }
-      } catch (err) {
-        console.error('[Strategy AutoGen Error]', err);
-      }
-    }, 1000); // 1초 뒤 실행 (DB 쓰기 완료 대기)
-
-    res.json({ success: true, data: result });
-  } catch (e) {
-    console.error('[API PPP Scan]', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-// [v9.7.5] PPP 스캔 강제 초기화 API
-app.post('/api/ppp/scan-reset', authenticateToken, isAdmin, async (req, res) => {
-  try {
-    const redis = require('./platform/infra/redis/client.cjs');
-    await redis.del('lock:ppp_scan');
-    await redis.del('mp:ppp_scan_progress');
-    console.log('[API PPP Scan Reset] Admin requested force reset.');
-    res.json({ success: true, message: 'PPP 스캔 상태가 초기화되었습니다.' });
-  } catch (e) {
-    console.error('[API PPP Scan Reset]', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-app.get('/api/ppp/scan-status', authenticateToken, requirePaidOrAdmin, async (req, res) => {
-  try {
-    const progress = await redis.get('mp:ppp_scan_progress');
-    const data = progress ? JSON.parse(progress) : { status: 'idle', processed: 0, total: 0, percentage: 0 };
-    res.json({ success: true, data });
-  } catch (e) {
-    console.error('[API PPP Scan Status]', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-app.get('/api/ppp/watchlist', authenticateToken, requirePaidOrAdmin, async (req, res) => {
-  const limit = parseInt(req.query.limit) || 50;
-  try {
-    const watchlist = await prisma.pppWatchlist.findMany({
-      where: { is_active: true },
-      orderBy: { score: 'desc' },
-      take: limit
-    });
-    res.json({ success: true, data: watchlist });
-  } catch (e) {
-    console.error('[API PPP Watchlist]', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
-app.delete('/api/ppp/watchlist/:code', authenticateToken, isAdmin, async (req, res) => {
-  const { code } = req.params;
-  try {
-    await prisma.pppWatchlist.updateMany({
-      where: { code, is_active: true },
-      data: { is_active: false }
-    });
-    res.json({ success: true, message: `${code} 비활성화 완료` });
-  } catch (e) {
-    console.error('[API PPP Delete]', e);
-    res.status(500).json({ success: false, error: e.message });
-  }
-});
-
 // Forward /api/public/recommendations directly to the handler
 app.get('/api/public/recommendations', getLatestReportHandler);
 
@@ -549,22 +443,6 @@ app.get('/api/stocks/active-targets', async (req, res) => {
   } catch (err) {
     console.error('[ActiveTargets API]', err);
     res.status(500).json({ success: false, error: err.message, data: [] });
-  }
-});
-
-// [NEW] GET /api/public/watchlist-strategy
-app.get('/api/public/watchlist-strategy', (req, res) => {
-  const watchlistFile = path.join(__dirname, 'data', 'watchlist_strategy.json');
-  if (fs.existsSync(watchlistFile)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(watchlistFile, 'utf8'));
-      res.json(data);
-    } catch (e) {
-      res.status(500).json({ error: 'Failed to parse watchlist data' });
-    }
-  } else {
-    // Return empty but successful to avoid crashes if no watchlist set yet
-    res.json({ updatedAt: getKstISO(), stocks: [] });
   }
 });
 
@@ -2720,11 +2598,7 @@ app.get('/api/health', (req, res) => {
 
 
 // 🔴 [Red Team 방어 - R4] AI 엔진 지연시간 해소 (Cron 루프 외부 1회성 로드)
-const pingAIService = () => {
-    axios.get('http://127.0.0.1:8000/health', { timeout: 3000 })
-        .then(() => console.log('[AI Engine] Successfully connected to FastAPI!'))
-        .catch(e => console.error('[AI Engine] Not accessible on boot:', e.message));
-};
+// [v9.9.57] AI Engine Decommissioned
 
 // --- [Background Tasks / Scheduler Guard] ---
 // PM2 클러스터 모드(instances: 'max') 적용 시 코어 수만큼 백그라운드 스케줄러가
@@ -2899,38 +2773,8 @@ if (isPrimaryWorker) {
             let aiCommentsMap = {};
             if (approvedStocks.length > 0) {
               try {
-                // 1. Python 마이크로서비스 호출 (T5-02)
-                const aiPayload = approvedStocks.map(s => ({
-                  symbol: s.code,
-                  name: s.name,
-                  category: s.latestSignal.category,
-                  price: s.latestSignal.current_price || s.latestSignal.entry_price || 0,
-                  indicators: {
-                    adx: s.latestSignal.adx || 0,
-                    score: s.total_score,
-                    trend: s.timeframeStatus['1D']?.cond_up7 ? "상승" : "관망"
-                  }
-                }));
-                
-                // 2. 15초 Timeout Fallback 방어 로직 적용 (V5 패치)
-                const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
-                  { stocks: aiPayload }, 
-                  { 
-                    timeout: 30000,
-                    headers: { 'x-internal-api-key': process.env.INTERNAL_API_SECRET || 'fallback_secret' } // [TASK-CC01] 내부 인증 헤더 추가
-                  } 
-              );
-                
-                let commentsArray = [];
-                if (aiRes.data && Array.isArray(aiRes.data)) {
-                  commentsArray = aiRes.data;
-                } else if (aiRes.data && Array.isArray(aiRes.data.data)) {
-                  commentsArray = aiRes.data.data;
-                }
-                
-                commentsArray.forEach(item => {
-                  if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
-                });
+                // [v9.9.57] AI Engine Decommissioned - Skipping Comment Generation
+                const aiCommentsMap = {};
               } catch (aiErr) {
                 console.error('[AI Service LLM Fallback] Failed to fetch LLM comments:', aiErr.message);
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
@@ -3196,6 +3040,12 @@ if (isPrimaryWorker) {
 app.listen(PORT, '0.0.0.0', async () => {
     console.log(`[REST API] Server is successfully running on port ${PORT}`);
 
+    // [v9.9.58] Immediate PM2 signaling to prevent listen_timeout kill
+    if (process.send) {
+        process.send('ready');
+        console.log('[PM2] Sent early ready signal.');
+    }
+
     // 1. 크론잡 등록 (가벼운 작업)
     cron.schedule('1 0 * * *', async () => {
         console.log('[Cron] Archiving Daily System Stats...');
@@ -3215,10 +3065,13 @@ app.listen(PORT, '0.0.0.0', async () => {
     setTimeout(async () => {
         try {
             console.log('[Init] Starting heavy background initialization...');
-            await systemStatsService.archiveDailyStats();
+            // [v9.9.58] Wrap in retry/timeout to prevent blocking the whole event loop
+            await Promise.race([
+                systemStatsService.archiveDailyStats(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 15000))
+            ]).catch(e => console.error('[Init] Pre-load archiveDailyStats skipped:', e.message));
             
-            // Initial AI Engine Warmup
-            pingAIService();
+            // [v9.9.57] AI Engine Decommissioned
             
             // Live Signal Poller
             startLiveSignalPoller();
@@ -3276,14 +3129,9 @@ app.listen(PORT, '0.0.0.0', async () => {
                 } catch(wsErr) { console.error('[WSS] Error:', wsErr.message); }
             }
 
-            // 3. 모든 초기화 완료 후 PM2 ready 신호 발행 [TASK-023]
-            if (process.send) {
-                process.send('ready');
-                console.log('[PM2] Sent ready signal after full initialization.');
-            }
+            console.log('[Init] Background initialization pattern complete.');
         } catch(e) {
             console.error('[Init Error]', e.message);
-            if (process.send) process.send('ready'); // 실패해도 ready 발행
         }
     }, 3000);
     

@@ -1952,12 +1952,7 @@ app.get('/api/health', (req, res) => {
 });
 
 
-// 🔴 [Red Team 방어 - R4] AI 엔진 지연시간 해소 (Cron 루프 외부 1회성 로드)
-const pingAIService = () => {
-    axios.get('http://127.0.0.1:8000/health', { timeout: 3000 })
-        .then(() => console.log('[AI Engine] Successfully connected to FastAPI!'))
-        .catch(e => console.error('[AI Engine] Not accessible on boot:', e.message));
-};
+// [v9.9.57] AI Engine Decommissioned
 
 // --- [Background Tasks / Scheduler Guard] ---
 // PM2 클러스터 모드(instances: 'max') 적용 시 코어 수만큼 백그라운드 스케줄러가
@@ -2165,24 +2160,8 @@ if (isPrimaryWorker) {
                     score: s.total_score,
                     trend: s.timeframeStatus['1D']?.cond_up7 ? "상승" : "관망"
                   }
-                }));
-                
-                // 2. 15초 Timeout Fallback 방어 로직 적용 (V5 패치)
-                const aiRes = await axios.post('http://127.0.0.1:8000/api/v1/generate-comment', 
-                  { stocks: aiPayload }, 
-                  { timeout: 30000 } // 🔴 [Red Team 방어] 10개 이상 종목 분석 대비 30초로 증설 (기존 25초)
-              );
-                
-                let commentsArray = [];
-                if (aiRes.data && Array.isArray(aiRes.data)) {
-                  commentsArray = aiRes.data;
-                } else if (aiRes.data && Array.isArray(aiRes.data.data)) {
-                  commentsArray = aiRes.data.data;
-                }
-                
-                commentsArray.forEach(item => {
-                  if (item.symbol) aiCommentsMap[item.symbol] = item.ai_comment;
-                });
+                // [v9.9.57] AI Engine Decommissioned - Skipping Comment Generation
+                const aiCommentsMap = {};
               } catch (aiErr) {
                 console.error('[AI Service LLM Fallback] Failed to fetch LLM comments:', aiErr.message);
                 // 실패 시 에러만 남기고 조용히 Fallback (기본 텍스트 템플릿 사용)
@@ -2405,6 +2384,12 @@ app.get('/api/debug/snapshot-audit', async (req, res) => {
 app.listen(PORT, '0.0.0.0', async () => {
     console.log(`[REST API] Server is successfully running on port ${PORT}`);
 
+    // [v9.9.58] Immediate PM2 signaling to prevent listen_timeout kill
+    if (process.send) {
+        process.send('ready');
+        console.log('[PM2] Sent early ready signal.');
+    }
+
     // [v7.7.50] 레드팀 193/350 데이터 누락 강제 복구 (One-time Trigger)
     (async () => {
         try {
@@ -2536,10 +2521,13 @@ app.listen(PORT, '0.0.0.0', async () => {
     setTimeout(async () => {
         try {
             console.log('[Init] Starting heavy background initialization...');
-            await systemStatsService.archiveDailyStats();
+            // [v9.9.58] Wrap in retry/timeout to prevent blocking the whole event loop
+            await Promise.race([
+                systemStatsService.archiveDailyStats(),
+                new Promise((_, reject) => setTimeout(() => reject(new Error('DB Timeout')), 15000))
+            ]).catch(e => console.error('[Init] Pre-load archiveDailyStats skipped:', e.message));
             
-            // Initial AI Engine Warmup
-            pingAIService();
+            // [v9.9.57] AI Engine Decommissioned
             
             // Live Signal Poller
             startLiveSignalPoller();
@@ -2592,14 +2580,9 @@ app.listen(PORT, '0.0.0.0', async () => {
                 } catch(wsErr) { console.error('[WSS] Error:', wsErr.message); }
             }
 
-            // 3. 모든 초기화 완료 후 PM2 ready 신호 발행 [TASK-023]
-            if (process.send) {
-                process.send('ready');
-                console.log('[PM2] Sent ready signal after full initialization.');
-            }
+            console.log('[Init] Background initialization pattern complete.');
         } catch(e) {
             console.error('[Init Error]', e.message);
-            if (process.send) process.send('ready'); // 실패해도 ready 발행
         }
     }, 3000);
     

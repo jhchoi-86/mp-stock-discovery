@@ -1,7 +1,5 @@
-import React from 'react';
 import LandingHeader from '../components/LandingHeader';
-import LandingPppWidget from '../components/LandingPppWidget';
-import { Lock } from 'lucide-react';
+import { Lock, Info } from 'lucide-react';
 
 /**
  * WatchlistPage Component (v1.0)
@@ -19,8 +17,10 @@ const WatchlistPage = ({ user, isAuthenticated, onLogoutClick, onLoginClick }) =
       <main style={{ paddingTop: '80px', paddingBottom: '4rem' }}>
         <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
           {isAuthenticated ? (
-            <div className="fade-in">
-                <LandingPppWidget user={user} />
+            <div className="fade-in" style={{ textAlign: 'center', padding: '5rem 2rem', background: 'rgba(255,255,255,0.02)', borderRadius: '24px' }}>
+                <Info size={48} color="var(--primary)" style={{ opacity: 0.5, marginBottom: '1.5rem' }} />
+                <h2 style={{ fontSize: '1.5rem', fontWeight: 700, marginBottom: '1rem' }}>데이터 준비 중</h2>
+                <p style={{ color: 'var(--text-secondary)' }}>관심종목 데이터가 아직 준비되지 않았거나 업데이트 중입니다.</p>
             </div>
           ) : (
             <div style={{ padding: '0 1.5rem' }}>
@@ -45,10 +45,10 @@ const WatchlistPage = ({ user, isAuthenticated, onLogoutClick, onLoginClick }) =
                     <Lock size={40} color="var(--primary)" />
                   </div>
                   <h2 style={{ fontSize: '2rem', fontWeight: 900, marginBottom: '1rem' }}>
-                    PPP 고수의 자동 워치리스트 (Premium)
+                    실시간 관심종목 분석 (Premium)
                   </h2>
                   <p style={{ color: 'var(--text-secondary)', marginBottom: '2.5rem', lineHeight: 1.6, maxWidth: '500px', margin: '0 auto 2.5rem' }}>
-                    전문가용 AI 로직이 포착한 강력한 매수 타점 현황을 확인해 보세요.<br/>
+                    시스템이 포착한 강력한 매수 타점 현황을 확인해 보세요.<br/>
                     본 서비스는 유료 회원 등급만 접근 가능한 프리미엄 메뉴입니다.
                   </p>
                   <button 

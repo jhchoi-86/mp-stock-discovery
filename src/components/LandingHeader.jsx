@@ -41,7 +41,6 @@ const LandingHeader = ({ isAuthenticated, onLogoutClick, onLoginClick }) => {
           </a>
           <Link to="/live-signals" className="lp-nav-link" style={{ fontSize: '1rem' }}>매매신호포착</Link>
           <Link to="/watchlist" className="lp-nav-link" style={{ fontSize: '1rem' }}>관심종목</Link>
-          <Link to="/strategy-report" className="lp-nav-link" style={{ fontSize: '1rem', color: '#fbbf24', fontWeight: 'bold' }}>전략 보고서 📊</Link>
           
           <div style={{ display: 'flex', gap: '0.75rem' }}>
             {isAuthenticated ? (
@@ -106,7 +105,6 @@ const LandingHeader = ({ isAuthenticated, onLogoutClick, onLoginClick }) => {
           </a>
           <Link to="/live-signals" onClick={() => setIsMenuOpen(false)}>매매신호포착</Link>
           <Link to="/watchlist" onClick={() => setIsMenuOpen(false)}>관심종목</Link>
-          <Link to="/strategy-report" onClick={() => setIsMenuOpen(false)} style={{ color: '#fbbf24', fontWeight: 'bold' }}>전략 보고서 📊</Link>
           <div style={{ marginTop: '1rem', paddingTop: '1.5rem', borderTop: '1px solid var(--glass-border)', width: '100%', textAlign: 'center' }}>
             {isAuthenticated ? (
               <button 

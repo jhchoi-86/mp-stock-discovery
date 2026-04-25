@@ -1,4 +1,4 @@
-// Docker 컨테이너 전용 PM2 설정
+// MP Stock Discovery PM2 Configuration (Native/Bare-metal Mode)
 const BASE = '.';
 const pyInterpreter = 'python';
 const uvicornScript = 'uvicorn';
@@ -17,18 +17,6 @@ module.exports = {
       listen_timeout: 50000,
       kill_timeout: 30000,
       env_production: { NODE_ENV: 'production', PORT: 3001, CLIENT_URL: 'https://mpstock.co.kr', TZ: 'Asia/Seoul' }
-    },
-    {
-      name: 'mp-stock-ai-api',
-      script: pyInterpreter,
-      interpreter: 'none',
-      args: `-m uvicorn main:app --host 0.0.0.0 --port 8000 --workers 2`,
-      cwd: `${BASE}/ai-service`,
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      max_memory_restart: '600M',
-      env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
     },
     {
       name: 'mp-stock-3m-sniper',
@@ -54,16 +42,6 @@ module.exports = {
     {
       name: 'sync-scheduler',
       script: `${BASE}/sync_scheduler.cjs`,
-      cwd: `${BASE}`,
-      instances: 1,
-      exec_mode: 'fork',
-      autorestart: true,
-      max_memory_restart: '300M',
-      env_production: { NODE_ENV: 'production', TZ: 'Asia/Seoul' }
-    },
-    {
-      name: 'ppp-scheduler',
-      script: `${BASE}/ppp_scheduler.cjs`,
       cwd: `${BASE}`,
       instances: 1,
       exec_mode: 'fork',

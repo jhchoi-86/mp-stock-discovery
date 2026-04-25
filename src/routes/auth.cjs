@@ -112,13 +112,32 @@ router.post('/register', async (req, res) => {
 router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
+    console.log(`[AUTH-DEBUG] Login Attempt: ${email} at ${new Date().toISOString()}`);
 
     if (!email || !password) {
+      console.log('[AUTH-DEBUG] Missing credentials');
       return res.status(400).json({ error: 'Email and password are required.' });
     }
 
     // Find User
-    const user = await prisma.user.findUnique({ where: { email } });
+    let user;
+    try {
+        console.log('[AUTH-DEBUG] Attempting DB Lookup...');
+        // [v9.9.58] 5s hard timeout for login lookup to prevent 502/504
+        user = await Promise.race([
+            prisma.user.findUnique({ where: { email } }),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('DB_TIMEOUT')), 5000))
+        ]);
+        console.log('[AUTH-DEBUG] DB Lookup Complete. User found:', !!user);
+    } catch (dbErr) {
+        console.error('[AUTH-DEBUG] DB Error:', dbErr.message);
+        return res.status(503).json({ 
+            success: false, 
+            error: 'Database connection failed. Please check RDS status.',
+            code: 'DB_UNREACHABLE'
+        });
+    }
+
     if (!user) {
       return res.status(401).json({ error: 'Invalid credentials.' });
     }

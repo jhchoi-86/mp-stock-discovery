@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import RoiRankingWidget from './RoiRankingWidget.jsx';
 import SignalIndicator from '../SignalIndicator.jsx';
-import LandingPppWidget from './LandingPppWidget.jsx';
 import UserProfile from './UserProfile.jsx';
 import SubscriptionModal from './SubscriptionModal.jsx';
 import ReportArchive from './ReportArchive.jsx';
@@ -112,20 +111,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
                 >
                   MP 시그널
                 </button>
-                {['PAID', 'PRO_USER', 'ADMIN'].includes(user?.role) && (
-                  <button 
-                    onClick={() => { setLandingTab('PPP'); setShowAdminPanel(false); }}
-                    style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: landingTab === 'PPP' ? 'var(--primary)' : 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
-                  >
-                    PPP 워치리스트
-                  </button>
-                )}
-                <button 
-                  onClick={() => navigate('/strategy-report')}
-                  style={{ padding: '0.6rem 1.5rem', borderRadius: '8px', border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontWeight: 600, transition: 'all 0.2s', fontSize: '0.9rem' }}
-                >
-                  전략 보고서
-                </button>
+                <div style={{ flex: 1 }}></div>
               </nav>
         </div>
         <div className="stats-bar">
@@ -217,14 +203,6 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
               <Archive size={18} /> VIP 자료실
             </button>
           )}
-          <button 
-            onClick={() => navigate('/strategy-report')} 
-            className="action-btn"
-            style={{ padding: '0.6rem 1.25rem', borderRadius: '8px', background: 'rgba(251, 191, 36, 0.15)', color: '#fbbf24', border: '1px solid rgba(251, 191, 36, 0.3)', display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: 500, transition: 'all 0.2s' }}
-            title="전력 보고서"
-          >
-            📊 전략 보고서
-          </button>
           <ReportArchive isOpen={isReportArchiveOpen} onClose={() => setIsReportArchiveOpen(false)} />
           <button 
             onClick={clearAuth} 
@@ -242,9 +220,7 @@ const PcDashboard = ({ manager, user, clearAuth }) => {
         <AdminDashboard />
       ) : (
         <div style={{ flex: 1, padding: '1.5rem', overflowY: 'auto' }}>
-          {landingTab === 'PPP' ? (
-            <LandingPppWidget user={user} />
-          ) : (
+          {false ? null : (
             <React.Fragment>
                 <div style={{ marginBottom: '1.5rem' }}>
                     <RoiRankingWidget />

@@ -107,7 +107,7 @@ const systemStatsService = {
     let diskUsage = 0;
     try {
       const diskInfo = await new Promise((resolve) => {
-        const cmd = os.platform() === 'win32' ? 'wmic logicaldisk where "deviceid=\'C:\'" get size,freespace' : "df -h / | tail -1 | awk '{print $5}'";
+        const cmd = os.platform() === 'win32' ? "wmic logicaldisk where \"deviceid='C:'\" get size,freespace" : "df -h / | tail -1 | awk '{print $5}'";
         exec(cmd, (err, stdout) => {
           if (err || !stdout) resolve("0%");
           if (os.platform() === 'win32') {

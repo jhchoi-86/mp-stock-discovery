@@ -182,7 +182,7 @@ const SignalBoard = () => {
 
             <div style={{ marginTop: '2rem', padding: '1rem', backgroundColor: 'rgba(212, 175, 55, 0.05)', borderRadius: '12px', border: '1px dashed rgba(212, 175, 55, 0.2)' }}>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
-                    <p style={{ margin: 0 }}>💡 <strong>절대신호</strong>: AI가 거래대금, 변동성, 추세를 종합 분석하여 포착한 고확률 진입 지점입니다.</p>
+                    <p style={{ margin: 0 }}>💡 <strong>절대신호</strong>: 시스템이 거래대금, 변동성, 추세를 종합 분석하여 포착한 고확률 진입 지점입니다.</p>
                     <p style={{ margin: '4px 0 0' }}>• <span style={{ color: 'var(--accent)' }}>2M</span>: 2분봉 기준 단기 임팩트 신호 | • <span style={{ color: 'var(--primary)' }}>5M</span>: 5분봉 기준 추세 추종 신호</p>
                 </div>
             </div>

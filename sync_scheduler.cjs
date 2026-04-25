@@ -77,16 +77,8 @@ cron.schedule('0 6 * * 1-5', async () => {
   try {
     await runPhase2();
 
-    // ── [TASK-009] PPP+Gemini 백그라운드 자동 실행 ───────────────────────────────
-    // [C-01] 비동기 즉시 반환 — 동기화 스케줄 완료 로그에 영향 없음
-    // [C-03] runPhase2() 완료 후 실행 — signals.json 최신 상태 보장
-    const { runPppGeminiScan } = require('./ppp_gemini_scanner.cjs');
-    runPppGeminiScan().then(r => {
-      if (r?.success) {
-        console.log(`[FullSync] PPP+Gemini 완료 — PPP:${r.pppTotal}건 Top10:${r.top10?.join(',')}`);
-      }
-    }).catch(e => console.error('[FullSync] PPP+Gemini 오류:', e.message));
-    // ── END TASK-009 ──────────────────────────────────────────────────────────────
+    // [FullSync] Phase 2 완료
+    console.log('[FullSync] Phase 2 정기 동기화 완료');
   } catch (err) {
     console.error('[Scheduler] Phase 2 오류:', err.message);
     await sendAlert('CRITICAL', 'scheduler_phase2_error', `Phase 2 자동 실행 실패: ${err.message}`);
